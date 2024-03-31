@@ -110,7 +110,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
         while (true) {
           const { value, done } = await reader.read();
-          if (done) break;
+          if (done) {
+              markLastAssistantMessageAsComplete(); // Mark the last message as complete when the stream is finished
+              break;
+          }
 
           // Directly parse and display each received chunk
           console.log("[front.js/callChatAPI] Received chunk:", value);
@@ -119,10 +122,13 @@ document.addEventListener("DOMContentLoaded", () => {
           value.split('\n').forEach(line => {
             try {
               if (line.startsWith('data:')) {
-                const content = JSON.parse(line.replace('data: ', '')).content;
+                const parsedLine = JSON.parse(line.replace('data: ', ''));
+                const content = parsedLine.content;
                 if (content) {
                   displayAssistantMessage(content);
                 }
+              } else if (line.startsWith('[DONE]')) {
+                markLastAssistantMessageAsComplete(); // Call when a message is fully received
               }
             } catch (error) {
               console.error("[front.js/callChatAPI] Error parsing chunk:", error);
@@ -208,25 +214,44 @@ document.addEventListener("DOMContentLoaded", () => {
       const userMessageElement = document.createElement("div");
       userMessageElement.classList.add("user-message");
       userMessageElement.textContent = message;
-      // Always add the user message to the top
-      messageContainer.insertBefore(userMessageElement, messageContainer.firstChild);
+      messageContainer.appendChild(userMessageElement); // Append at the end, visually appears at the top
       console.log("[front.js/displayUserMessage] User message displayed");
+  }
 
-      // Reset the lastAssistantMessageElement for the new set of assistant messages
-      lastAssistantMessageElement = null;
+  // Helper function to find the last assistant message element if it exists
+  function getLastAssistantMessageElement() {
+      const messages = Array.from(messageContainer.getElementsByClassName('response-message'));
+      if (messages.length > 0) {
+          return messages[messages.length - 1]; // Get the last message element
+      }
+      return null; // No assistant message element found
   }
 
   function displayAssistantMessage(content) {
       console.log("[front.js/displayAssistantMessage] Displaying assistant message:", content);
-      if (!lastAssistantMessageElement) {
-          lastAssistantMessageElement = document.createElement('div');
-          lastAssistantMessageElement.classList.add('response-message');
-          // Insert the new assistant message right after the latest user message
-          messageContainer.insertBefore(lastAssistantMessageElement, messageContainer.firstChild.nextSibling);
+
+      let assistantMessageElement = getLastAssistantMessageElement();
+
+      // Check if we can append to the existing message element
+      if (!assistantMessageElement || assistantMessageElement.getAttribute('data-complete') === 'true') {
+          // Need to create a new message element
+          assistantMessageElement = document.createElement('div');
+          assistantMessageElement.classList.add('response-message');
+          assistantMessageElement.setAttribute('data-complete', 'false'); // Mark as incomplete initially
+          messageContainer.appendChild(assistantMessageElement);
       }
-      // Append the content to the last assistant message element to maintain flow
-      lastAssistantMessageElement.textContent += content;
+
+      // Append the content to the existing or new message element
+      assistantMessageElement.textContent += content;
+
       console.log("[front.js/displayAssistantMessage] Assistant message displayed");
+  }
+
+  function markLastAssistantMessageAsComplete() {
+      let assistantMessageElement = getLastAssistantMessageElement();
+      if (assistantMessageElement) {
+          assistantMessageElement.setAttribute('data-complete', 'true');
+      }
   }
 
 
