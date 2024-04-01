@@ -54,6 +54,12 @@
       "timestamp": "2024-04-01T02:47:37.357Z",
       "userPrompt": "shoot him",
       "response": "As you steady your aim, you feel the weight of your destiny in your hands. With a thunderous sound, the bullet pierces the air and finds its mark on the Man in Black. He falls to the ground, defeated. The Dark Tower looms ahead, its secrets waiting to be revealed. What do you wish to do now in this moment of victory and revelation?"
+    },
+    {
+      "messageId": 10,
+      "timestamp": "2024-04-01T22:42:32.157Z",
+      "userPrompt": "go north",
+      "response": "As you continue your journey northward, the landscape becomes more desolate, and a sense of unease creeps over you. The wind carries whispers of long-forgotten voices in the air. What do you wish to do next as you venture deeper into the mysteries of Mid-World?"
     }
   ]
 }
