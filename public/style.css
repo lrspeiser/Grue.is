@@ -2,63 +2,59 @@ body {
   background-color: black;
   color: green;
   font-family: 'AppleIIPro', monospace;
-  padding: 10px;
   margin: 0;
-}
-
-#interaction-container {
+  padding: 10px;
   display: flex;
   flex-direction: column;
   height: 100vh;
 }
 
+#interaction-container {
+  display: grid;
+  grid-template-rows: auto 1fr; /* Allocate space for input and then as much space as possible for messages */
+  height: calc(100% - 20px); /* Adjust height based on padding */
+  gap: 10px; /* Optional: Adds some space between your input and messages */
+}
+
 #input-container {
   display: flex;
   align-items: center;
-  margin-top: 10px;
 }
 
 #prompt {
   color: green;
-  font-family: 'AppleIIPro', monospace;
   margin-right: 5px;
 }
 
 #userInput {
   flex-grow: 1;
   color: green;
-  background: black;
+  background-color: black;
   border: none;
   outline: none;
-  font-family: 'AppleIIPro', monospace;
 }
 
 #messageContainer {
-    display: flex;
-    flex-direction: column-reverse; /* Adjust this to column if reversing JS append logic */
-    overflow-y: auto;
-    /* Add your height or other styling here */
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column; /* Ensure messages are added from top to bottom */
 }
 
-.user-message,
-.response-message {
-  padding: 5px;
-  margin: 2px 0;
+.user-message, .response-message {
+  margin: 4px 0;
+  padding: 4px;
   word-break: break-word;
+  border-radius: 4px;
 }
 
 .user-message {
-  text-align: right;
-  background-color: green;
-  color: black;
-  border-radius: 5px;
-  align-self: flex-end;
+  background-color: #008001; /* Green background for user messages */
+  color: black; /* Black text for contrast */
+  align-self: flex-end; /* Align to the right */
 }
 
 .response-message {
-  text-align: left;
-  background-color: black;
-  color: green;
-  border-radius: 5px;
-  align-self: flex-start;
+  background-color: black; /* Keeps the terminal look */
+  color: #008001; /* Green text for responses */
+  align-self: flex-start; /* Align to the left */
 }

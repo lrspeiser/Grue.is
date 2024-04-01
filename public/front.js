@@ -1,5 +1,6 @@
 //public/front.js
 let lastAssistantMessageElement = null;
+let fullResponse = "";
 
 (function () {
   const originalLog = console.log;
@@ -80,105 +81,61 @@ document.addEventListener("DOMContentLoaded", () => {
 
   async function callChatAPI(userPrompt, userId) {
       console.log("[front.js/callChatAPI] Calling /api/chat with", {
-        userPrompt,
-        userId,
+          userPrompt,
+          userId,
       });
 
-      const messages = conversationHistory.map((item) => ({
-        role: item.role,
-        content: item.content,
-      }));
-
-      // Append the latest user prompt to the messages array
-      messages.push({ role: "user", content: userPrompt });
+      // Creating a copy of the conversation history to include the new user prompt
+      const messagesToSend = [...conversationHistory, { role: "user", content: userPrompt }];
+      console.log("[front.js/callChatAPI] Sending messages to /api/chat", messagesToSend);
 
       try {
-        const response = await fetch("/api/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: messages,
-            userId,
-          }),
-        });
-
-        if (!response.ok) {
-          throw new Error("Failed to start chat session");
-        }
-
-        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) {
-              markLastAssistantMessageAsComplete(); // Mark the last message as complete when the stream is finished
-              break;
-          }
-
-          // Directly parse and display each received chunk
-          console.log("[front.js/callChatAPI] Received chunk:", value);
-
-          // Attempt to parse each line of the received chunk and display it
-          value.split('\n').forEach(line => {
-            try {
-              if (line.startsWith('data:')) {
-                const parsedLine = JSON.parse(line.replace('data: ', ''));
-                const content = parsedLine.content;
-                if (content) {
-                  displayAssistantMessage(content);
-                }
-              } else if (line.startsWith('[DONE]')) {
-                markLastAssistantMessageAsComplete(); // Call when a message is fully received
-              }
-            } catch (error) {
-              console.error("[front.js/callChatAPI] Error parsing chunk:", error);
-            }
+          const response = await fetch("/api/chat", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                  messages: messagesToSend,
+                  userId,
+              }),
           });
-        }
-      } catch (error) {
-        console.error("[front.js/callChatAPI] Error:", error);
-      }
-  }
 
+          if (!response.ok) {
+              throw new Error("Failed to start chat session");
+          }
 
-  function listenToGPTStream(userId) {
-      if (!userId) {
-          console.error("[listenToGPTStream] No userId provided.");
-          return;
-      }
-
-      console.log("[listenToGPTStream] Initializing SSE connection for userId:", userId);
-      const eventSource = new EventSource(`/api/chat/stream?userId=${encodeURIComponent(userId)}`);
-
-      eventSource.onmessage = (event) => {
-          try {
-              const data = JSON.parse(event.data);
-              console.log("[listenToGPTStream] Received data chunk:", data);
-              if (data.content !== undefined) {
-                  displayAssistantMessage(data.content);
+          const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+          while (true) {
+              const { value, done } = await reader.read();
+              if (done) {
+                  console.log("[front.js/callChatAPI] Chat session ended");
+                  markLastAssistantMessageAsComplete();
+                  break;
               }
-          } catch (error) {
-              console.error("[listenToGPTStream] Error parsing server response:", error);
+
+              console.log("[front.js/callChatAPI] Received chunk:", value);
+              value.split("\n").forEach(line => {
+                  try {
+                      if (line.startsWith("data:")) {
+                          const parsedLine = JSON.parse(line.substr(5)); // Correct parsing of the data
+                          const content = parsedLine.content;
+                          if (content) {
+                              console.log("[front.js/callChatAPI] Displaying message:", content);
+                              displayAssistantMessage(content);
+                          }
+                      } else if (line.trim() === "[DONE]") {
+                          console.log("[front.js/callChatAPI] Message stream completed");
+                          markLastAssistantMessageAsComplete(); // Marks the last assistant message as complete
+                      }
+                  } catch (error) {
+                      console.error("[front.js/callChatAPI] Error parsing chunk:", error);
+                  }
+              });
           }
-      };
-
-      eventSource.addEventListener('done', () => {
-          console.log("[listenToGPTStream] SSE stream ended for userId:", userId);
-          // Mark the last message element as complete
-          let lastMessageElement = document.querySelector('.response-message:last-child');
-          if (lastMessageElement) {
-              lastMessageElement.setAttribute('data-complete', 'true');
-          }
-          eventSource.close();
-      });
-
-      eventSource.onerror = (error) => {
-          console.error("[listenToGPTStream] EventSource failed:", error);
-          eventSource.close();
-      };
-
-      console.log("[listenToGPTStream] SSE connection initialized for userId:", userId);
+      } catch (error) {
+          console.error("[front.js/callChatAPI] Error:", error);
+      }
   }
+
 
 
   userInput.addEventListener("keydown", async (event) => {
@@ -210,82 +167,52 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function displayUserMessage(message) {
-      console.log("[front.js/displayUserMessage] Displaying user message", { message });
-      const userMessageElement = document.createElement("div");
-      userMessageElement.classList.add("user-message");
-      userMessageElement.textContent = message;
-      messageContainer.appendChild(userMessageElement); // Append at the end, visually appears at the top
-      console.log("[front.js/displayUserMessage] User message displayed");
+    console.log("[front.js/displayUserMessage] Displaying user message", {
+      message,
+    });
+    const userMessageElement = document.createElement("div");
+    userMessageElement.classList.add("user-message");
+    userMessageElement.textContent = message;
+    messageContainer.prepend(userMessageElement); // Append at the end, visually appears at the top
+    console.log("[front.js/displayUserMessage] User message displayed");
   }
 
   // Helper function to find the last assistant message element if it exists
   function getLastAssistantMessageElement() {
-      const messages = Array.from(messageContainer.getElementsByClassName('response-message'));
-      if (messages.length > 0) {
-          return messages[messages.length - 1]; // Get the last message element
-      }
-      return null; // No assistant message element found
+    const messages = Array.from(
+      messageContainer.getElementsByClassName("response-message"),
+    );
+    if (messages.length > 0) {
+      return messages[messages.length - 1]; // Get the last message element
+    }
+    return null; // No assistant message element found
   }
 
   function displayAssistantMessage(content) {
       console.log("[front.js/displayAssistantMessage] Displaying assistant message:", content);
 
-      let assistantMessageElement = getLastAssistantMessageElement();
-
-      // Check if we can append to the existing message element
-      if (!assistantMessageElement || assistantMessageElement.getAttribute('data-complete') === 'true') {
-          // Need to create a new message element
-          assistantMessageElement = document.createElement('div');
-          assistantMessageElement.classList.add('response-message');
-          assistantMessageElement.setAttribute('data-complete', 'false'); // Mark as incomplete initially
-          messageContainer.appendChild(assistantMessageElement);
+      // Directly check for null or instantiate a new message element if needed
+      if (lastAssistantMessageElement === null || lastAssistantMessageElement.getAttribute("data-complete") === "true") {
+          lastAssistantMessageElement = document.createElement("div");
+          lastAssistantMessageElement.classList.add("response-message");
+          lastAssistantMessageElement.setAttribute("data-complete", "false");
+          messageContainer.prepend(lastAssistantMessageElement); // Prepend to make it appear at the top
       }
 
-      // Append the content to the existing or new message element
-      assistantMessageElement.textContent += content;
+      // Use innerText to append the content, respecting existing text formatting
+      lastAssistantMessageElement.innerText += content;
 
       console.log("[front.js/displayAssistantMessage] Assistant message displayed");
   }
 
   function markLastAssistantMessageAsComplete() {
-      let assistantMessageElement = getLastAssistantMessageElement();
-      if (assistantMessageElement) {
-          assistantMessageElement.setAttribute('data-complete', 'true');
+      if (lastAssistantMessageElement) {
+          lastAssistantMessageElement.setAttribute("data-complete", "true");
       }
-  }
-
-
-  function scrollToBottom() {
-      // Automatically scroll to the bottom of the message container
-      messageContainer.scrollTop = messageContainer.scrollHeight;
-  }
-
-
-
-  async function saveConversationHistory(userId, newEntries) {
-      const filePath = path.join(usersDir, `${userId}.json`);
-
-      try {
-          let userData;
-          // Attempt to read the existing file, if it exists
-          try {
-              const data = await fs.readFile(filePath, 'utf8');
-              userData = JSON.parse(data);
-          } catch (error) {
-              // If the file does not exist, initialize userData
-              userData = { conversationHistory: [] };
-          }
-
-          // Append new entries to the conversation history
-          // Assuming newEntries is structured as [{role: 'user', content: '...'}, {role: 'assistant', content: '...'}]
-          const updatedHistory = userData.conversationHistory.concat(newEntries);
-
-          // Save the updated conversation history
-          await fs.writeFile(filePath, JSON.stringify({ conversationHistory: updatedHistory }, null, 2));
-          console.log("[saveConversationHistory] Conversation history updated successfully.");
-      } catch (error) {
-          console.error("[saveConversationHistory] Error updating conversation history:", error);
-      }
+      // After marking the current message as complete, explicitly set it to null
+      // This forces a new message element to be created for the next assistant message,
+      // mimicking the initial setup and ensuring no unintended carriage returns are inserted.
+      lastAssistantMessageElement = null;
   }
 
 

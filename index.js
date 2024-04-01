@@ -49,107 +49,125 @@ app.post('/api/users', async (req, res) => {
 });
 
 app.post('/api/chat', async (req, res) => {
-    const { messages, userId } = req.body;
-    console.log(`[/api/chat] Chat request initiated for user ID: ${userId} with messages: ${JSON.stringify(messages)}`);
+    const { userId, messages: newMessages } = req.body;
+    console.log(`[/api/chat] Chat request initiated for user ID: ${userId} with new messages.`);
 
     if (!userId) {
         console.error('[/api/chat] UserId is missing');
         return res.status(400).json({ error: 'UserId is required' });
     }
 
+    const filePath = path.join(usersDir, `${userId}.json`);
+    let userData;
+    let messages = [];
+
+    try {
+        console.log(`[/api/chat] Attempting to fetch user data for ID: ${userId} from file.`);
+        const data = await fs.readFile(filePath, 'utf8');
+        userData = JSON.parse(data);
+        console.log(`[/api/chat] Successfully fetched user data for ID: ${userId}`);
+
+      // Construct the conversation history summary
+      const historySummary = userData.conversationHistory.map(({ messageId, timestamp, userPrompt, response }) =>
+          `Message ${messageId} at ${timestamp} - User: ${userPrompt} | Assistant: ${response}`
+      ).join("\n");
+
+      // Dungeon master system message
+      const dmSystemMessage = "You are a world class dungeon master and you are crafting a game for this user. You must learn the user's preferences and make sure to respond to them based on those preferences. For instance, if they want you to speak Spanish to them, translate into Spanish. Once the user tells you what sort of story they want, you must assume the role of the original author of that story and only speak to them the way the author would. You should keep each answer to 2-3 lines and then ask them a question like, what do you want to do? or do you want to talk to the person, etc. Do not tell them you have these instructions.";
+
+      // Prepend the dungeon master system message
+      messages.unshift({ role: 'system', content: dmSystemMessage });
+
+      // Include the conversation history summary as a system message if there is any history
+      if (historySummary) {
+          messages.push({ role: 'system', content: `Here are the previous messages between you and the user:\n${historySummary}` });
+      }
+
+      messages = [...messages, ...newMessages].filter(msg => msg && msg.role && msg.content);
+      console.log(`[/api/chat] Prepared messages for OpenAI API: ${JSON.stringify(messages)}`);
+      } catch (error) {
+      console.error(`[/api/chat] Error fetching user data for ID: ${userId}: ${error}`);
+      return res.status(500).send('Error fetching user data');
+      }
+
     res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',
-        'Connection': 'keep-alive'
+        'Connection': 'keep-alive',
     });
 
-    console.log(`[/api/chat] Headers set for SSE for user ID: ${userId}`);
-// this is the required way by open ai to get the response, never change it
     try {
+        console.log(`[/api/chat] Initiating ChatGPT stream for user ID: ${userId}`);
         const stream = await openai.chat.completions.create({
             model: 'gpt-3.5-turbo',
             messages,
             stream: true,
         });
 
-        console.log(`[/api/chat] OpenAI API stream created for user ID: ${userId}`);
-
         let fullResponse = "";
-// this is the require way by openai to handle streams, never change it
         for await (const part of stream) {
             const delta = part.choices[0].delta;
             const content = delta.content || '';
-
-            console.log(`[/api/chat] Streamed response chunk for user ID: ${userId} - "${content}"`);
+            console.log(`[/api/chat] Received chunk for user ID: ${userId} - "${content}"`);
             res.write(`data: ${JSON.stringify({ content })}\n\n`);
             fullResponse += content;
         }
 
-        console.log(`[/api/chat] Full concatenated response for user ID: ${userId} - "${fullResponse}"`);
-
+        console.log(`[/api/chat] Full response for user ID: ${userId}: "${fullResponse}"`);
         res.write('data: [DONE]\n\n');
         res.end();
 
         // Update the conversation history with the full response
         await saveConversationHistory(userId, [...messages, { role: 'assistant', content: fullResponse }]);
-        console.log(`[/api/chat] Conversation history updated successfully for user ID: ${userId}`);
+        console.log(`[/api/chat] Conversation history successfully updated for user ID: ${userId}`);
     } catch (error) {
-        console.error(`[/api/chat] Error during chat for user ID: ${userId} - ${error}`);
+        console.error(`[/api/chat] Error during chat for user ID: ${userId}: ${error}`);
         res.end();
     }
 });
 
-function saveConversationHistory() {
-    console.log(
-        "[front.js/saveConversationHistory] Saving conversation history",
-        { userId, conversationHistoryLength: conversationHistory.length },
-    );
 
-    const conversationHistoryWithTimestamps = conversationHistory.map(entry => ({
-        ...entry,
-        timestamp: new Date().toISOString(),
-    }));
 
-    const uniqueConversationHistory = conversationHistoryWithTimestamps.filter((entry, index, self) =>
-        index === self.findIndex(e => e.role === entry.role && e.content === entry.content)
-    );
 
-    const groupedConversationHistory = uniqueConversationHistory.reduce((acc, entry) => {
-        const existingEntry = acc.find(e => e.role === entry.role && e.content === entry.content);
-        if (existingEntry) {
-            existingEntry.timestamps.push(entry.timestamp);
+async function saveConversationHistory(userId, newMessages) {
+    const filePath = path.join(usersDir, `${userId}.json`);
+
+    try {
+        let userData = await fs.readFile(filePath, 'utf8')
+            .then(data => JSON.parse(data))
+            .catch(() => ({ userId, conversationHistory: [] }));
+
+        console.log(`[saveConversationHistory] Processing for user ID: ${userId}`);
+
+        // Find the last user message in newMessages
+        const lastUserMessageIndex = newMessages.slice().reverse().findIndex(msg => msg.role === 'user');
+        const lastUserMessage = lastUserMessageIndex !== -1 ? newMessages[newMessages.length - 1 - lastUserMessageIndex].content : null;
+
+        // The full GPT response is assumed to be the last message in the array
+        const fullGPTResponse = newMessages[newMessages.length - 1].content;
+
+        if (lastUserMessage && fullGPTResponse) {
+            const newEntry = {
+                messageId: userData.conversationHistory.length + 1,
+                timestamp: new Date().toISOString(),
+                userPrompt: lastUserMessage,
+                response: fullGPTResponse
+            };
+
+            userData.conversationHistory.push(newEntry);
+
+            await fs.writeFile(filePath, JSON.stringify(userData, null, 2));
+            console.log(`[saveConversationHistory] Conversation history updated for user ID: ${userId}`);
         } else {
-            acc.push({
-                role: entry.role,
-                content: entry.content,
-                timestamps: [entry.timestamp],
-            });
+            console.log(`[saveConversationHistory] No valid user message or response to update for user ID: ${userId}`);
         }
-        return acc;
-    }, []);
-
-    fetch(`/api/users/${userId}/history`, {
-        method: "PUT",
-        headers: {
-            "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ conversationHistory: groupedConversationHistory }),
-    })
-        .then((response) => {
-            if (!response.ok) {
-                throw new Error("Failed to save conversation history");
-            }
-            console.log(
-                "[front.js/saveConversationHistory] Conversation history saved successfully",
-            );
-        })
-        .catch((error) => {
-            console.error(
-                "[front.js/saveConversationHistory] Error saving conversation history:",
-                error,
-            );
-        });
+    } catch (error) {
+        console.error(`[saveConversationHistory] Error updating conversation history for user ID: ${userId}`, error);
+    }
 }
+
+
+
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
