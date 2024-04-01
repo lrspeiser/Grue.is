@@ -66,6 +66,47 @@
       "timestamp": "2024-04-01T23:03:32.608Z",
       "userPrompt": "look around",
       "response": "Before you stretches a barren desert landscape, the sun beating down relentlessly, casting shadows upon the sands. In the distance, you notice a peculiar rock formation that seems to resemble a twisted hand reaching towards the sky. To your left, a small group of cacti stands defiant against the harsh elements. What would you like to do next in this unforgiving terrain?"
+    },
+    {
+      "messageId": 12,
+      "timestamp": "2024-04-01T23:10:35.169Z",
+      "userPrompt": "where am I?",
+      "response": "You find yourself on the outskirts of the Weeping Desert, a vast expanse of shifting sands and eerie whispers. The desolate landscape stretches far and wide, with the ruins of ancient civilizations buried beneath the dunes. What would you like to do in this mysterious and treacherous place?"
+    },
+    {
+      "messageId": 13,
+      "timestamp": "2024-04-01T23:15:46.963Z",
+      "userPrompt": "look around",
+      "response": "To the north, the desert landscape stretches endlessly, its secrets hidden beneath the shifting sands. To the south, a range of jagged mountains looms in the distance, casting dark shadows upon the land. What do you wish to do next in this desolate and dangerous terrain?"
+    },
+    {
+      "messageId": 14,
+      "timestamp": "2024-04-01T23:18:18.605Z",
+      "userPrompt": "go south",
+      "response": "You venture further south, the sands whispering tales of ancient times as you tread carefully through the desert. The sun beats down on your back, guiding you towards unknown perils. What would you like to do next on your perilous journey through the Weeping Desert?"
+    },
+    {
+      "messageId": 15,
+      "timestamp": "2024-04-01T23:27:22.348Z",
+      "userPrompt": "go north",
+      "response": "You approach the edge of the Weeping Desert, the shifting sands whispering secrets of forgotten times. Towering dunes rise before you, blocking the path further north. To the east, a narrow canyon beckons with cool shade, while a rocky plateau looms to the west. What will you do next in this desolate landscape?"
+    },
+    {
+      "messageId": 16,
+      "timestamp": "2024-04-01T23:28:35.768Z",
+      "userPrompt": "look around",
+      "response": "Before you stands the edge of the Weeping Desert, its shifting sands holding untold secrets. Towering dunes rise before you, blocking the path northward. To the east, a narrow canyon beckons with cool shade, while a rocky plateau looms to the west. What would you like to do next in this desolate landscape?"
     }
-  ]
+  ],
+  "location": {
+    "room_name": "Edge of the Weeping Desert",
+    "room_id": "5",
+    "interesting_details": "Before you stands the edge of the Weeping Desert, its shifting sands holding untold secrets. Towering dunes rise before you, blocking the path northward. To the east, a narrow canyon beckons with cool shade, while a rocky plateau looms to the west.",
+    "available_directions": "To the north, the desert landscape stretches endlessly. To the south, a range of jagged mountains looms in the distance.",
+    "characters_in_room": "",
+    "unmovable_items_in_room": "",
+    "takable_but_hidden_items": "",
+    "actions_taken_in_room": "You have looked around the area."
+  },
+  "player": {}
 }

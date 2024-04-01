@@ -151,66 +151,63 @@ async function updateGameContext(conversationHistory, latestMessage, userId) {
       tool_choice: "auto",
     });
 
-    console.log("Raw OpenAI API response:", JSON.stringify(response, null, 2)); // Log the raw OpenAI API response
+   console.log("Raw OpenAI API response:", JSON.stringify(response, null, 2)); // Log the raw OpenAI API response
 
-    if (
-      response &&
-      response.data &&
-      response.data.choices &&
-      response.data.choices.length > 0
-    ) {
-      const responseMessage = response.data.choices[0].message;
-      console.log("Response Message:", JSON.stringify(responseMessage, null, 2)); // Log the response message
+    const responseMessage = response.choices[0].message; //don't change this line, it will break if you do
+    console.log("Response Message:", JSON.stringify(responseMessage, null, 2)); // Log the response message
 
-      // Check if the model wanted to call a function
-      const functionCalls = responseMessage.tool_calls;
-      if (functionCalls && functionCalls.length > 0) {
-        const functionCall = functionCalls[0];
-        const functionName = functionCall.function.name;
-        const functionArgs = JSON.parse(functionCall.function.arguments);
+    // Check if the model wanted to call a function
+    console.log("[data.js/updateGameContext] Checking for function calls...");
+    const functionCalls = responseMessage.tool_calls;
+    console.log("[data.js/updateGameContext] Function calls:", JSON.stringify(functionCalls, null, 2));
 
-        if (functionName === "update_game_context") {
-          // Log the current userData before updating
-          console.log('Current userData:', JSON.stringify(userData, null, 2));
+    if (functionCalls && functionCalls.length > 0) {
+      const functionCall = functionCalls[0];
+      console.log("[data.js/updateGameContext] Function call:", JSON.stringify(functionCall, null, 2));
 
-          // Update the location and player data in userData
-          const updatedLocation = functionArgs.location || {};
-          console.log('[data.js/updateGameContext] updatedLocation:', JSON.stringify(updatedLocation, null, 2));
-          const updatedPlayer = functionArgs.player || {};
-          console.log('[data.js/updateGameContext] updatedPlayer:', JSON.stringify(updatedPlayer, null, 2));
+      const functionName = functionCall.function.name;
+      console.log("[data.js/updateGameContext] Function name:", functionName);
 
-          userData.location = { ...userData.location, ...updatedLocation };
-          userData.player = { ...userData.player, ...updatedPlayer };
+      const functionArgs = JSON.parse(functionCall.function.arguments);
+      console.log("[data.js/updateGameContext] Function arguments:", JSON.stringify(functionArgs, null, 2));
 
-          // Log the updated userData before saving to file
-          console.log('Updated userData:', JSON.stringify(userData, null, 2));
+      if (functionName === "update_game_context") {
+        // Log the current userData before updating
+        console.log('Current userData:', JSON.stringify(userData, null, 2));
 
-          // Save the updated userData to the JSON file
-          await fs.writeFile(filePath, JSON.stringify(userData, null, 2));
-          console.log(`[data.js/updateGameContext] Updated user data saved for ID: ${userId}`);
+        // Update the location and player data in userData
+        const updatedLocation = functionArgs.location || {};
+        console.log('[data.js/updateGameContext] updatedLocation:', JSON.stringify(updatedLocation, null, 2));
+        const updatedPlayer = functionArgs.player || {};
+        console.log('[data.js/updateGameContext] updatedPlayer:', JSON.stringify(updatedPlayer, null, 2));
 
-          // Read the file again to verify the update
-          const updatedData = await fs.readFile(filePath, 'utf8');
-          console.log('Updated data read from file:', updatedData);
+        userData.location = { ...userData.location, ...updatedLocation };
+        userData.player = { ...userData.player, ...updatedPlayer };
 
-          const updates = JSON.stringify(functionArgs);
-          console.log("Updates for the game context extracted:", updates);
-          return updates;
-        } else {
-          console.log("Unexpected function call:", functionName);
-          return null;
-        }
+        // Log the updated userData before saving to file
+        console.log('Updated userData:', JSON.stringify(userData, null, 2));
+
+        // Save the updated userData to the JSON file
+        await fs.writeFile(filePath, JSON.stringify(userData, null, 2));
+        console.log(`[data.js/updateGameContext] Updated user data saved for ID: ${userId}`);
+
+        // Read the file again to verify the update
+        const updatedData = await fs.readFile(filePath, 'utf8');
+        console.log('[data.js/updateGameContext] Updated data read from file:', updatedData);
+
+        const updates = JSON.stringify(functionArgs);
+        console.log("[data.js/updateGameContext] Updates for the game context extracted:", updates);
+        return updates;
       } else {
-        console.log("No function call detected in the model's response.");
-        return responseMessage.content;
+        console.log("[data.js/updateGameContext] Unexpected function call:", functionName);
+        return null;
       }
     } else {
-      console.error("Unexpected response format from OpenAI API.");
-      console.log("Response data:", JSON.stringify(response.data, null, 2)); // Log the response data
-      return null;
+      console.log("[data.js/updateGameContext] No function call detected in the model's response.");
+      return responseMessage.content;
     }
   } catch (error) {
-    console.error("Failed to update game context:", error);
+    console.error("[data.js/updateGameContext] Failed to update game context:", error);
     throw error;
   }
 }
