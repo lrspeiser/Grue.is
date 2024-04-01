@@ -48,7 +48,7 @@ async function updateGameContext(conversationHistory, latestMessage, userId) {
     },
     {
       role: "user",
-      content: `${conversationForGPT}\n${latestMessage}`,
+      content: `Message History: ${conversationForGPT}\n Latest Message: ${latestMessage}`,
     },
   ];
 
@@ -153,13 +153,14 @@ async function updateGameContext(conversationHistory, latestMessage, userId) {
 
     console.log("Raw OpenAI API response:", JSON.stringify(response, null, 2)); // Log the raw OpenAI API response
 
-   if (
+    if (
       response &&
       response.data &&
       response.data.choices &&
       response.data.choices.length > 0
     ) {
       const responseMessage = response.data.choices[0].message;
+      console.log("Response Message:", JSON.stringify(responseMessage, null, 2)); // Log the response message
 
       // Check if the model wanted to call a function
       const functionCalls = responseMessage.tool_calls;
@@ -169,19 +170,28 @@ async function updateGameContext(conversationHistory, latestMessage, userId) {
         const functionArgs = JSON.parse(functionCall.function.arguments);
 
         if (functionName === "update_game_context") {
+          // Log the current userData before updating
+          console.log('Current userData:', JSON.stringify(userData, null, 2));
+
           // Update the location and player data in userData
-          const updatedLocation = functionArgs.location;
-          console.log('[data.js/updateGameContext] updatedLocation:', updatedLocation);
-          const updatedPlayer = functionArgs.player;
-          console.log('[data.js/updateGameContext] updatedPlayer:', updatedPlayer);
+          const updatedLocation = functionArgs.location || {};
+          console.log('[data.js/updateGameContext] updatedLocation:', JSON.stringify(updatedLocation, null, 2));
+          const updatedPlayer = functionArgs.player || {};
+          console.log('[data.js/updateGameContext] updatedPlayer:', JSON.stringify(updatedPlayer, null, 2));
 
           userData.location = { ...userData.location, ...updatedLocation };
           userData.player = { ...userData.player, ...updatedPlayer };
 
+          // Log the updated userData before saving to file
+          console.log('Updated userData:', JSON.stringify(userData, null, 2));
+
           // Save the updated userData to the JSON file
           await fs.writeFile(filePath, JSON.stringify(userData, null, 2));
           console.log(`[data.js/updateGameContext] Updated user data saved for ID: ${userId}`);
-          console.log('Updated userData:', JSON.stringify(userData, null, 2));
+
+          // Read the file again to verify the update
+          const updatedData = await fs.readFile(filePath, 'utf8');
+          console.log('Updated data read from file:', updatedData);
 
           const updates = JSON.stringify(functionArgs);
           console.log("Updates for the game context extracted:", updates);
@@ -196,6 +206,7 @@ async function updateGameContext(conversationHistory, latestMessage, userId) {
       }
     } else {
       console.error("Unexpected response format from OpenAI API.");
+      console.log("Response data:", JSON.stringify(response.data, null, 2)); // Log the response data
       return null;
     }
   } catch (error) {

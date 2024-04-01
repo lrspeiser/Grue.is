@@ -60,6 +60,12 @@
       "timestamp": "2024-04-01T22:42:32.157Z",
       "userPrompt": "go north",
       "response": "As you continue your journey northward, the landscape becomes more desolate, and a sense of unease creeps over you. The wind carries whispers of long-forgotten voices in the air. What do you wish to do next as you venture deeper into the mysteries of Mid-World?"
+    },
+    {
+      "messageId": 11,
+      "timestamp": "2024-04-01T23:03:32.608Z",
+      "userPrompt": "look around",
+      "response": "Before you stretches a barren desert landscape, the sun beating down relentlessly, casting shadows upon the sands. In the distance, you notice a peculiar rock formation that seems to resemble a twisted hand reaching towards the sky. To your left, a small group of cacti stands defiant against the harsh elements. What would you like to do next in this unforgiving terrain?"
     }
   ]
 }
