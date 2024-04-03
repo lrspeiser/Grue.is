@@ -5,50 +5,111 @@ const OpenAIApi = require("openai"); //never change this
 
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
 
-async function updateGameContext(conversationHistory, latestMessage, userId) {
+// Helper function to ensure user-specific directories and initiate file structure
+async function ensureUserDirectoryAndFiles(userId) {
+    console.log("[ensureUserDirectoryAndFiles] Called with userId:", userId);
+
+    const userDirPath = path.join(__dirname, "users", userId);
+    console.log("[ensureUserDirectoryAndFiles] User directory path:", userDirPath);
+
+    await fs.mkdir(userDirPath, { recursive: true });
+    console.log("[ensureUserDirectoryAndFiles] Directory ensured for user");
+
+    const filePaths = {
+        conversation: path.join(userDirPath, "conversation.json"),
+        room: path.join(userDirPath, "room.json"),
+        player: path.join(userDirPath, "player.json"),
+    };
+    console.log("[ensureUserDirectoryAndFiles] File paths set:", filePaths);
+
+    for (const [key, filePath] of Object.entries(filePaths)) {
+        console.log(`[ensureUserDirectoryAndFiles] Checking file: ${key} at path: ${filePath}`);
+        try {
+            await fs.access(filePath);
+            console.log(`[ensureUserDirectoryAndFiles] File exists: ${key}`);
+        } catch (error) {
+            console.log(`[ensureUserDirectoryAndFiles] File does not exist, creating: ${key}`);
+            if (key === "conversation") {
+                await fs.writeFile(filePath, JSON.stringify({ conversationHistory: [] }, null, 2));
+            } else {
+                await fs.writeFile(filePath, JSON.stringify({}, null, 2));
+            }
+            console.log(`[ensureUserDirectoryAndFiles] File created: ${key}`);
+        }
+    }
+
+    return filePaths;
+}
+
+
+async function getUserData(filePaths) {
+    console.log("[getUserData] Called with filePaths:", filePaths);
+
+    // Fetch and log the conversation data
+    const conversationData = JSON.parse(await fs.readFile(filePaths.conversation, "utf8"));
+    console.log("[getUserData] Conversation data fetched:", conversationData);
+
+    // Fetch and log the room data
+    const roomData = JSON.parse(await fs.readFile(filePaths.room, "utf8"));
+    console.log("[getUserData] Room data fetched:", roomData);
+
+    // Fetch and log the player data
+    const playerData = JSON.parse(await fs.readFile(filePaths.player, "utf8"));
+    console.log("[getUserData] Player data fetched:", playerData);
+
+    // Ensure only the last 5 messages from the conversation history are used
+    const lastFiveMessages = conversationData.conversationHistory ? conversationData.conversationHistory.slice(-5) : [];
+
+    console.log("[getUserData] Last 5 conversation messages:", lastFiveMessages);
+
+    return {
+        conversationHistory: lastFiveMessages,
+        room: roomData || {},
+        player: playerData || {},
+    };
+}
+
+
+async function updateRoomContext(userId) {
   console.log(
-    "Starting updateGameContext with the latest message and conversation history.",
+    "[data.js/updateRoomContext] Starting updateRoomContext with the latest message and conversation history.",
   );
 
-  const usersDir = path.join(__dirname, "users");
-  const filePath = path.join(usersDir, `${userId}.json`);
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  const userData = await getUserData(filePaths);
 
-  let userData;
-  try {
-    const data = await fs.readFile(filePath, "utf8");
-    userData = JSON.parse(data);
-    console.log(
-      `[data.js/updateGameContext] Successfully fetched user data for ID: ${userId}`,
-    );
-  } catch (error) {
-    console.error(
-      `[data.js/updateGameContext] Error fetching user data for ID: ${userId}: ${error}`,
-    );
-    throw error;
+  if (!Array.isArray(userData.locations)) {
+    userData.locations = [];
   }
 
-  const conversationForGPT = userData.conversationHistory
-    .map((message) => {
-      return `${message.userPrompt}: ${message.response}`;
-    })
-    .join("\n");
+  // Get the most recent 5 messages from the conversation history
+  const recentMessages = conversationHistory.slice(-5);
+
+  // Format the recent messages for GPT
+  const conversationForGPT = recentMessages
+    .map(
+      (message) =>
+        `User: ${message.userPrompt}\nAssistant: ${message.response}`,
+    )
+    .join("\n\n");
+
   console.log(
-    "[data.js/updateGameContext] conversationForGPT:",
+    "[data.js/updateRoomContext] conversationForGPT:",
     conversationForGPT,
   );
 
-  // Extract location and player data from userData
-  const { location, player } = userData;
-
-  // Define the message to send to GPT, focusing on the latest message, conversation history, location, and player data
   const messages = [
     {
       role: "system",
-      content: `Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the room, items, and player into the fields. If any, here is the current location data: ${JSON.stringify(location)}. And if any, here is the current player data: ${JSON.stringify(player)}. Take this data and update with anything new based on the latest conversation update.`,
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the room into the fields. If any, here is the current location data where the player may be or has been in the past: ${JSON.stringify(userData.locations)}. Take this data and update with anything new based on the latest conversation update. That means if we need to add anything, you must include the original data in the output or it will be deleted. If it is a new location, create it.`,
+    },
+    {
+      role: "system",
+      content: `Current room data: ${JSON.stringify(userData.room)}`,
     },
     {
       role: "user",
-      content: `Message History: ${conversationForGPT}\n Latest Message: ${latestMessage}`,
+      content: `Message History:\n${conversationForGPT}\n\nLatest Message: ${latestMessage}`,
     },
   ];
 
@@ -56,9 +117,9 @@ async function updateGameContext(conversationHistory, latestMessage, userId) {
     {
       type: "function",
       function: {
-        name: "update_game_context",
+        name: "update_room_context",
         description:
-          "Update the game context based on the latest conversation. The function should output structured data regarding the game's state, including room details, player status, and item interactions. If there is nothing new but there was content there before, output the previous content again. If there is no content for the field, return nothing.",
+          "Update the room context based on the latest conversation. The function should output structured data regarding the room's state, including room details and item interactions. If there is nothing new but there was content there before, output the previous content again. If there is no content for the field, return nothing.",
         parameters: {
           type: "object",
           properties: {
@@ -67,7 +128,8 @@ async function updateGameContext(conversationHistory, latestMessage, userId) {
               properties: {
                 room_name: {
                   type: "string",
-                  description: "The name of the current room. Example: West of House",
+                  description:
+                    "The name of the current room. Example: West of House",
                 },
                 room_id: {
                   type: "string",
@@ -76,140 +138,310 @@ async function updateGameContext(conversationHistory, latestMessage, userId) {
                 },
                 interesting_details: {
                   type: "string",
-                  description:
-                    "If the user looked around we should put a summary of what the room looks like and as more is described add to this.",
+                  description: "A summary of what the room looks like.",
                 },
                 available_directions: {
                   type: "string",
                   description:
-                    "This should be the directions the user can go, like North, South, Up, etc.",
+                    "Directions the user can go, like North, South, Up, etc.",
                 },
                 characters_in_room: {
                   type: "string",
-                  description:
-                    "If there is a computer generated character in the room we should list them here along with any descriptors and whether they are a friend or foe or neutral.",
+                  description: "Computer generated characters in the room.",
                 },
                 unmovable_items_in_room: {
                   type: "string",
-                  description:
-                    "When describing the room we might describe items in the room that the user should not be able to take into inventory.",
+                  description: "Items in the room that the user cannot take.",
                 },
                 takable_but_hidden_items: {
                   type: "string",
-                  description:
-                    "These are items the user can take into inventory but they may be hidden in the room, like under a mat, or the other character in the room might have the item.",
+                  description: "Items the user can take but may be hidden.",
                 },
                 takable_but_visible_items: {
                   type: "string",
-                  description:
-                    "These are things that are easily seen and the user can take them.",
+                  description: "Visible items that the user can take.",
                 },
                 actions_taken_in_room: {
                   type: "string",
-                  description:
-                    "This would be all the actions the user tried to take in the room and a short description of what happened.",
+                  description: "Actions the user tried to take in the room.",
                 },
               },
-              required: ["room_name", "room_id", "interesting_details", "available_directions", "characters_in_room", "unmovable_items_in_room", "takable_but_hidden_items", "actions_taken_in_room"],
-            },
-            player: {
-              type: "object",
-              properties: {
-                player_name: {
-                  type: "string",
-                  description: "The name of the player, likely this is the hero's name in the story but the player can change that.",
-                },
-                inventory: {
-                  type: "string",
-                  description:
-                    "These are the items the player already has in inventory or they take from another player or from the rooms.",
-                },
-                player_health: {
-                  type: "string",
-                  description: "The current health status of the player. This should start at 100 but if they get hungry or get hurt this should decrease.",
-                },
-              },
-              required: ["player_name", "inventory", "player_health"],
+              required: [
+                "room_name",
+                "room_id",
+                "interesting_details",
+                "available_directions",
+                "characters_in_room",
+                "unmovable_items_in_room",
+                "takable_but_hidden_items",
+                "actions_taken_in_room",
+              ],
             },
           },
-          required: ["location", "player"],
+          required: ["location"],
         },
       },
     },
   ];
 
   try {
-    console.log("Calling OpenAI API with the prepared messages and tools."); //never change this
+    console.log("Calling OpenAI API with the prepared messages and tools.");
     console.log(
       "Data sent to GPT:",
       JSON.stringify({ messages, tools }, null, 2),
-    ); // Log the data sent to GPT
+    );
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo-0125", //never change this
+      model: "gpt-4-1106-preview",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
     });
 
-   console.log("Raw OpenAI API response:", JSON.stringify(response, null, 2)); // Log the raw OpenAI API response
+    console.log(
+      "[data.js/updateRoomContext] Raw OpenAI API response:",
+      JSON.stringify(response, null, 2),
+    );
 
-    const responseMessage = response.choices[0].message; //don't change this line, it will break if you do
-    console.log("Response Message:", JSON.stringify(responseMessage, null, 2)); // Log the response message
+    const responseMessage = response.choices[0].message;
+    console.log(
+      "[data.js/updateRoomContext] Response Message:",
+      JSON.stringify(responseMessage, null, 2),
+    );
 
-    // Check if the model wanted to call a function
-    console.log("[data.js/updateGameContext] Checking for function calls...");
-    const functionCalls = responseMessage.tool_calls;
-    console.log("[data.js/updateGameContext] Function calls:", JSON.stringify(functionCalls, null, 2));
+    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+      const toolCall = responseMessage.tool_calls[0];
+      console.log(
+        "[data.js/updateRoomContext] Function call:",
+        JSON.stringify(toolCall, null, 2),
+      );
 
-    if (functionCalls && functionCalls.length > 0) {
-      const functionCall = functionCalls[0];
-      console.log("[data.js/updateGameContext] Function call:", JSON.stringify(functionCall, null, 2));
+      if (toolCall.function.name === "update_room_context") {
+        const functionArgs = JSON.parse(toolCall.function.arguments);
+        console.log(
+          "[data.js/updateRoomContext] Function arguments:",
+          JSON.stringify(functionArgs, null, 2),
+        );
 
-      const functionName = functionCall.function.name;
-      console.log("[data.js/updateGameContext] Function name:", functionName);
+        // Update logic for locations
+        const updatedLocation = functionArgs.location;
+        let locationExists = false;
+        for (let i = 0; i < userData.locations.length; i++) {
+          if (userData.locations[i].room_id === updatedLocation.room_id) {
+            userData.locations[i] = {
+              ...userData.locations[i],
+              ...updatedLocation,
+            };
+            locationExists = true;
+            break;
+          }
+        }
+        if (!locationExists) {
+          userData.locations.push(updatedLocation);
+        }
 
-      const functionArgs = JSON.parse(functionCall.function.arguments);
-      console.log("[data.js/updateGameContext] Function arguments:", JSON.stringify(functionArgs, null, 2));
-
-      if (functionName === "update_game_context") {
-        // Log the current userData before updating
-        console.log('Current userData:', JSON.stringify(userData, null, 2));
-
-        // Update the location and player data in userData
-        const updatedLocation = functionArgs.location || {};
-        console.log('[data.js/updateGameContext] updatedLocation:', JSON.stringify(updatedLocation, null, 2));
-        const updatedPlayer = functionArgs.player || {};
-        console.log('[data.js/updateGameContext] updatedPlayer:', JSON.stringify(updatedPlayer, null, 2));
-
-        userData.location = { ...userData.location, ...updatedLocation };
-        userData.player = { ...userData.player, ...updatedPlayer };
-
-        // Log the updated userData before saving to file
-        console.log('Updated userData:', JSON.stringify(userData, null, 2));
-
-        // Save the updated userData to the JSON file
-        await fs.writeFile(filePath, JSON.stringify(userData, null, 2));
-        console.log(`[data.js/updateGameContext] Updated user data saved for ID: ${userId}`);
-
-        // Read the file again to verify the update
-        const updatedData = await fs.readFile(filePath, 'utf8');
-        console.log('[data.js/updateGameContext] Updated data read from file:', updatedData);
-
-        const updates = JSON.stringify(functionArgs);
-        console.log("[data.js/updateGameContext] Updates for the game context extracted:", updates);
-        return updates;
+        await fs.writeFile(
+          filePaths.room,
+          JSON.stringify(updatedLocation, null, 2),
+        );
+        console.log(
+          `[data.js/updateRoomContext] Updated user data saved for ID: ${userId}`,
+        );
       } else {
-        console.log("[data.js/updateGameContext] Unexpected function call:", functionName);
-        return null;
+        console.log(
+          "[data.js/updateRoomContext] Unexpected function call:",
+          toolCall.function.name,
+        );
       }
     } else {
-      console.log("[data.js/updateGameContext] No function call detected in the model's response.");
-      return responseMessage.content;
+      console.log(
+        "[data.js/updateRoomContext] No function call detected in the model's response.",
+      );
     }
   } catch (error) {
-    console.error("[data.js/updateGameContext] Failed to update game context:", error);
+    console.error(
+      "[data.js/updateRoomContext] Failed to update room context:",
+      error,
+    );
     throw error;
   }
 }
 
-module.exports = { updateGameContext };
+  async function updatePlayerContext(userId) {
+  console.log("[data.js/updatePlayerContext] Starting with the latest message.");
+
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  const userData = await getUserData(filePaths);
+
+  // Assume userData.conversationHistory is an array of message objects
+  const recentMessages = userData.conversationHistory.slice(-5);
+  const conversationForGPT = recentMessages.map((msg, index) => 
+    `${index + 1}. [${msg.timestamp}] User: ${msg.userPrompt}\n   Assistant: ${msg.response}`).join("\n");
+
+  console.log("[data.js/updatePlayerContext] Conversation for GPT:", conversationForGPT);
+
+  const playerDataJson = JSON.stringify(userData.player, null, 2);
+  console.log("[data.js/updatePlayerContext] Player Data JSON:", playerDataJson);
+
+  // Assuming 'latestMessage' is the userPrompt of the last message in 'recentMessages'
+  const latestMessage = recentMessages.length > 0 ? recentMessages[recentMessages.length - 1].userPrompt : "No latest message available";
+
+  const messages = [
+      {
+          role: "system",
+          content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. Here is the current player data from the player.json file: ${playerDataJson}. Take this data and update with anything new based on the latest conversation update. For instance if the player takes something from the room, you must add it to their inventory. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one. If there are multiple players, return an array of player objects. For instance, if there is another character in the room, immediately create that player record with as much detail as possible.`,
+      },
+      {
+          role: "user",
+          content: `Message History:\n${conversationForGPT}\n\nLatest Message: ${latestMessage}`,
+      },
+  ];
+
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "update_player_context",
+        description:
+          "Update the player context based on the latest conversation. The function should output structured data regarding the player's or players' state, including player details and inventory. If there is nothing new but there was content there before, output the previous content again. If there is no content for the field, return nothing. If there are multiple players, return an array of player objects.",
+        parameters: {
+          type: "object",
+          properties: {
+            players: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  player_name: {
+                    type: "string",
+                    description:
+                      "The name of the player, likely this is the hero's name in the story but the player can change that.",
+                  },
+                  player_id: {
+                    type: "integer",
+                    description:
+                      "A unique identifier for the player, such as a sequential number like 1, 2, 3...",
+                  },
+                  player_type: {
+                    type: "string",
+                    description:
+                      "If the user who is playing the game is this character, mark as 'user' If this is a computer generated character then mark as computer_controlled: ally, villian, neutral.",
+                  },
+                  inventory: {
+                    type: "string",
+                    description:
+                      "These are the items the player already has in inventory or they take from another player or from the rooms.",
+                  },
+                  player_health: {
+                    type: "string",
+                    description:
+                      "The current health status of the player. This should start at 100 but if they get hungry or get hurt this should decrease. Zero health means the player is dead.",
+                  },
+                },
+                required: [
+                  "player_name",
+                  "player_id",
+                  "player_type",
+                  "inventory",
+                  "player_health",
+                ],
+              },
+            },
+          },
+          required: ["players"],
+        },
+      },
+    },
+  ];
+
+  try {
+    console.log("Calling OpenAI API with the prepared messages and tools.");
+    console.log(
+      "Data sent to GPT:",
+      JSON.stringify({ messages, tools }, null, 2),
+    );
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-1106-preview",
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto",
+    });
+
+    console.log("Raw OpenAI API response:", JSON.stringify(response, null, 2));
+
+    const responseMessage = response.choices[0].message;
+    console.log("Response Message:", JSON.stringify(responseMessage, null, 2));
+
+    if (!userData.players) {
+      userData.players = [];
+    }
+
+    // Check if the model wanted to call a function
+    console.log("[data.js/updatePlayerContext] Checking for function calls...");
+    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+      const functionCall = responseMessage.tool_calls[0];
+      console.log(
+        "[data.js/updatePlayerContext] Function call:",
+        JSON.stringify(functionCall, null, 2),
+      );
+
+      if (functionCall.function.name === "update_player_context") {
+        const functionArgs = JSON.parse(functionCall.function.arguments);
+        console.log(
+          "[data.js/updatePlayerContext] Function arguments:",
+          JSON.stringify(functionArgs, null, 2),
+        );
+
+        const updatedPlayers = functionArgs.players;
+        console.log(
+          "[data.js/updatePlayerContext] Updated players:",
+          JSON.stringify(updatedPlayers, null, 2),
+        );
+
+        // Update or add new player data for each player in the array
+        updatedPlayers.forEach((updatedPlayer) => {
+          let playerIndex = userData.players.findIndex(
+            (p) => p.player_id === updatedPlayer.player_id,
+          );
+          if (playerIndex !== -1) {
+            userData.players[playerIndex] = {
+              ...userData.players[playerIndex],
+              ...updatedPlayer,
+            };
+          } else {
+            userData.players.push(updatedPlayer);
+          }
+        });
+
+        // Save updated user data
+        await fs.writeFile(
+          filePaths.player,
+          JSON.stringify(userData.players, null, 2),
+        );
+        console.log(
+          `[data.js/updatePlayerContext] Updated user data saved for ID: ${userId}`,
+        );
+
+        return JSON.stringify(updatedPlayers); // Or any other info you need to return
+      } else {
+        console.log(
+          "[data.js/updatePlayerContext] Unexpected function call:",
+          functionCall.function.name,
+        );
+        return null; // Handle unexpected function call
+      }
+    } else {
+      console.log(
+        "[data.js/updatePlayerContext] No function call detected in the model's response.",
+      );
+      return responseMessage.content; // Handle no function call
+    }
+  } catch (error) {
+    console.error(
+      "[data.js/updatePlayerContext] Failed to update player context:",
+      error,
+    );
+    throw error;
+  }
+}
+module.exports = { updateRoomContext, updatePlayerContext };

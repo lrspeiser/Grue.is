@@ -1,0 +1,10 @@
+{
+  "room_name": "The Common Room",
+  "room_id": "1",
+  "interesting_details": "You find yourself in the cozy Common Room of your house at the Hogwarts School of Witchcraft and Wizardry. The soft glow of the fireplace illuminates the room. Portraits of famous wizards line the walls, occasionally whispering to each other. Students are huddled in groups, some poring over spellbooks, others laughing and sharing stories of their magical mishaps.",
+  "available_directions": "North, East, Up (to dormitories), Down (to dungeons)",
+  "characters_in_room": "A group of students, a sleepy house-elf in the corner",
+  "unmovable_items_in_room": "Fireplace, wizard portraits, house banners",
+  "takable_but_hidden_items": "A secret passage behind one of the portraits, revealed by a particular spell or action",
+  "actions_taken_in_room": "Player asked about the characters in the room, attempted to talk to Hermione."
+}

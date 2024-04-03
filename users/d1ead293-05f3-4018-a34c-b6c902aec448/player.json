@@ -1,0 +1,9 @@
+[
+  {
+    "player_name": "Harry Potter",
+    "player_id": 1,
+    "player_type": "user",
+    "inventory": "",
+    "player_health": "100"
+  }
+]
