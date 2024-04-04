@@ -33,7 +33,7 @@ let fullResponse = "";
   }
 })();
 
-document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", () => {
   console.log("[front.js/DOMContentLoaded] Page loaded");
   const userInput = document.getElementById("userInput");
   const messageContainer = document.getElementById("messageContainer");
@@ -42,53 +42,46 @@ document.addEventListener("DOMContentLoaded", () => {
   let userId = localStorage.getItem("userId");
 
   const initializeUserData = () => {
-    console.log("[front.js/init] Attempting to load or create user data");
-    // Only include userId in the body if it's truthy
-    const bodyContent = userId ? JSON.stringify({ userId }) : "{}";
-    const options = {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: bodyContent,
-    };
-    fetch("/api/users", options)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to fetch user data: ${response.statusText}`);
-        }
-        return response.json();
-      })
-      .then((data) => {
-        if (data.userId && data.userId !== "undefined") {
-          userId = data.userId;
-          localStorage.setItem("userId", userId);
-          console.log("[front.js/init] User data loaded or created", {
-            userId,
+      console.log("[front.js/init] Attempting to load or create user data");
+      const bodyContent = userId ? JSON.stringify({ userId }) : "{}";
+      const options = {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: bodyContent,
+      };
+      fetch("/api/users", options)
+          .then((response) => {
+              if (!response.ok) {
+                  throw new Error(`Failed to fetch user data: ${response.statusText}`);
+              }
+              return response.json();
+          })
+          .then((data) => {
+              if (data.userId && data.userId !== "undefined" && data.userId.trim() !== "") {
+                  userId = data.userId;
+                  localStorage.setItem("userId", userId);
+                  console.log("[front.js/init] User data loaded or created", {
+                      userId,
+                  });
+                  if (data.conversationHistory) {
+                      conversationHistory = data.conversationHistory;
+                      displayConversationHistory();
+                  }
+              } else {
+                  console.error("[front.js/init] Invalid userId received", data);
+                  throw new Error("Invalid userId received");
+              }
+          })
+          .catch((error) => {
+              console.error("[front.js/init] Error initializing user data:", error);
+              userId = localStorage.getItem("userId") || null;
+              if (userId) {
+                  console.log("[front.js/init] Using userId from local storage:", userId);
+              } else {
+                  console.log("[front.js/init] No userId found in local storage, creating new user");
+                  createNewUser();
+              }
           });
-          if (data.conversationHistory) {
-            conversationHistory = data.conversationHistory;
-            displayConversationHistory();
-          }
-        } else {
-          console.error("[front.js/init] Invalid userId received", data);
-          throw new Error("Invalid userId received");
-        }
-      })
-      .catch((error) => {
-        console.error("[front.js/init] Error initializing user data:", error);
-        // Handle the error gracefully
-        userId = localStorage.getItem("userId") || null;
-        if (userId) {
-          console.log(
-            "[front.js/init] Using userId from local storage:",
-            userId,
-          );
-        } else {
-          console.log(
-            "[front.js/init] No userId found in local storage, creating new user",
-          );
-          createNewUser();
-        }
-      });
   };
 
   const createNewUser = () => {
@@ -106,7 +99,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return response.json();
       })
       .then((data) => {
-        if (data.userId && data.userId !== "undefined") {
+          if (data.userId && data.userId !== "undefined" && data.userId.trim() !== "") {
           userId = data.userId;
           localStorage.setItem("userId", userId);
           console.log("[front.js/init] New user created", {
@@ -149,6 +142,8 @@ document.addEventListener("DOMContentLoaded", () => {
           userId,
         }),
       });
+      console.log("[front.js/init] Fetch response data:", JSON.stringify(data));
+
 
       if (!response.ok) {
         throw new Error("Failed to start chat session");

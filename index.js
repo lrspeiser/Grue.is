@@ -3,6 +3,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs").promises;
 const { updateRoomContext, updatePlayerContext } = require("./data.js");
+const { ensureUserDirectoryAndFiles, getUserData } = require('./util');
 
 const app = express();
 const PORT = 3000;
@@ -25,79 +26,52 @@ const usersDir = path.join(__dirname, "users");
   }
 })();
 
-async function ensureUserDirectoryAndFiles(userId) {
-  const userDirPath = path.join(__dirname, "users", userId);
-  await fs.mkdir(userDirPath, { recursive: true });
-
-  const filePaths = {
-    conversation: path.join(userDirPath, "conversation.json"),
-    room: path.join(userDirPath, "room.json"),
-    player: path.join(userDirPath, "player.json"),
-  };
-
-  // Initialize files if they do not exist
-  for (const [key, filePath] of Object.entries(filePaths)) {
-    try {
-      await fs.access(filePath);
-    } catch {
-      const initialContent =
-        key === "conversation" ? { conversationHistory: [] } : {};
-      await fs.writeFile(filePath, JSON.stringify(initialContent, null, 2));
-    }
-  }
-
-  return filePaths;
-}
-
-async function getUserData(filePaths) {
-  // Simplified user data fetching using the paths provided
-  const conversationData = JSON.parse(
-    await fs.readFile(filePaths.conversation, "utf8"),
-  );
-  const roomData = JSON.parse(await fs.readFile(filePaths.room, "utf8"));
-  const playerData = JSON.parse(await fs.readFile(filePaths.player, "utf8"));
-
-  return {
-    conversationHistory: conversationData.conversationHistory,
-    room: roomData,
-    player: playerData,
-  };
-}
 
 app.post("/api/users", async (req, res) => {
   const userId = req.body.userId || require("crypto").randomUUID();
   console.log(`[/api/users] Processing user data for ID: ${userId}`);
 
-  const filePaths = await ensureUserDirectoryAndFiles(userId);
-
   try {
+    const filePaths = await ensureUserDirectoryAndFiles(userId);
     let userData = await getUserData(filePaths);
 
-    if (!userData.userId) {
-      userData.userId = userId;
+    // Check and initialize data only if it doesn't already exist.
+    // This prevents overwriting existing files with new, possibly empty data structures.
+    const dataNeedsInitialization = Object.keys(userData).length === 0 || !userData.conversationHistory || !userData.room || !userData.player;
+
+    if (dataNeedsInitialization) {
+      // Initialize with defaults if undefined or not found.
+      userData = {
+        userId,
+        conversationHistory: userData.conversationHistory || [],
+        room: userData.room || {},
+        player: userData.player || {},
+      };
+
+      // Debugging: Log the userData to be written
+      console.log(`[/api/users] Initializing user data for ID: ${userId}: ${JSON.stringify(userData, null, 2)}`);
+
+      // Note: The approach to creating or updating user data files in ensureUserDirectoryAndFiles
+      // and getUserData functions is critical for preserving existing data.
+      // Do not change how these files are created or initialized without ensuring that existing data is not overwritten.
+      
+      // Write only the necessary files. Existing data is preserved.
+      await Promise.all([
+        fs.writeFile(filePaths.conversation, JSON.stringify(userData.conversationHistory, null, 2)),
+        fs.writeFile(filePaths.room, JSON.stringify(userData.room, null, 2)),
+        fs.writeFile(filePaths.player, JSON.stringify(userData.player, null, 2)),
+      ]);
     }
 
-    userData.room = userData.room || {};
-    userData.player = userData.player || {};
-
-    await Promise.all([
-      fs.writeFile(
-        filePaths.conversation,
-        JSON.stringify(userData.conversationHistory, null, 2),
-      ),
-      fs.writeFile(filePaths.room, JSON.stringify(userData.room, null, 2)),
-      fs.writeFile(filePaths.player, JSON.stringify(userData.player, null, 2)),
-    ]);
-
-    console.log(`[/api/users] User data saved for ID: ${userId}`);
+    console.log(`[/api/users] User data processed for ID: ${userId}`);
     res.json(userData);
   } catch (error) {
-    console.error(
-      `[/api/users] Failed to process user data for ID: ${userId}, error: ${error}`,
-    );
+    console.error(`[/api/users] Failed to process user data for ID: ${userId}, error: ${error}`);
     res.status(500).send("Error processing user data");
   }
 });
+
+
 
 app.post("/api/chat", async (req, res) => {
   const { userId, messages: newMessages } = req.body;
@@ -215,12 +189,8 @@ app.post("/api/chat", async (req, res) => {
         lastUserMessage,
       );
       Promise.all([
-        updateRoomContext(
-          userId
-        ),
-        updatePlayerContext(
-          userId
-        ),
+        updateRoomContext(userId),
+        updatePlayerContext(userId),
       ])
         .then(() => {
           console.log(
@@ -243,54 +213,38 @@ async function saveConversationHistory(userId, newMessages) {
   const filePath = path.join(usersDir, userId, "conversation.json");
 
   try {
-    let conversationData = await fs
-      .readFile(filePath, "utf8")
-      .then((data) => JSON.parse(data))
-      .catch(() => []);
+    let fileContent = await fs.readFile(filePath, "utf8");
+    let conversationData = JSON.parse(fileContent);
+
+    // Ensure conversationData.conversationHistory is an array
+    if (!Array.isArray(conversationData.conversationHistory)) {
+      conversationData.conversationHistory = [];
+    }
 
     console.log(`[saveConversationHistory] Processing for user ID: ${userId}`);
     console.log(`[saveConversationHistory] Raw conversation data for user ID: ${userId}:`, JSON.stringify(conversationData, null, 2));
 
-    // Find the last user message in newMessages
-    const lastUserMessageIndex = newMessages
-      .slice()
-      .reverse()
-      .findIndex((msg) => msg.role === "user");
-    const lastUserMessage =
-      lastUserMessageIndex !== -1
-        ? newMessages[newMessages.length - 1 - lastUserMessageIndex].content
-        : null;
+    // Assuming newMessages contains structured objects with at least a 'role' and 'content'
+    const newEntries = newMessages.map((msg, index) => ({
+      messageId: conversationData.conversationHistory.length + 1 + index,
+      timestamp: new Date().toISOString(),
+      userPrompt: msg.role === "user" ? msg.content : undefined,
+      response: msg.role === "assistant" ? msg.content : undefined,
+    })).filter(entry => entry.userPrompt || entry.response); // Filter out any entries without content
 
-    // The full GPT response is assumed to be the last message in the array
-    const fullGPTResponse = newMessages[newMessages.length - 1].content;
-
-    if (lastUserMessage && fullGPTResponse) {
-      const newEntry = {
-        messageId: conversationData.length + 1,
-        timestamp: new Date().toISOString(),
-        userPrompt: lastUserMessage,
-        response: fullGPTResponse,
-      };
-
-      // Append the new entry to the existing conversation history
-      conversationData = [...conversationData, newEntry];
-
-      console.log(`[saveConversationHistory] Updated conversation data for user ID: ${userId}:`, JSON.stringify(conversationData, null, 2));
+    if (newEntries.length > 0) {
+      conversationData.conversationHistory.push(...newEntries);
 
       await fs.writeFile(filePath, JSON.stringify(conversationData, null, 2));
-      console.log(
-        `[saveConversationHistory] Conversation history updated for user ID: ${userId}`,
-      );
+      console.log(`[saveConversationHistory] Conversation history updated for user ID: ${userId}`);
     } else {
       console.log(`[saveConversationHistory] No new messages to save for user ID: ${userId}`);
     }
   } catch (error) {
-    console.error(
-      `[saveConversationHistory] Error updating conversation history for user ID: ${userId}`,
-      error,
-    );
+    console.error(`[saveConversationHistory] Error updating conversation history for user ID: ${userId}`, error);
   }
 }
+
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

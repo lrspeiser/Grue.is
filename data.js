@@ -1,73 +1,9 @@
 const fs = require("fs").promises;
 const path = require("path");
+const { ensureUserDirectoryAndFiles, getUserData } = require('./util');
 
 const OpenAIApi = require("openai"); //never change this
-
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
-
-// Helper function to ensure user-specific directories and initiate file structure
-async function ensureUserDirectoryAndFiles(userId) {
-    console.log("[ensureUserDirectoryAndFiles] Called with userId:", userId);
-
-    const userDirPath = path.join(__dirname, "users", userId);
-    console.log("[ensureUserDirectoryAndFiles] User directory path:", userDirPath);
-
-    await fs.mkdir(userDirPath, { recursive: true });
-    console.log("[ensureUserDirectoryAndFiles] Directory ensured for user");
-
-    const filePaths = {
-        conversation: path.join(userDirPath, "conversation.json"),
-        room: path.join(userDirPath, "room.json"),
-        player: path.join(userDirPath, "player.json"),
-    };
-    console.log("[ensureUserDirectoryAndFiles] File paths set:", filePaths);
-
-    for (const [key, filePath] of Object.entries(filePaths)) {
-        console.log(`[ensureUserDirectoryAndFiles] Checking file: ${key} at path: ${filePath}`);
-        try {
-            await fs.access(filePath);
-            console.log(`[ensureUserDirectoryAndFiles] File exists: ${key}`);
-        } catch (error) {
-            console.log(`[ensureUserDirectoryAndFiles] File does not exist, creating: ${key}`);
-            if (key === "conversation") {
-                await fs.writeFile(filePath, JSON.stringify({ conversationHistory: [] }, null, 2));
-            } else {
-                await fs.writeFile(filePath, JSON.stringify({}, null, 2));
-            }
-            console.log(`[ensureUserDirectoryAndFiles] File created: ${key}`);
-        }
-    }
-
-    return filePaths;
-}
-
-
-async function getUserData(filePaths) {
-    console.log("[getUserData] Called with filePaths:", filePaths);
-
-    // Fetch and log the conversation data
-    const conversationData = JSON.parse(await fs.readFile(filePaths.conversation, "utf8"));
-    console.log("[getUserData] Conversation data fetched:", conversationData);
-
-    // Fetch and log the room data
-    const roomData = JSON.parse(await fs.readFile(filePaths.room, "utf8"));
-    console.log("[getUserData] Room data fetched:", roomData);
-
-    // Fetch and log the player data
-    const playerData = JSON.parse(await fs.readFile(filePaths.player, "utf8"));
-    console.log("[getUserData] Player data fetched:", playerData);
-
-    // Ensure only the last 5 messages from the conversation history are used
-    const lastFiveMessages = conversationData.conversationHistory ? conversationData.conversationHistory.slice(-5) : [];
-
-    console.log("[getUserData] Last 5 conversation messages:", lastFiveMessages);
-
-    return {
-        conversationHistory: lastFiveMessages,
-        room: roomData || {},
-        player: playerData || {},
-    };
-}
 
 
 async function updateRoomContext(userId) {
@@ -266,35 +202,68 @@ async function updateRoomContext(userId) {
   }
 }
 
-  async function updatePlayerContext(userId) {
-  console.log("[data.js/updatePlayerContext] Starting with the latest message.");
+async function updatePlayerContext(userId) {
+console.log(
+  "[data.js/updatePlayerContext] Starting with the latest message.",
+);
 
-  const filePaths = await ensureUserDirectoryAndFiles(userId);
-  const userData = await getUserData(filePaths);
+const filePaths = await ensureUserDirectoryAndFiles(userId);
 
-  // Assume userData.conversationHistory is an array of message objects
-  const recentMessages = userData.conversationHistory.slice(-5);
-  const conversationForGPT = recentMessages.map((msg, index) => 
-    `${index + 1}. [${msg.timestamp}] User: ${msg.userPrompt}\n   Assistant: ${msg.response}`).join("\n");
+// Read conversation history directly from the JSON file
+let conversationHistory = [];
+try {
+  const conversationData = await fs.readFile(filePaths.conversation, "utf8");
+  conversationHistory = JSON.parse(conversationData).conversationHistory || [];
+} catch (error) {
+  console.error("[data.js/updatePlayerContext] Error reading conversation history:", error);
+}
 
-  console.log("[data.js/updatePlayerContext] Conversation for GPT:", conversationForGPT);
+console.log(
+  "[data.js/updatePlayerContext] Retrieved Conversation History for GPT:",
+  JSON.stringify(conversationHistory, null, 2),
+);
 
-  const playerDataJson = JSON.stringify(userData.player, null, 2);
-  console.log("[data.js/updatePlayerContext] Player Data JSON:", playerDataJson);
+// Read player data directly from the JSON file
+let playerData = {};
+try {
+  const playerDataRaw = await fs.readFile(filePaths.player, "utf8");
+  playerData = JSON.parse(playerDataRaw) || {};
+} catch (error) {
+  console.error("[data.js/updatePlayerContext] Error reading player data:", error);
+}
 
-  // Assuming 'latestMessage' is the userPrompt of the last message in 'recentMessages'
-  const latestMessage = recentMessages.length > 0 ? recentMessages[recentMessages.length - 1].userPrompt : "No latest message available";
+const playerDataJson = JSON.stringify(playerData, null, 2);
+console.log(
+  "[data.js/updatePlayerContext] Player Data JSON:",
+  playerDataJson,
+);
 
-  const messages = [
-      {
-          role: "system",
-          content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. Here is the current player data from the player.json file: ${playerDataJson}. Take this data and update with anything new based on the latest conversation update. For instance if the player takes something from the room, you must add it to their inventory. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one. If there are multiple players, return an array of player objects. For instance, if there is another character in the room, immediately create that player record with as much detail as possible.`,
-      },
-      {
-          role: "user",
-          content: `Message History:\n${conversationForGPT}\n\nLatest Message: ${latestMessage}`,
-      },
-  ];
+// Formatting the last five messages for the GPT call
+let formattedHistory = "";
+if (conversationHistory && conversationHistory.length > 0) {
+  formattedHistory = conversationHistory
+    .slice(-5)
+    .map(
+      (msg) =>
+        `#${msg.messageId} [${msg.timestamp}]:\nUser: ${msg.userPrompt}\nAssistant: ${msg.response}`,
+    )
+    .join("\n\n");
+}
+console.log(
+  "[data.js/updatePlayerContext] Formatted Conversation History for GPT:",
+  formattedHistory,
+);
+
+const messages = [
+  {
+    role: "system",
+    content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. Here is the current player data from the player.json file: ${playerDataJson}. Take this data and update with anything new based on the latest conversation update. For instance if the player takes something from the room, you must add it to their inventory. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one. If there are multiple players, return an array of player objects. For instance, if there is another character in the room, immediately create that player record with as much detail as possible.`,
+  },
+  {
+    role: "user",
+    content: `Last five messages:\n${formattedHistory}`,
+  },
+];
 
   const tools = [
     {
