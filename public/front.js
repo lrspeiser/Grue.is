@@ -33,7 +33,7 @@ let fullResponse = "";
   }
 })();
 
-  document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", () => {
   console.log("[front.js/DOMContentLoaded] Page loaded");
   const userInput = document.getElementById("userInput");
   const messageContainer = document.getElementById("messageContainer");
@@ -42,46 +42,60 @@ let fullResponse = "";
   let userId = localStorage.getItem("userId");
 
   const initializeUserData = () => {
-      console.log("[front.js/init] Attempting to load or create user data");
-      const bodyContent = userId ? JSON.stringify({ userId }) : "{}";
-      const options = {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: bodyContent,
-      };
-      fetch("/api/users", options)
-          .then((response) => {
-              if (!response.ok) {
-                  throw new Error(`Failed to fetch user data: ${response.statusText}`);
-              }
-              return response.json();
-          })
-          .then((data) => {
-              if (data.userId && data.userId !== "undefined" && data.userId.trim() !== "") {
-                  userId = data.userId;
-                  localStorage.setItem("userId", userId);
-                  console.log("[front.js/init] User data loaded or created", {
-                      userId,
-                  });
-                  if (data.conversationHistory) {
-                      conversationHistory = data.conversationHistory;
-                      displayConversationHistory();
-                  }
-              } else {
-                  console.error("[front.js/init] Invalid userId received", data);
-                  throw new Error("Invalid userId received");
-              }
-          })
-          .catch((error) => {
-              console.error("[front.js/init] Error initializing user data:", error);
-              userId = localStorage.getItem("userId") || null;
-              if (userId) {
-                  console.log("[front.js/init] Using userId from local storage:", userId);
-              } else {
-                  console.log("[front.js/init] No userId found in local storage, creating new user");
-                  createNewUser();
-              }
+    console.log("[front.js/init] Attempting to load or create user data");
+    const bodyContent = userId ? JSON.stringify({ userId }) : "{}";
+    const options = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: bodyContent,
+    };
+    fetch("/api/users", options)
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error(`Failed to fetch user data: ${response.statusText}`);
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (
+          data.userId &&
+          data.userId !== "undefined" &&
+          data.userId.trim() !== ""
+        ) {
+          userId = data.userId;
+          localStorage.setItem("userId", userId);
+          console.log("[front.js/init] User data loaded or created", {
+            userId,
           });
+          if (Array.isArray(data.conversationHistory)) {
+            conversationHistory = data.conversationHistory;
+            displayConversationHistory();
+          } else {
+            console.warn(
+              "[front.js/init] Conversation history is not an array, initializing as an empty array.",
+            );
+            conversationHistory = [];
+          }
+        } else {
+          console.error("[front.js/init] Invalid userId received", data);
+          throw new Error("Invalid userId received");
+        }
+      })
+      .catch((error) => {
+        console.error("[front.js/init] Error initializing user data:", error);
+        userId = localStorage.getItem("userId") || null;
+        if (userId) {
+          console.log(
+            "[front.js/init] Using userId from local storage:",
+            userId,
+          );
+        } else {
+          console.log(
+            "[front.js/init] No userId found in local storage, creating new user",
+          );
+          createNewUser();
+        }
+      });
   };
 
   const createNewUser = () => {
@@ -99,7 +113,11 @@ let fullResponse = "";
         return response.json();
       })
       .then((data) => {
-          if (data.userId && data.userId !== "undefined" && data.userId.trim() !== "") {
+        if (
+          data.userId &&
+          data.userId !== "undefined" &&
+          data.userId.trim() !== ""
+        ) {
           userId = data.userId;
           localStorage.setItem("userId", userId);
           console.log("[front.js/init] New user created", {
@@ -142,18 +160,30 @@ let fullResponse = "";
           userId,
         }),
       });
-      console.log("[front.js/init] Fetch response data:", JSON.stringify(data));
-
+      console.log("[front.js/callChatAPI] Fetch response:", response);
 
       if (!response.ok) {
+        console.error(
+          "[front.js/callChatAPI] Failed to start chat session. Response status:",
+          response.status,
+        );
         throw new Error("Failed to start chat session");
       }
 
       const reader = response.body
         .pipeThrough(new TextDecoderStream())
         .getReader();
+      console.log("[front.js/callChatAPI] Reader created:", reader);
+
       while (true) {
         const { value, done } = await reader.read();
+        console.log(
+          "[front.js/callChatAPI] Read from reader. Value:",
+          value,
+          "Done:",
+          done,
+        );
+
         if (done) {
           console.log("[front.js/callChatAPI] Chat session ended");
           markLastAssistantMessageAsComplete();
@@ -162,10 +192,14 @@ let fullResponse = "";
 
         console.log("[front.js/callChatAPI] Received chunk:", value);
         value.split("\n").forEach((line) => {
+          console.log("[front.js/callChatAPI] Processing line:", line);
+
           try {
             if (line.startsWith("data:")) {
               const parsedLine = JSON.parse(line.substr(5)); // Correct parsing of the data
               const content = parsedLine.content;
+              console.log("[front.js/callChatAPI] Parsed content:", content);
+
               if (content) {
                 console.log(
                   "[front.js/callChatAPI] Displaying message:",
@@ -201,6 +235,12 @@ let fullResponse = "";
         displayUserMessage(userPrompt);
         userInput.value = "";
 
+        if (!Array.isArray(conversationHistory)) {
+          console.warn(
+            "[front.js/userInput] Conversation history is not an array, initializing as an empty array.",
+          );
+          conversationHistory = [];
+        }
         conversationHistory.push({ role: "user", content: userPrompt });
         callChatAPI(userPrompt, userId);
       }
@@ -257,10 +297,18 @@ let fullResponse = "";
       lastAssistantMessageElement.classList.add("response-message");
       lastAssistantMessageElement.setAttribute("data-complete", "false");
       messageContainer.prepend(lastAssistantMessageElement); // Prepend to make it appear at the top
+      console.log(
+        "[front.js/displayAssistantMessage] New message element created:",
+        lastAssistantMessageElement,
+      );
     }
 
     // Use innerText to append the content, respecting existing text formatting
     lastAssistantMessageElement.innerText += content;
+    console.log(
+      "[front.js/displayAssistantMessage] Message content appended:",
+      lastAssistantMessageElement.innerText,
+    );
 
     console.log(
       "[front.js/displayAssistantMessage] Assistant message displayed",
@@ -269,12 +317,16 @@ let fullResponse = "";
 
   function markLastAssistantMessageAsComplete() {
     if (lastAssistantMessageElement) {
+      console.log(
+        "[front.js/markLastAssistantMessageAsComplete] Marking last assistant message as complete:",
+        lastAssistantMessageElement,
+      );
       lastAssistantMessageElement.setAttribute("data-complete", "true");
     }
-    // After marking the current message as complete, explicitly set it to null
-    // This forces a new message element to be created for the next assistant message,
-    // mimicking the initial setup and ensuring no unintended carriage returns are inserted.
     lastAssistantMessageElement = null;
+    console.log(
+      "[front.js/markLastAssistantMessageAsComplete] Last assistant message element reset to null",
+    );
   }
 });
 

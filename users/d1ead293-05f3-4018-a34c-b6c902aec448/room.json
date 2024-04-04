@@ -1,0 +1,38 @@
+[
+  {
+    "room_name": "Entrance Hall",
+    "room_id": "3",
+    "interesting_details": "You are standing in the entrance hall of Hogwarts, a spacious and echoing chamber that acts as the heart of the castle. The grand staircase spirals upwards to the many floors, and corridors extend to left and right as pathways to various classrooms and secrets. The great doors open to the Hogwarts grounds, where the night whispers of adventure.",
+    "available_directions": "Ascend the grand staircase, explore the corridors, venture outside",
+    "characters_in_room": "",
+    "unmovable_items_in_room": "",
+    "takeable_but_hidden_items": "",
+    "takeable_but_visible_items": "",
+    "actions_taken_in_room": "Left the Great Hall and returned to the entrance hall, looking around",
+    "players_conversation_ids_in_room": "10, 12, 13, 14, 15"
+  },
+  {
+    "room_name": "First Landing of the Grand Staircase",
+    "room_id": "4",
+    "interesting_details": "You are on the first landing of the grand staircase, surrounded by the vastness of Hogwarts.",
+    "available_directions": "Towards the Gryffindor common room, towards the library, or onto the moving staircases",
+    "characters_in_room": "",
+    "unmovable_items_in_room": "",
+    "takeable_but_hidden_items": "",
+    "takeable_but_visible_items": "",
+    "actions_taken_in_room": "Ascended the grand staircase and reached the first landing",
+    "players_conversation_ids_in_room": "18, 20, 22"
+  },
+  {
+    "room_name": "Gryffindor Common Room",
+    "room_id": "5",
+    "interesting_details": "The Gryffindor common room is a cozy, welcoming space filled with plush armchairs, a crackling fireplace, and the low murmurs of housemates. Adorned with red and gold, it embodies the Gryffindor spirit of bravery and camaraderie.",
+    "available_directions": "Return to the first landing of the grand staircase",
+    "characters_in_room": "Ron Weasley, Hermione Granger, Fred and George Weasley, Neville Longbottom",
+    "unmovable_items_in_room": "Plush armchairs, the fireplace",
+    "takeable_but_hidden_items": "",
+    "takeable_but_visible_items": "Gloves, tools",
+    "actions_taken_in_room": "Entered the Gryffindor common room using the password 'Caput Draconis'. Who is in the room that I can talk to? Offered to help Neville with his Mimbulus Mimbletonia.",
+    "players_conversation_ids_in_room": "24"
+  }
+]

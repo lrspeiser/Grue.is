@@ -1,0 +1,110 @@
+[
+  {
+    "player_name": "Harry Potter",
+    "player_id": 1,
+    "player_type": "user",
+    "inventory": "wand made of holly and phoenix feather; Chocolate Frog cards; detailed study on rare and powerful spellwork including notes",
+    "player_health": "100",
+    "player_looks": "young wizard with messy black hair and green eyes, wearing Hogwarts attire",
+    "player_location": "Gryffindor common room"
+  },
+  {
+    "player_name": "Hermione Granger",
+    "player_id": 2,
+    "player_type": "computer_controlled: ally",
+    "inventory": "",
+    "player_health": "100",
+    "player_looks": "bushy brown hair, often pulled back, sharp and observant brown eyes, wearing Hogwarts attire",
+    "player_location": "Gryffindor common room"
+  },
+  {
+    "player_name": "Ron Weasley",
+    "player_id": 3,
+    "player_type": "computer_controlled: ally",
+    "inventory": "",
+    "player_health": "100",
+    "player_looks": "",
+    "player_location": "Gryffindor common room"
+  },
+  {
+    "player_name": "Draco Malfoy",
+    "player_id": 4,
+    "player_type": "computer_controlled: villian",
+    "inventory": "small, silver object",
+    "player_health": "100",
+    "player_looks": "pale features, pointed chin, cold grey eyes, wearing traditional Slytherin robes",
+    "player_location": "Great Hall, Slytherin table"
+  },
+  {
+    "player_name": "Minerva McGonagall",
+    "player_id": 5,
+    "player_type": "computer_controlled: ally",
+    "inventory": "",
+    "player_health": "100",
+    "player_looks": "stern demeanor, black robes that signify her status as a professor, her hair pulled back into a tight bun with spectacles resting on the bridge of her nose",
+    "player_location": "entrance hall"
+  },
+  {
+    "player_name": "Severus Snape",
+    "player_id": 6,
+    "player_type": "computer_controlled: ally",
+    "inventory": "",
+    "player_health": "100",
+    "player_looks": "",
+    "player_location": "Great Hall, High Table"
+  },
+  {
+    "player_name": "Albus Dumbledore",
+    "player_id": 7,
+    "player_type": "computer_controlled: ally",
+    "inventory": "",
+    "player_health": "100",
+    "player_looks": "",
+    "player_location": "Great Hall, High Table"
+  },
+  {
+    "player_name": "Neville Longbottom",
+    "player_id": 8,
+    "player_type": "computer_controlled: ally",
+    "inventory": "",
+    "player_health": "100",
+    "player_looks": "",
+    "player_location": "Gryffindor common room"
+  },
+  {
+    "player_name": "Luna Lovegood",
+    "player_id": 9,
+    "player_type": "computer_controlled: ally",
+    "inventory": "copy of The Quibbler",
+    "player_health": "100",
+    "player_looks": "",
+    "player_location": "Great Hall, Ravenclaw table"
+  },
+  {
+    "player_name": "Cedric Diggory",
+    "player_id": 10,
+    "player_type": "computer_controlled: ally",
+    "inventory": "",
+    "player_health": "100",
+    "player_looks": "",
+    "player_location": "Great Hall, Hufflepuff table"
+  },
+  {
+    "player_name": "Fred Weasley",
+    "player_id": 11,
+    "player_type": "computer_controlled: ally",
+    "player_looks": "fiery red hair, a mischievous glint in his eyes, wearing typical Hogwarts attire accented with Gryffindor colors",
+    "player_location": "Gryffindor common room",
+    "inventory": "",
+    "player_health": "100"
+  },
+  {
+    "player_name": "George Weasley",
+    "player_id": 12,
+    "player_type": "computer_controlled: ally",
+    "player_looks": "red hair nearly identical to his twin, playful and impish demeanor, wearing Hogwarts robes with a penchant for adding unique, joke-themed accessories",
+    "player_location": "Gryffindor common room",
+    "inventory": "",
+    "player_health": "100"
+  }
+]

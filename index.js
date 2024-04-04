@@ -31,46 +31,38 @@ app.post("/api/users", async (req, res) => {
   const userId = req.body.userId || require("crypto").randomUUID();
   console.log(`[/api/users] Processing user data for ID: ${userId}`);
 
-  try {
+    try {
     const filePaths = await ensureUserDirectoryAndFiles(userId);
-    let userData = await getUserData(filePaths);
+    const userData = await getUserData(filePaths);
 
-    // Check and initialize data only if it doesn't already exist.
-    // This prevents overwriting existing files with new, possibly empty data structures.
-    const dataNeedsInitialization = Object.keys(userData).length === 0 || !userData.conversationHistory || !userData.room || !userData.player;
+    // Ensure conversationHistory is an array
+    if (!Array.isArray(userData.conversationHistory)) {
+      console.warn("[/api/users] Conversation history is not an array, initializing as an empty array.");
+      userData.conversationHistory = [];
+    }
 
-    if (dataNeedsInitialization) {
-      // Initialize with defaults if undefined or not found.
-      userData = {
-        userId,
-        conversationHistory: userData.conversationHistory || [],
-        room: userData.room || {},
-        player: userData.player || {},
-      };
+    const isDataPresent = userData.conversationHistory.length > 0 || Object.keys(userData.room).length > 0 || Object.keys(userData.player).length > 0;
 
-      // Debugging: Log the userData to be written
-      console.log(`[/api/users] Initializing user data for ID: ${userId}: ${JSON.stringify(userData, null, 2)}`);
+    if (!isDataPresent) {
+      console.log(`[/api/users] Initializing user data for ID: ${userId}`);
 
-      // Note: The approach to creating or updating user data files in ensureUserDirectoryAndFiles
-      // and getUserData functions is critical for preserving existing data.
-      // Do not change how these files are created or initialized without ensuring that existing data is not overwritten.
-      
-      // Write only the necessary files. Existing data is preserved.
-      await Promise.all([
-        fs.writeFile(filePaths.conversation, JSON.stringify(userData.conversationHistory, null, 2)),
-        fs.writeFile(filePaths.room, JSON.stringify(userData.room, null, 2)),
-        fs.writeFile(filePaths.player, JSON.stringify(userData.player, null, 2)),
-      ]);
+      // Initialize with defaults if undefined or not found. This ensures that each file exists and has a baseline structure.
+      const initPromises = [
+        fs.writeFile(filePaths.conversation, JSON.stringify({ conversationHistory: [] }, null, 2)),
+        fs.writeFile(filePaths.room, JSON.stringify([], null, 2)), // Assuming room data should be an array based on your correction
+        fs.writeFile(filePaths.player, JSON.stringify([], null, 2)) // Assuming player data should be an array based on your correction
+      ];
+
+      await Promise.all(initPromises);
     }
 
     console.log(`[/api/users] User data processed for ID: ${userId}`);
-    res.json(userData);
+    res.json({ ...userData, userId }); // Ensure userId is always returned
   } catch (error) {
     console.error(`[/api/users] Failed to process user data for ID: ${userId}, error: ${error}`);
     res.status(500).send("Error processing user data");
   }
 });
-
 
 
 app.post("/api/chat", async (req, res) => {
@@ -94,7 +86,14 @@ app.post("/api/chat", async (req, res) => {
     console.log(`[/api/chat] Successfully fetched user data for ID: ${userId}`);
     console.log(`[/api/chat] Raw user data for ID: ${userId}:`, JSON.stringify(userData, null, 2));
 
-    const historySummary = (userData.conversationHistory || [])
+    let conversationHistory = [];
+    if (Array.isArray(userData.conversationHistory)) {
+      conversationHistory = userData.conversationHistory;
+    } else if (userData.conversationHistory && Array.isArray(userData.conversationHistory.conversationHistory)) {
+      conversationHistory = userData.conversationHistory.conversationHistory;
+    }
+
+    const historySummary = conversationHistory
       .map(
         ({ messageId, timestamp, userPrompt, response }) =>
           `Message ${messageId} at ${timestamp} - User: ${userPrompt} | Assistant: ${response}`,
@@ -109,6 +108,12 @@ app.post("/api/chat", async (req, res) => {
     const playerSystemMessage = userData.player.player_name
       ? `Player Name: ${userData.player.player_name}.`
       : "";
+
+    if (!Array.isArray(userData.conversationHistory)) {
+      console.error("[/api/chat] conversationHistory is not an array:", userData.conversationHistory);
+      // Optionally reset to default if correction is desired
+      // userData.conversationHistory = [];
+    }
 
     // don't alter this system message unless you are adding to it.
     const dmSystemMessage =
@@ -213,28 +218,49 @@ async function saveConversationHistory(userId, newMessages) {
   const filePath = path.join(usersDir, userId, "conversation.json");
 
   try {
+    console.log(`[saveConversationHistory] Attempting to read file for user ID: ${userId}`);
     let fileContent = await fs.readFile(filePath, "utf8");
-    let conversationData = JSON.parse(fileContent);
+    let conversationData;
 
-    // Ensure conversationData.conversationHistory is an array
+    try {
+      conversationData = JSON.parse(fileContent);
+      console.log(`[saveConversationHistory] Successfully parsed JSON for user ID: ${userId}`);
+    } catch (error) {
+      console.warn(`[saveConversationHistory] Malformed JSON or empty file for user ID: ${userId}. Error: ${error}. Initializing with default structure.`);
+      conversationData = { conversationHistory: [] };
+    }
+
+    // Verifying conversationHistory is an array
     if (!Array.isArray(conversationData.conversationHistory)) {
+      console.error(`[saveConversationHistory] Expected conversationHistory to be an array for user ID: ${userId}, found:`, conversationData.conversationHistory);
       conversationData.conversationHistory = [];
     }
 
     console.log(`[saveConversationHistory] Processing for user ID: ${userId}`);
-    console.log(`[saveConversationHistory] Raw conversation data for user ID: ${userId}:`, JSON.stringify(conversationData, null, 2));
+    console.log(`[saveConversationHistory] Current conversation data for user ID: ${userId}:`, JSON.stringify(conversationData, null, 2));
 
-    // Assuming newMessages contains structured objects with at least a 'role' and 'content'
-    const newEntries = newMessages.map((msg, index) => ({
-      messageId: conversationData.conversationHistory.length + 1 + index,
-      timestamp: new Date().toISOString(),
-      userPrompt: msg.role === "user" ? msg.content : undefined,
-      response: msg.role === "assistant" ? msg.content : undefined,
-    })).filter(entry => entry.userPrompt || entry.response); // Filter out any entries without content
+    // Find the last user prompt and assistant response in newMessages
+    let lastUserPrompt = null;
+    let lastAssistantResponse = null;
 
-    if (newEntries.length > 0) {
-      conversationData.conversationHistory.push(...newEntries);
+    for (const msg of newMessages) {
+      if (msg.role === "user") {
+        lastUserPrompt = msg.content;
+      } else if (msg.role === "assistant") {
+        lastAssistantResponse = msg.content;
+      }
+    }
 
+    // Add new entry to the conversation history if both user prompt and assistant response are present
+    if (lastUserPrompt && lastAssistantResponse) {
+      const newEntry = {
+        messageId: conversationData.conversationHistory.length + 1,
+        timestamp: new Date().toISOString(),
+        userPrompt: lastUserPrompt,
+        response: lastAssistantResponse,
+      };
+
+      conversationData.conversationHistory.push(newEntry);
       await fs.writeFile(filePath, JSON.stringify(conversationData, null, 2));
       console.log(`[saveConversationHistory] Conversation history updated for user ID: ${userId}`);
     } else {
@@ -244,6 +270,8 @@ async function saveConversationHistory(userId, newMessages) {
     console.error(`[saveConversationHistory] Error updating conversation history for user ID: ${userId}`, error);
   }
 }
+
+
 
 
 app.listen(PORT, () => {
