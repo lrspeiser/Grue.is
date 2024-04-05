@@ -17,6 +17,7 @@ async function ensureUserDirectoryAndFiles(userId) {
     conversation: path.join(userDirPath, "conversation.json"),
     room: path.join(userDirPath, "room.json"),
     player: path.join(userDirPath, "player.json"),
+    story: path.join(userDirPath, "story.json"),
   };
 
   console.log(
@@ -56,6 +57,9 @@ async function getUserData(filePaths) {
   const playerData = await readJsonFileSafe(filePaths.player, {});
   console.log("[getUserData] Player data fetched:", playerData);
 
+  const storyData = await readJsonFileSafe(filePaths.story, {});
+  console.log("[getUserData] Story data fetched:", storyData);
+
   const lastFiveMessages = conversationData; // Assuming conversationData is always an array
   console.log("[getUserData] Last 5 conversation messages:", lastFiveMessages);
 
@@ -63,12 +67,14 @@ async function getUserData(filePaths) {
     conversationData,
     roomData,
     playerData,
+    storyData,
   });
 
   return {
     conversationHistory: conversationData.conversationHistory || [],
     room: roomData,
     player: playerData,
+    story: storyData,
   };
 }
 

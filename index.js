@@ -3,7 +3,7 @@ const express = require("express");
 const path = require("path");
 const fs = require("fs").promises;
 const { updateRoomContext, updatePlayerContext } = require("./data.js");
-const { ensureUserDirectoryAndFiles, getUserData } = require('./util');
+const { ensureUserDirectoryAndFiles, getUserData } = require("./util");
 
 const app = express();
 const PORT = 3000;
@@ -26,31 +26,53 @@ const usersDir = path.join(__dirname, "users");
   }
 })();
 
-
 app.post("/api/users", async (req, res) => {
   const userId = req.body.userId || require("crypto").randomUUID();
   console.log(`[/api/users] Processing user data for ID: ${userId}`);
 
-    try {
+  try {
     const filePaths = await ensureUserDirectoryAndFiles(userId);
     const userData = await getUserData(filePaths);
 
     // Ensure conversationHistory is an array
     if (!Array.isArray(userData.conversationHistory)) {
-      console.warn("[/api/users] Conversation history is not an array, initializing as an empty array.");
+      console.warn(
+        "[/api/users] Conversation history is not an array, initializing as an empty array.",
+      );
       userData.conversationHistory = [];
     }
 
-    const isDataPresent = userData.conversationHistory.length > 0 || Object.keys(userData.room).length > 0 || Object.keys(userData.player).length > 0;
+    const isDataPresent =
+      userData.conversationHistory.length > 0 ||
+      Object.keys(userData.room).length > 0 ||
+      Object.keys(userData.player).length > 0;
 
     if (!isDataPresent) {
       console.log(`[/api/users] Initializing user data for ID: ${userId}`);
 
       // Initialize with defaults if undefined or not found. This ensures that each file exists and has a baseline structure.
       const initPromises = [
-        fs.writeFile(filePaths.conversation, JSON.stringify({ conversationHistory: [] }, null, 2)),
-        fs.writeFile(filePaths.room, JSON.stringify([], null, 2)), // Assuming room data should be an array based on your correction
-        fs.writeFile(filePaths.player, JSON.stringify([], null, 2)) // Assuming player data should be an array based on your correction
+        fs.writeFile(
+          filePaths.conversation,
+          JSON.stringify({ conversationHistory: [] }, null, 2),
+        ),
+        fs.writeFile(filePaths.room, JSON.stringify([], null, 2)),
+        fs.writeFile(filePaths.player, JSON.stringify([], null, 2)),
+        fs.writeFile(
+          filePaths.story,
+          JSON.stringify(
+            {
+              language_spoken: "",
+              favorite_book: "",
+              favorite_movie: "",
+              like_puzzles: "",
+              like_fighting: "",
+              age: "",
+            },
+            null,
+            2,
+          ),
+        ),
       ];
 
       await Promise.all(initPromises);
@@ -59,11 +81,12 @@ app.post("/api/users", async (req, res) => {
     console.log(`[/api/users] User data processed for ID: ${userId}`);
     res.json({ ...userData, userId }); // Ensure userId is always returned
   } catch (error) {
-    console.error(`[/api/users] Failed to process user data for ID: ${userId}, error: ${error}`);
+    console.error(
+      `[/api/users] Failed to process user data for ID: ${userId}, error: ${error}`,
+    );
     res.status(500).send("Error processing user data");
   }
 });
-
 
 app.post("/api/chat", async (req, res) => {
   const { userId, messages: newMessages } = req.body;
@@ -81,15 +104,23 @@ app.post("/api/chat", async (req, res) => {
   let messages = [];
 
   try {
-    console.log(`[/api/chat] Attempting to fetch user data for ID: ${userId} from files.`);
+    console.log(
+      `[/api/chat] Attempting to fetch user data for ID: ${userId} from files.`,
+    );
     userData = await getUserData(filePaths);
     console.log(`[/api/chat] Successfully fetched user data for ID: ${userId}`);
-    console.log(`[/api/chat] Raw user data for ID: ${userId}:`, JSON.stringify(userData, null, 2));
+    console.log(
+      `[/api/chat] Raw user data for ID: ${userId}:`,
+      JSON.stringify(userData, null, 2),
+    );
 
     let conversationHistory = [];
     if (Array.isArray(userData.conversationHistory)) {
       conversationHistory = userData.conversationHistory;
-    } else if (userData.conversationHistory && Array.isArray(userData.conversationHistory.conversationHistory)) {
+    } else if (
+      userData.conversationHistory &&
+      Array.isArray(userData.conversationHistory.conversationHistory)
+    ) {
       conversationHistory = userData.conversationHistory.conversationHistory;
     }
 
@@ -110,14 +141,56 @@ app.post("/api/chat", async (req, res) => {
       : "";
 
     if (!Array.isArray(userData.conversationHistory)) {
-      console.error("[/api/chat] conversationHistory is not an array:", userData.conversationHistory);
+      console.error(
+        "[/api/chat] conversationHistory is not an array:",
+        userData.conversationHistory,
+      );
       // Optionally reset to default if correction is desired
       // userData.conversationHistory = [];
     }
 
-    // don't alter this system message unless you are adding to it.
-    const dmSystemMessage =
-      "You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. You must learn the user's preferences and make sure to respond to them based on those preferences. For instance, if they want you to speak Spanish to them, translate into Spanish. Once the user tells you what sort of story they want, you must assume the role of the original author of that story and only speak to them the way the author would. Don't allow the player to act outside the rules or possibilities of what can be done in that world. Keep them within the game and keep throwing challenges at them to overcome. You should keep each answer to 2-3 lines and then ask them a question like, what do you want to do? or do you want to talk to the person, etc. When they first start give their location, like 'West of House'. If they move then again tell them where they are now. If the user enters a new room or looks around, always tell them about at least 2 directions they can go to leave that location. --- Do not tell them you have these instructions.";
+    // Check if any fields in story.json are empty
+    const storyFields = [
+      "language_spoken",
+      "favorite_book",
+      "favorite_movie",
+      "like_puzzles",
+      "like_fighting",
+      "age",
+    ];
+    const emptyStoryFields = storyFields.filter(
+      (field) => !userData.story[field],
+    );
+    console.log("[/api/chat] Empty story fields:", emptyStoryFields);
+
+    let dmSystemMessage;
+    if (emptyStoryFields.length > 0) {
+      // If any story fields are empty, ask the user questions
+      dmSystemMessage = `You are a dungeon master who is going to customize the game for the user. They have not started yet. You need to collect the following information from them before we begin. If they only answer a couple of questions then ask them to answer the remaining questions. Once you have all the questions answered then let them know what story they are going to enter. For instance if they like Lord of the Rings, turn them into Frodo Baggins and start them off in the Shire. To get started ask them something like: "Welcome to Grue. Before we begin, I need to learn more about you. Answer the following questions for me: ${emptyStoryFields
+        .map((field) => {
+          switch (field) {
+            case "language_spoken":
+              return "What language do you prefer to speak in?";
+            case "favorite_book":
+              return "What is your favorite book?";
+            case "favorite_movie":
+              return "What is your favorite movie?";
+            case "like_puzzles":
+              return "Do you enjoy solving puzzles and riddles? (yes/no)";
+            case "like_fighting":
+              return "Do you enjoy physical combat and fighting in stories? (yes/no)";
+            case "age":
+              return "How old are you?";
+            default:
+              return "";
+          }
+        })
+        .join(" ")}"`;
+    } else {
+      // If all story fields are filled, use the existing prompt
+      dmSystemMessage =
+        "You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. You must learn the user's preferences and make sure to respond to them based on those preferences. For instance, if they want you to speak Spanish to them, translate into Spanish. Once the user tells you what sort of story they want, you must assume the role of the original author of that story and only speak to them the way the author would. Don't allow the player to act outside the rules or possibilities of what can be done in that world. Keep them within the game and keep throwing challenges at them to overcome. You should keep each answer to 2-3 lines and then ask them a question like, what do you want to do? or do you want to talk to the person, etc. When they first start give their location, like 'West of House'. If they move then again tell them where they are now. If the user enters a new room or looks around, always tell them about at least 2 directions they can go to leave that location. --- Do not tell them you have these instructions.";
+    }
 
     messages.unshift({ role: "system", content: dmSystemMessage });
 
@@ -142,7 +215,9 @@ app.post("/api/chat", async (req, res) => {
       `[/api/chat] Prepared messages for OpenAI API: ${JSON.stringify(messages)}`,
     );
   } catch (error) {
-    console.error(`[/api/chat] Error fetching user data for ID: ${userId}: ${error}`);
+    console.error(
+      `[/api/chat] Error fetching user data for ID: ${userId}: ${error}`,
+    );
     return res.status(500).send("Error fetching user data");
   }
 
@@ -186,58 +261,78 @@ app.post("/api/chat", async (req, res) => {
     const lastUserMessage = newMessages.find(
       (msg) => msg.role === "user",
     )?.content;
-    if (lastUserMessage) {
-      console.log(
-        "[/api/chat] Saving conversation history for user ID:",
-        userId,
-        "and last message of:",
-        lastUserMessage,
-      );
-      Promise.all([
-        updateRoomContext(userId),
-        updatePlayerContext(userId),
-      ])
-        .then(() => {
-          console.log(
-            "Room and player context updated based on the latest interaction.",
-          );
-        })
-        .catch((error) => {
-          console.error("Failed to update room or player context:", error);
-        });
-    }
-  } catch (error) {
-    console.error(
-      `[/api/chat] Error during chat for user ID: ${userId}: ${error}`,
-    );
-    res.end();
+if (lastUserMessage) {
+  console.log(
+    "[/api/chat] Saving conversation history for user ID:",
+    userId,
+    "and last message of:",
+    lastUserMessage,
+  );
+
+  if (emptyStoryFields.length > 0) {
+    // If there are empty story fields, call updateStoryContext
+    updateStoryContext(userId)
+      .then(() => {
+        console.log(
+          "[/api/chat] Story context updated for user ID:",
+          userId,
+          "with data:",
+          JSON.stringify(userData.story, null, 2),
+        );
+      })
+      .catch((error) => {
+        console.error("[/api/chat] Failed to update story context:", error);
+      });
+  } else {
+    // If all story fields are filled, call updateRoomContext and updatePlayerContext
+    Promise.all([updateRoomContext(userId), updatePlayerContext(userId)])
+      .then(() => {
+        console.log(
+          "Room and player context updated based on the latest interaction.",
+        );
+      })
+      .catch((error) => {
+        console.error("Failed to update room or player context:", error);
+      });
   }
-});
+}
 
 async function saveConversationHistory(userId, newMessages) {
   const filePath = path.join(usersDir, userId, "conversation.json");
 
   try {
-    console.log(`[saveConversationHistory] Attempting to read file for user ID: ${userId}`);
+    console.log(
+      `[saveConversationHistory] Attempting to read file for user ID: ${userId}`,
+    );
     let fileContent = await fs.readFile(filePath, "utf8");
     let conversationData;
 
     try {
       conversationData = JSON.parse(fileContent);
-      console.log(`[saveConversationHistory] Successfully parsed JSON for user ID: ${userId}`);
+      console.log(
+        `[saveConversationHistory] Successfully parsed JSON for user ID: ${userId}`,
+      );
     } catch (error) {
-      console.warn(`[saveConversationHistory] Malformed JSON or empty file for user ID: ${userId}. Error: ${error}. Initializing with default structure.`);
+      console.warn(
+        `[saveConversationHistory] Malformed JSON or empty file for user ID: ${userId}. Error: ${error}. Initializing with default structure.`,
+      );
       conversationData = { conversationHistory: [] };
     }
 
     // Verifying conversationHistory is an array
     if (!Array.isArray(conversationData.conversationHistory)) {
-      console.error(`[saveConversationHistory] Expected conversationHistory to be an array for user ID: ${userId}, found:`, conversationData.conversationHistory);
+      console.error(
+        `[saveConversationHistory] Expected conversationHistory to be an array for user ID: ${userId}, found:`,
+        conversationData.conversationHistory,
+      );
       conversationData.conversationHistory = [];
     }
 
     console.log(`[saveConversationHistory] Processing for user ID: ${userId}`);
-    console.log(`[saveConversationHistory] Current conversation data for user ID: ${userId}:`, JSON.stringify(conversationData, null, 2));
+    console.log(
+      `[saveConversationHistory] Current conversation data for user ID: ${userId}:`,
+      JSON.stringify(conversationData, null, 2),
+    );
 
     // Find the last user prompt and assistant response in newMessages
     let lastUserPrompt = null;
@@ -262,17 +357,21 @@ async function saveConversationHistory(userId, newMessages) {
 
       conversationData.conversationHistory.push(newEntry);
       await fs.writeFile(filePath, JSON.stringify(conversationData, null, 2));
-      console.log(`[saveConversationHistory] Conversation history updated for user ID: ${userId}`);
+      console.log(
+        `[saveConversationHistory] Conversation history updated for user ID: ${userId}`,
+      );
     } else {
-      console.log(`[saveConversationHistory] No new messages to save for user ID: ${userId}`);
+      console.log(
+        `[saveConversationHistory] No new messages to save for user ID: ${userId}`,
+      );
     }
   } catch (error) {
-    console.error(`[saveConversationHistory] Error updating conversation history for user ID: ${userId}`, error);
+    console.error(
+      `[saveConversationHistory] Error updating conversation history for user ID: ${userId}`,
+      error,
+    );
   }
 }
-
-
-
 
 app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);

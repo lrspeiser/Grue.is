@@ -5,6 +5,157 @@ const { ensureUserDirectoryAndFiles, getUserData } = require("./util");
 const OpenAIApi = require("openai"); //never change this
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
 
+async function updateStoryContext(userId) {
+  console.log("[data.js/updateStoryContext] Starting updateStoryContext");
+
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  const userData = await getUserData(filePaths);
+
+  // Check if the story.json file exists and is populated
+  let storyData = {};
+  try {
+    const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
+    storyData = JSON.parse(storyDataRaw) || {};
+  } catch (error) {
+    console.error("[data.js/updateStoryContext] Error reading story data:", error);
+    storyData = {}; // Initialize with an empty object if the file doesn't exist or is empty
+  }
+
+  // If the story data is empty, ask the user questions and update the story data
+  if (Object.keys(storyData).length === 0) {
+    console.log("[data.js/updateStoryContext] Story data is empty, asking user questions");
+
+    const messages = [
+      {
+        role: "system",
+        content: "You are a world-class storyteller and you are crafting a personalized story for this user. Please ask the user the following questions to gather information about their preferences and characteristics, then use that information to generate a detailed story outline.",
+      },
+      {
+        role: "user",
+        content: "Here are my answers:",
+      },
+    ];
+
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "update_story_context",
+          description:
+            "Based on the user's responses to the questions, generate a detailed story outline that incorporates the user's preferences and characteristics. The function should output an object with the following fields: language_spoken, favorite_book, favorite_movie, like_puzzles, like_fighting, age.",
+          parameters: {
+            type: "object",
+            properties: {
+              story_details: {
+                type: "object",
+                properties: {
+                  language_spoken: {
+                    type: "string",
+                    description: "The language the user prefers to use in the story.",
+                  },
+                  favorite_book: {
+                    type: "string",
+                    description: "The user's favorite book.",
+                  },
+                  favorite_movie: {
+                    type: "string",
+                    description: "The user's favorite movie.",
+                  },
+                  like_puzzles: {
+                    type: "boolean",
+                    description: "Whether the user enjoys solving puzzles and riddles.",
+                  },
+                  like_fighting: {
+                    type: "boolean",
+                    description: "Whether the user enjoys physical combat and fighting in the story.",
+                  },
+                  age: {
+                    type: "integer",
+                    description: "The user's age.",
+                  },
+                },
+                required: [
+                  "language_spoken",
+                  "favorite_book",
+                  "favorite_movie",
+                  "like_puzzles",
+                  "like_fighting",
+                  "age",
+                ],
+              },
+            },
+            required: ["story_details"],
+          },
+        },
+      },
+    ];
+
+    try {
+      console.log("Calling OpenAI API with the prepared messages and tools.");
+      console.log(
+        "Data sent to GPT:",
+        JSON.stringify({ messages, tools }, null, 2),
+      );
+
+      const response = await openai.chat.completions.create({
+        model: "gpt-4-1106-preview",
+        messages: messages,
+        tools: tools,
+        tool_choice: "auto",
+      });
+
+      const responseMessage = response.choices[0].message;
+      console.log(
+        "[data.js/updateStoryContext] Response Message:",
+        JSON.stringify(responseMessage, null, 2),
+      );
+
+      if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+        const toolCall = responseMessage.tool_calls[0];
+        console.log(
+          "[data.js/updateStoryContext] Function call:",
+          JSON.stringify(toolCall, null, 2),
+        );
+
+        if (toolCall.function.name === "update_story_context") {
+          const functionArgs = JSON.parse(toolCall.function.arguments);
+          console.log(
+            "[data.js/updateStoryContext] Function arguments:",
+            JSON.stringify(functionArgs, null, 2),
+          );
+
+          storyData = functionArgs.story_details;
+
+          await fs.writeFile(
+            filePaths.story,
+            JSON.stringify(storyData, null, 2),
+          );
+          console.log(
+            `[data.js/updateStoryContext] Updated story data saved for ID: ${userId}`,
+          );
+        } else {
+          console.log(
+            "[data.js/updateStoryContext] Unexpected function call:",
+            toolCall.function.name,
+          );
+        }
+      } else {
+        console.log(
+          "[data.js/updateStoryContext] No function call detected in the model's response.",
+        );
+      }
+    } catch (error) {
+      console.error(
+        "[data.js/updateStoryContext] Failed to update story context:",
+        error,
+      );
+      throw error;
+    }
+  } else {
+    console.log("[data.js/updateStoryContext] Story data is already populated, skipping user questions");
+  }
+}
+
 async function updateRoomContext(userId) {
   console.log(
     "[data.js/updateRoomContext] Starting updateRoomContext with the latest message and conversation history.",
