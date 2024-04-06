@@ -69,6 +69,7 @@ document.addEventListener("DOMContentLoaded", () => {
           });
           if (Array.isArray(data.conversationHistory)) {
             conversationHistory = data.conversationHistory;
+            console.log("[front.js/init] Conversation history");
             displayConversationHistory();
           } else {
             console.warn(
@@ -196,11 +197,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
           try {
             if (line.startsWith("data:")) {
-              const parsedLine = JSON.parse(line.substr(5)); // Correct parsing of the data
-              const content = parsedLine.content;
-              console.log("[front.js/callChatAPI] Parsed content:", content);
+              const parsedLine = JSON.parse(line.substr(5));
 
-              if (content) {
+              if (parsedLine.content !== undefined) {
+                const content = parsedLine.content;
+                console.log("[front.js/callChatAPI] Parsed content:", content);
                 console.log(
                   "[front.js/callChatAPI] Displaying message:",
                   content,
@@ -209,7 +210,7 @@ document.addEventListener("DOMContentLoaded", () => {
               }
             } else if (line.trim() === "[DONE]") {
               console.log("[front.js/callChatAPI] Message stream completed");
-              markLastAssistantMessageAsComplete(); // Marks the last assistant message as complete
+              markLastAssistantMessageAsComplete();
             }
           } catch (error) {
             if (line.trim() !== "[DONE]") {
@@ -249,15 +250,39 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function displayConversationHistory() {
     console.log(
-      "[front.js/displayConversationHistory] Displaying conversation history",
+      "[front.js/displayConversationHistory] Displaying last 5 messages from conversation history",
     );
-    conversationHistory.forEach((message) => {
-      if (message.role === "user") {
-        displayUserMessage(message.content);
-      } else if (message.role === "assistant") {
-        displayAssistantMessage(message.content);
+
+    // Assuming 'messageContainer' is the DOM element where messages are to be displayed
+    for (let i = 1; i <= 5 && i <= conversationHistory.length; i++) {
+      const message = conversationHistory[conversationHistory.length - i]; // Direct access to the message
+
+      // Display assistant's response
+      if (message.response) {
+        console.log(
+          `[front.js/displayConversationHistory] (#${message.messageId}) Displaying response:`,
+          message.response,
+        );
+
+        const assistantMessageElement = document.createElement("div");
+        assistantMessageElement.classList.add("assistant-message");
+        assistantMessageElement.textContent = `${message.response}`;
+        messageContainer.appendChild(assistantMessageElement); // Appending to the container
       }
-    });
+
+      // Display user's prompt
+      if (message.userPrompt) {
+        console.log(
+          `[front.js/displayConversationHistory] (#${message.messageId}) Displaying user prompt:`,
+          message.userPrompt,
+        );
+
+        const userMessageElement = document.createElement("div");
+        userMessageElement.classList.add("user-message");
+        userMessageElement.textContent = `${message.userPrompt}`;
+        messageContainer.appendChild(userMessageElement); // Appending to the container
+      }
+    }
   }
 
   function displayUserMessage(message) {
@@ -271,6 +296,7 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("[front.js/displayUserMessage] User message displayed");
   }
 
+  // Helper function to find the last assistant message element if it exists
   // Helper function to find the last assistant message element if it exists
   function getLastAssistantMessageElement() {
     const messages = Array.from(

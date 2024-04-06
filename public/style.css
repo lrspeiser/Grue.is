@@ -24,14 +24,17 @@ body {
 #prompt {
   color: green;
   margin-right: 5px;
+  font-family: 'AppleIIPro', monospace;
 }
 
 #userInput {
   flex-grow: 1;
+  font-family: 'AppleIIPro', monospace;
   color: green;
   background-color: black;
   border: none;
   outline: none;
+  font-size: 16px; /* Adjust the font size as needed */
 }
 
 #messageContainer {

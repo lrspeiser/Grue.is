@@ -1,3 +1,5 @@
+//util.js
+
 const fs = require("fs").promises;
 const path = require("path");
 
@@ -111,6 +113,8 @@ function isStoryDataPopulated(storyData) {
   });
 }
 
-
-
-module.exports = { ensureUserDirectoryAndFiles, getUserData, isStoryDataPopulated };
+module.exports = {
+  ensureUserDirectoryAndFiles,
+  getUserData,
+  isStoryDataPopulated,
+};
