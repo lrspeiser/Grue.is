@@ -95,4 +95,22 @@ async function readJsonFileSafe(filePath, defaultValue) {
   }
 }
 
-module.exports = { ensureUserDirectoryAndFiles, getUserData };
+// Define a helper function to check if the story data is considered populated
+function isStoryDataPopulated(storyData) {
+  const requiredFields = [
+    "language_spoken",
+    "favorite_book",
+    "favorite_movie",
+    "like_puzzles",
+    "like_fighting",
+    "age",
+  ];
+  // Check if all required fields are present and not just empty strings
+  return requiredFields.every((field) => {
+    return storyData[field] && storyData[field].trim() !== "";
+  });
+}
+
+
+
+module.exports = { ensureUserDirectoryAndFiles, getUserData, isStoryDataPopulated };

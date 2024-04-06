@@ -1,0 +1,11 @@
+[
+  {
+    "player_name": "Salvo Hardin",
+    "player_id": 1,
+    "player_type": "user",
+    "player_looks": "a brilliant strategist and mathematician, recently inducted into the secretive Foundation",
+    "player_location": "Library of the Foundation",
+    "inventory": "encrypted message from Hari Seldon, digital decryption device",
+    "player_health": "100"
+  }
+]

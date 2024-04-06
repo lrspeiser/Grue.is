@@ -1,0 +1,26 @@
+[
+  {
+    "room_name": "Strategist's Office",
+    "room_id": "1",
+    "interesting_details": "walls lined with bookshelves heavy with tomes on mathematics, history, and the intricacies of psychohistory. A sturdy desk sits in the center, cluttered with datapads and cryptic notes. The only sources of light are a dim overhead fixture and the faint glow from the planet's twin moons peering through the window",
+    "available_directions": "east to the Library and west to the Strategy Room",
+    "characters_in_room": "Salvo Hardin",
+    "unmovable_items_in_room": "bookshelves, desk",
+    "takeable_but_hidden_items": "",
+    "takeable_but_visible_items": "digital decryption device",
+    "actions_taken_in_room": "user looked around, user said hello multiple times, user was given a puzzle, user attempted to solve the puzzle by questioning the code's pattern, user asked for the code again, user attempted to change the approach to the puzzle by reversing the sequence and replacing '1' with the letter 'A'. The user doubted the direct number-to-letter correspondence and considered using the digital decryption device for further assistance. The user has taken the digital decryption device and activated it, user has entered the number sequence into the device, and the device pr...",
+    "players_conversation_ids_in_room": "1, 2, 3, 4, 5, 6, 7, 8, 9, 10"
+  },
+  {
+    "room_name": "Library of the Foundation",
+    "room_id": "2",
+    "interesting_details": "vast, ceiling stretching high above, with rows upon rows of digital and physical archives that contain the aggregated wisdom of the galaxy. Dimly lit terminals flicker in the semi-darkness, inviting exploration. Another door labeled \"Archives\" lies to the north, potentially holding more specialized knowledge. The door through which the user entered is to the west",
+    "available_directions": "north to the Archives and west to the Strategist's Office",
+    "characters_in_room": "a researcher or historian",
+    "unmovable_items_in_room": "archives, terminals",
+    "takeable_but_hidden_items": "",
+    "takeable_but_visible_items": "",
+    "actions_taken_in_room": "",
+    "players_conversation_ids_in_room": ""
+  }
+]

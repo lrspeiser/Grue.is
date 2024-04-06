@@ -1,10 +1,6 @@
 const fs = require("fs").promises;
 const path = require("path");
-const {
-  ensureUserDirectoryAndFiles,
-  getUserData,
-  isStoryDataPopulated,
-} = require("./util");
+const { ensureUserDirectoryAndFiles, getUserData } = require("./util");
 
 const OpenAIApi = require("openai"); //never change this
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
@@ -13,31 +9,31 @@ async function updateStoryContext(userId) {
   console.log("[data.js/updateStoryContext] Starting updateStoryContext");
 
   const filePaths = await ensureUserDirectoryAndFiles(userId);
-  console.log("[data.js/updateStoryContext] File paths:", filePaths);
-
   const userData = await getUserData(filePaths);
-  console.log("[data.js/updateStoryContext] User data:", userData);
 
+  // Check if the story.json file exists and is populated
   let storyData = {};
   try {
     const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
-    console.log("[data.js/updateStoryContext] Raw story data:", storyDataRaw);
     storyData = JSON.parse(storyDataRaw) || {};
   } catch (error) {
-    console.error(
-      "[data.js/updateStoryContext] Error reading story data:",
-      error,
-    );
+    console.error("[data.js/updateStoryContext] Error reading story data:", error);
     storyData = {}; // Initialize with an empty object if the file doesn't exist or is empty
   }
 
+  // Proceed with using conversationHistory as an array confidently
   console.log(
     "[data.js/updateStoryContext] Retrieved Conversation History for GPT:",
     JSON.stringify(userData.conversationHistory, null, 2),
   );
-  const storyDataJson = JSON.stringify(storyData, null, 2);
-  console.log("[data.js/updateStoryContext] Story Data JSON:", storyDataJson);
 
+  const storyDataJson = JSON.stringify(storyData, null, 2);
+  console.log(
+    "[data.js/updateStoryContext] Story Data JSON:",
+    storyDataJson,
+  );
+
+  // Formatting the conversation history for the GPT call
   let formattedHistory = "";
   if (userData.conversationHistory && userData.conversationHistory.length > 0) {
     formattedHistory = userData.conversationHistory
@@ -52,136 +48,138 @@ async function updateStoryContext(userId) {
     formattedHistory,
   );
 
-  const messages = [
-    {
-      role: "system",
-      content: `You are a world-class storyteller and you are crafting a personalized story for this user. Please use the following conversation history and the existing story data to update the story json file. Here is the current story data from the story.json file: ${storyDataJson}. Take this data and update it with anything new based on the latest conversation update. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one.`,
-    },
-    {
-      role: "user",
-      content: `Message History:\n${formattedHistory}`,
-    },
-  ];
+  // If the story data is empty, ask the user questions and update the story data
+  if (Object.keys(storyData).length === 0) {
+    console.log("[data.js/updateStoryContext] Story data is empty, asking user questions");
 
-  const tools = [
-    {
-      type: "function",
-      function: {
-        name: "update_story_context",
-        description:
-          "Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. The function should output an object with the following fields: language_spoken, favorite_author, favorite_story, like_puzzles, like_fighting, age.",
-        parameters: {
-          type: "object",
-          properties: {
-            story_details: {
-              type: "object",
-              properties: {
-                language_spoken: {
-                  type: "string",
-                  description:
-                    "The language the user prefers to use in the story.",
+    const messages = [
+      {
+        role: "system",
+        content: `You are a world-class storyteller and you are crafting a personalized story for this user. Please ask the user the following questions to gather information about their preferences and characteristics, then use that information to generate a detailed story outline. Here is the current story data from the story.json file: ${storyDataJson}. Take this data and update with anything new based on the latest conversation update. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one. Here is the conversation history so far:\n\n${formattedHistory}`,
+      },
+      {
+        role: "user",
+        content: userPrompt,
+      },
+    ];
+
+    const tools = [
+      {
+        type: "function",
+        function: {
+          name: "update_story_context",
+          description:
+            "Based on the user's responses to the questions, generate a detailed story outline that incorporates the user's preferences and characteristics. The function should output an object with the following fields: language_spoken, favorite_book, favorite_movie, like_puzzles, like_fighting, age.",
+          parameters: {
+            type: "object",
+            properties: {
+              story_details: {
+                type: "object",
+                properties: {
+                  language_spoken: {
+                    type: "string",
+                    description: "The language the user prefers to use in the story.",
+                  },
+                  favorite_book: {
+                    type: "string",
+                    description: "The user's favorite book.",
+                  },
+                  favorite_movie: {
+                    type: "string",
+                    description: "The user's favorite movie.",
+                  },
+                  like_puzzles: {
+                    type: "boolean",
+                    description: "Whether the user enjoys solving puzzles and riddles.",
+                  },
+                  like_fighting: {
+                    type: "boolean",
+                    description: "Whether the user enjoys physical combat and fighting in the story.",
+                  },
+                  age: {
+                    type: "integer",
+                    description: "The user's age.",
+                  },
                 },
-                favorite_author: {
-                  type: "string",
-                  description: "The user's favorite author.",
-                },
-                favorite_story: {
-                  type: "string",
-                  description: "The user's favorite story from a movie or book.",
-                },
-                like_puzzles: {
-                  type: "boolean",
-                  description:
-                    "Whether the user enjoys solving puzzles and riddles.",
-                },
-                like_fighting: {
-                  type: "boolean",
-                  description:
-                    "Whether the user enjoys physical combat and fighting in the story.",
-                },
-                age: {
-                  type: "integer",
-                  description: "The user's age.",
-                },
+                required: [
+                  "language_spoken",
+                  "favorite_book",
+                  "favorite_movie",
+                  "like_puzzles",
+                  "like_fighting",
+                  "age",
+                ],
               },
-              required: [
-                "language_spoken",
-                "favorite_author",
-                "favorite_story",
-                "like_puzzles",
-                "like_fighting",
-                "age",
-              ],
             },
+            required: ["story_details"],
           },
-          required: ["story_details"],
         },
       },
-    },
-  ];
+    ];
 
-  try {
-    console.log("Calling OpenAI API with the prepared messages and tools.");
-    console.log(
-      "Data sent to GPT:",
-      JSON.stringify({ messages, tools }, null, 2),
-    );
-
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo-0125",
-      messages: messages,
-      tools: tools,
-      tool_choice: "auto",
-    });
-
-    console.log(
-      "[data.js/updateStoryContext] Raw OpenAI API response:",
-      JSON.stringify(response, null, 2),
-    );
-
-    const responseMessage = response.choices[0].message;
-    console.log(
-      "[data.js/updateStoryContext] Response Message:",
-      JSON.stringify(responseMessage, null, 2),
-    );
-
-    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      const toolCall = responseMessage.tool_calls[0];
+    try {
+      console.log("Calling OpenAI API with the prepared messages and tools.");
       console.log(
-        "[data.js/updateStoryContext] Function call:",
-        JSON.stringify(toolCall, null, 2),
+        "Data sent to GPT:",
+        JSON.stringify({ messages, tools }, null, 2),
       );
 
-      if (toolCall.function.name === "update_story_context") {
-        const functionArgs = JSON.parse(toolCall.function.arguments);
+      const response = await openai.chat.completions.create({
+        model: "gpt-4-1106-preview",
+        messages: messages,
+        tools: tools,
+        tool_choice: "auto",
+      });
+
+      const responseMessage = response.choices[0].message;
+      console.log(
+        "[data.js/updateStoryContext] Response Message:",
+        JSON.stringify(responseMessage, null, 2),
+      );
+
+      if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+        const toolCall = responseMessage.tool_calls[0];
         console.log(
-          "[data.js/updateStoryContext] Function arguments:",
-          JSON.stringify(functionArgs, null, 2),
+          "[data.js/updateStoryContext] Function call:",
+          JSON.stringify(toolCall, null, 2),
         );
 
-        storyData = functionArgs.story_details;
+        if (toolCall.function.name === "update_story_context") {
+          const functionArgs = JSON.parse(toolCall.function.arguments);
+          console.log(
+            "[data.js/updateStoryContext] Function arguments:",
+            JSON.stringify(functionArgs, null, 2),
+          );
 
-        await fs.writeFile(filePaths.story, JSON.stringify(storyData, null, 2));
-        console.log(
-          `[data.js/updateStoryContext] Updated story data saved for ID: ${userId}`,
-        );
+          storyData = functionArgs.story_details;
+
+          await fs.writeFile(
+            filePaths.story,
+            JSON.stringify(storyData, null, 2),
+          );
+          console.log(
+            `[data.js/updateStoryContext] Updated story data saved for ID: ${userId}`,
+          );
+        } else {
+          console.log(
+            "[data.js/updateStoryContext] Unexpected function call:",
+            toolCall.function.name,
+          );
+        }
       } else {
         console.log(
-          "[data.js/updateStoryContext] Unexpected function call:",
-          toolCall.function.name,
+          "[data.js/updateStoryContext] No function call detected in the model's response.",
         );
       }
-    } else {
-      console.log(
-        "[data.js/updateStoryContext] No function call detected in the model's response.",
+    } catch (error) {
+      console.error(
+        "[data.js/updateStoryContext] Failed to update story context:",
+        error,
       );
+      throw error;
     }
-  } catch (error) {
-    console.error(
-      "[data.js/updateStoryContext] Failed to update story context:",
-      error,
-    );
-    throw error;
+  } else {
+    console.log("[data.js/updateStoryContext] Story data is already populated, skipping user questions");
   }
 }
 
@@ -316,7 +314,7 @@ async function updateRoomContext(userId) {
       JSON.stringify({ messages, tools }, null, 2),
     );
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo-0125",
+      model: "gpt-4-1106-preview",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -557,7 +555,7 @@ async function updatePlayerContext(userId) {
     );
 
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo-0125",
+      model: "gpt-4-1106-preview",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -639,4 +637,4 @@ async function updatePlayerContext(userId) {
   }
 }
 
-module.exports = { updateRoomContext, updatePlayerContext, updateStoryContext };
+module.exports = { updateRoomContext, updatePlayerContext };

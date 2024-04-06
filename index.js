@@ -2,8 +2,16 @@ const OpenAIApi = require("openai");
 const express = require("express");
 const path = require("path");
 const fs = require("fs").promises;
-const { updateRoomContext, updatePlayerContext } = require("./data.js");
-const { ensureUserDirectoryAndFiles, getUserData } = require("./util");
+const {
+  updateRoomContext,
+  updatePlayerContext,
+  updateStoryContext,
+} = require("./data.js");
+const {
+  ensureUserDirectoryAndFiles,
+  getUserData,
+  isStoryDataPopulated,
+} = require("./util");
 
 const app = express();
 const PORT = 3000;
@@ -14,6 +22,24 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
 const usersDir = path.join(__dirname, "users");
+
+const storyFields = [
+  "language_spoken",
+  "favorite_book",
+  "favorite_movie",
+  "like_puzzles",
+  "like_fighting",
+  "age",
+];
+
+const emptyStoryFields = [
+  "language_spoken",
+  "favorite_book",
+  "favorite_movie",
+  "like_puzzles",
+  "like_fighting",
+  "age",
+];
 
 // Ensure users directory exists
 (async () => {
@@ -152,8 +178,8 @@ app.post("/api/chat", async (req, res) => {
     // Check if any fields in story.json are empty
     const storyFields = [
       "language_spoken",
-      "favorite_book",
-      "favorite_movie",
+      "favorite_author",
+      "favorite_story",
       "like_puzzles",
       "like_fighting",
       "age",
@@ -163,6 +189,11 @@ app.post("/api/chat", async (req, res) => {
     );
     console.log("[/api/chat] Empty story fields:", emptyStoryFields);
 
+    const lastMessageTimestamp = new Date(userData.lastMessageTime || new Date()); // Use the current time if lastMessageTime is not available
+    const currentTime = new Date();
+    const timeDifference = currentTime - lastMessageTimestamp;
+    const hoursDifference = timeDifference / (1000 * 60 * 60);
+    
     let dmSystemMessage;
     if (emptyStoryFields.length > 0) {
       // If any story fields are empty, ask the user questions
@@ -171,14 +202,14 @@ app.post("/api/chat", async (req, res) => {
           switch (field) {
             case "language_spoken":
               return "What language do you prefer to speak in?";
-            case "favorite_book":
-              return "What is your favorite book?";
-            case "favorite_movie":
-              return "What is your favorite movie?";
+            case "favorite_author":
+              return "Who is your favorite author?";
+            case "favorite_story":
+              return "What is your favorite story (book, movie, etc.)?";
             case "like_puzzles":
-              return "Do you enjoy solving puzzles and riddles? (yes/no)";
+              return "Do you enjoy solving puzzles? (yes/no)";
             case "like_fighting":
-              return "Do you enjoy physical combat and fighting in stories? (yes/no)";
+              return "Do you enjoy fighting in stories? (yes/no)";
             case "age":
               return "How old are you?";
             default:
@@ -187,9 +218,8 @@ app.post("/api/chat", async (req, res) => {
         })
         .join(" ")}"`;
     } else {
-      // If all story fields are filled, use the existing prompt
-      dmSystemMessage =
-        "You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. You must learn the user's preferences and make sure to respond to them based on those preferences. For instance, if they want you to speak Spanish to them, translate into Spanish. Once the user tells you what sort of story they want, you must assume the role of the original author of that story and only speak to them the way the author would. Don't allow the player to act outside the rules or possibilities of what can be done in that world. Keep them within the game and keep throwing challenges at them to overcome. You should keep each answer to 2-3 lines and then ask them a question like, what do you want to do? or do you want to talk to the person, etc. When they first start give their location, like 'West of House'. If they move then again tell them where they are now. If the user enters a new room or looks around, always tell them about at least 2 directions they can go to leave that location. --- Do not tell them you have these instructions.";
+      // If all story fields are filled, use the system prompt that grabs the conversation, player data, and room data
+      dmSystemMessage = `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. It has been ${hoursDifference} since the user's last message. If it has been more than three hours since the last message you can welcome the person back. Anything more recent and you do not need to mention their name, just continue the conversation like a chat with them. You also don't have to repeat the same information each time unless the user specifically asks for it in their latest prompt. Here is the information about the user and their story preferences:\n\n${storyFields}\n\n Here is the conversation history:\n\n${historySummary}\n\nHere is the player data:\n\n${JSON.stringify(userData.player, null, 2)}\n\nHere is the room data:\n\n${JSON.stringify(userData.room, null, 2)}\n\nYou must learn the user's preferences and make sure to respond to them based on those preferences. For instance, if they want you to speak Spanish to them, translate into Spanish. You must assume the role of the original author of the story and only speak to them the way the author would. Don't allow the player to act outside the rules or possibilities of what can be done in that world. Keep them within the game and keep throwing challenges at them to overcome. You should keep each answer to 2-3 lines and then ask them a question like, what do you want to do? or do you want to talk to the person, etc. When they first start give their location, like 'West of House'. If they move then again tell them where they are now. If the user enters a new room or looks around, always tell them about at least 2 directions they can go to leave that location. --- Do not tell them you have these instructions.`;
     }
 
     messages.unshift({ role: "system", content: dmSystemMessage });
@@ -257,45 +287,78 @@ app.post("/api/chat", async (req, res) => {
       { role: "assistant", content: fullResponse },
     ]);
 
+    // Check if any fields in story.json are empty
+    const storyFields = [
+      "language_spoken",
+      "favorite_author",
+      "favorite_story",
+      "like_puzzles",
+      "like_fighting",
+      "age",
+    ];
+    const emptyStoryFields = storyFields.filter(
+      (field) => !userData.story[field],
+    );
+    console.log("[/api/chat] Empty story fields:", emptyStoryFields);
+
     // After saving the conversation history, call updateRoomContext and updatePlayerContext
     const lastUserMessage = newMessages.find(
       (msg) => msg.role === "user",
     )?.content;
-if (lastUserMessage) {
-  console.log(
-    "[/api/chat] Saving conversation history for user ID:",
-    userId,
-    "and last message of:",
-    lastUserMessage,
-  );
+    if (lastUserMessage) {
+      console.log(
+        "[/api/chat] Saving conversation history for user ID:",
+        userId,
+        "and last message of:",
+        lastUserMessage,
+      );
 
-  if (emptyStoryFields.length > 0) {
-    // If there are empty story fields, call updateStoryContext
-    updateStoryContext(userId)
-      .then(() => {
+      // Check if all story fields are filled
+      if (emptyStoryFields.length === 0) {
+        // If all story fields are filled, call updateRoomContext and updatePlayerContext
         console.log(
-          "[/api/chat] Story context updated for user ID:",
+          "[/api/chat] All story fields are filled. Updating room and player context for user ID:",
           userId,
-          "with data:",
-          JSON.stringify(userData.story, null, 2),
         );
-      })
-      .catch((error) => {
-        console.error("[/api/chat] Failed to update story context:", error);
-      });
-  } else {
-    // If all story fields are filled, call updateRoomContext and updatePlayerContext
-    Promise.all([updateRoomContext(userId), updatePlayerContext(userId)])
-      .then(() => {
+        Promise.all([updateRoomContext(userId), updatePlayerContext(userId)])
+          .then(() => {
+            console.log(
+              "[/api/chat] Room and player context updated based on the latest interaction.",
+            );
+          })
+          .catch((error) => {
+            console.error(
+              "[/api/chat] Failed to update room or player context:",
+              error,
+            );
+          });
+      } else {
+        // If there are empty story fields, call updateStoryContext
         console.log(
-          "Room and player context updated based on the latest interaction.",
+          "[/api/chat] Some story fields are empty. Updating story context for user ID:",
+          userId,
         );
-      })
-      .catch((error) => {
-        console.error("Failed to update room or player context:", error);
-      });
+        updateStoryContext(userId)
+          .then(() => {
+            console.log(
+              "[/api/chat] Story context updated for user ID:",
+              userId,
+              "with data:",
+              JSON.stringify(userData.story, null, 2),
+            );
+          })
+          .catch((error) => {
+            console.error("[/api/chat] Failed to update story context:", error);
+          });
+      }
+    }
+  } catch (error) {
+    console.error(
+      `[/api/chat] Error during chat for user ID: ${userId}: ${error}`,
+    );
+    res.end();
   }
-}
+});
 
 async function saveConversationHistory(userId, newMessages) {
   const filePath = path.join(usersDir, userId, "conversation.json");
