@@ -1,4 +1,3 @@
-```markdown
 # Grue
 
 Grue is an homage to the old text-based adventure games like Zork. I wanted to see what would happen if we wired one of those up to a GPT dungeon master. The only issue was, I don't know how to program. I decided to see if I could direct GPT to write it for me. I was very pleased with the outcome. Play it: [http://grue.is](http://grue.is)
@@ -60,4 +59,3 @@ Grue is an homage to the old text-based adventure games like Zork. I wanted to s
 ## Why Grue?
 
 - A grue is a fictional, predatory creature that dwells in the dark, first introduced in the Dying Earth series and popularized by Zork. This project is a nod to these origins, blending classic adventure with modern AI.
-```
