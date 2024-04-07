@@ -1,0 +1,11 @@
+[
+  {
+    "player_name": "User",
+    "player_id": 1,
+    "player_type": "user",
+    "player_looks": "A young wizard with excitement in their eyes, wearing standard Hogwarts robes.",
+    "player_location": "Hogwarts Express",
+    "inventory": "Magic wand, Hogwarts letter, trunk, owl in a cage",
+    "player_health": "100"
+  }
+]

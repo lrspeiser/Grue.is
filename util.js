@@ -1,18 +1,19 @@
-//util.js
-
+// util.js
 const fs = require("fs").promises;
 const path = require("path");
 
 async function ensureUserDirectoryAndFiles(userId) {
   console.log("[ensureUserDirectoryAndFiles] Called with userId:", userId);
 
-  const userDirPath = path.join(__dirname, "users", userId);
+  const userDirPath = path.join(__dirname, "data", "users", userId);
+
   console.log(
     "[ensureUserDirectoryAndFiles] User directory path:",
     userDirPath,
   );
 
   await fs.mkdir(userDirPath, { recursive: true });
+
   console.log("[ensureUserDirectoryAndFiles] Directory ensured for user");
 
   const filePaths = {
@@ -20,11 +21,13 @@ async function ensureUserDirectoryAndFiles(userId) {
     room: path.join(userDirPath, "room.json"),
     player: path.join(userDirPath, "player.json"),
     story: path.join(userDirPath, "story.json"),
+    quest: path.join(userDirPath, "quest.json"),
   };
 
   console.log(
     "[ensureUserDirectoryAndFiles] Checking and initializing files if needed.",
   );
+
   for (const [key, filePath] of Object.entries(filePaths)) {
     try {
       await fs.access(filePath);
@@ -62,6 +65,9 @@ async function getUserData(filePaths) {
   const storyData = await readJsonFileSafe(filePaths.story, {});
   console.log("[getUserData] Story data fetched:", storyData);
 
+  const questData = await readJsonFileSafe(filePaths.quest, {});
+  console.log("[getUserData] Quest data fetched:", questData);
+
   const lastFiveMessages = conversationData; // Assuming conversationData is always an array
   console.log("[getUserData] Last 5 conversation messages:", lastFiveMessages);
 
@@ -70,6 +76,7 @@ async function getUserData(filePaths) {
     roomData,
     playerData,
     storyData,
+    questData,
   });
 
   return {
@@ -77,6 +84,7 @@ async function getUserData(filePaths) {
     room: roomData,
     player: playerData,
     story: storyData,
+    quest: questData,
   };
 }
 
@@ -97,24 +105,7 @@ async function readJsonFileSafe(filePath, defaultValue) {
   }
 }
 
-// Define a helper function to check if the story data is considered populated
-function isStoryDataPopulated(storyData) {
-  const requiredFields = [
-    "language_spoken",
-    "favorite_book",
-    "favorite_movie",
-    "like_puzzles",
-    "like_fighting",
-    "age",
-  ];
-  // Check if all required fields are present and not just empty strings
-  return requiredFields.every((field) => {
-    return storyData[field] && storyData[field].trim() !== "";
-  });
-}
-
 module.exports = {
   ensureUserDirectoryAndFiles,
   getUserData,
-  isStoryDataPopulated,
 };

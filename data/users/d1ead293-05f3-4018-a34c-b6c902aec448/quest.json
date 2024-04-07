@@ -1,0 +1,13 @@
+[
+  {
+    "quest_id": "1",
+    "quest_name": "Journey to Hogwarts",
+    "quest_giver": "Hogwarts Letter",
+    "quest_goal": "Reach Hogwarts School of Witchcraft and Wizardry by boarding the Hogwarts Express at Platform 9 ¾.",
+    "quest_characters": "Player, Hogwarts Letter",
+    "quest_reward": "Access to Hogwarts and start of magical education.",
+    "quest_difficulty": "Very Easy",
+    "quest_type": "Obtain Information",
+    "quest_completed_percentage": 70
+  }
+]

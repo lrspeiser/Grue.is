@@ -32,7 +32,8 @@ async function updateStoryContext(userId) {
   }
 
   console.log(
-    "[data.js/updateStoryContext] Retrieved Conversation History for GPT");
+    "[data.js/updateStoryContext] Retrieved Conversation History for GPT",
+  );
   const storyDataJson = JSON.stringify(storyData, null, 2);
   console.log("[data.js/updateStoryContext] Story Data JSON");
 
@@ -57,7 +58,7 @@ async function updateStoryContext(userId) {
     },
     {
       role: "user",
-      content: `Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. The function should output an object with the following fields: language_spoken, favorite_author, favorite_story, like_puzzles, like_fighting, character_played_by_user.`,
+      content: `Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. If the user is trying to quit the game and we've confirmed with them they do, set the active_game to false. Also, if they die, health goes to zero, or if they behave badly, set it to false. It is important that we continue to collect the users preferences and behaviors so we can customize the game for them.`,
     },
   ];
 
@@ -67,7 +68,7 @@ async function updateStoryContext(userId) {
       function: {
         name: "update_story_context",
         description:
-          "Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. The function should output an object with the following fields: language_spoken, favorite_author, favorite_story, like_puzzles, like_fighting, character_played_by_user.",
+          "Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. If the user is trying to quit the game and we've confirmed with them they do, set the active_game to false. Also, if they die, health goes to zero, or if they behave badly, set it to false. It is important that we continue to collect the users preferences and behaviors so we can customize the game for them.",
         parameters: {
           type: "object",
           properties: {
@@ -88,28 +89,35 @@ async function updateStoryContext(userId) {
                   description:
                     "The user's favorite story from a movie or book.",
                 },
-                like_puzzles: {
+                active_game: {
                   type: "boolean",
                   description:
-                    "Whether the user enjoys solving puzzles and riddles.",
-                },
-                like_fighting: {
-                  type: "boolean",
-                  description:
-                    "Whether the user enjoys physical combat and fighting in the story.",
+                    "As soon as you have enough information to populate the game_description and character_played_by_user, set this to ture. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false",
                 },
                 character_played_by_user: {
                   type: "string",
-                  description: "This will be the character played by the user in the story.",
+                  description:
+                    "This will be the character played by the user in the story.",
+                },
+                game_description: {
+                  type: "string",
+                  description:
+                    "The description of the game the user is playing. Some details of the world and what they might need to overcome.",
+                },
+                player_profile: {
+                  type: "string",
+                  description:
+                    "Anytime the user expresses a preference to the AI, like to stop doing something or to do something different, record it in this field. As the user plays the game, collect more information about their style based on what they submit and how they react to the game. Are they sarcastic or serious? How serious of a gamer are they? Do they like to talk to characters or take actions? Are they kind or mean? Are they young or old? Naive or mature? Build a full profile of the user. This is very important for the game play.",
                 },
               },
               required: [
                 "language_spoken",
                 "favorite_author",
                 "favorite_story",
-                "like_puzzles",
-                "like_fighting",
+                "active_game",
+                "game_description",
                 "character_played_by_user",
+                "player_profile",
               ],
             },
           },
@@ -202,8 +210,7 @@ async function updateRoomContext(userId) {
     )
     .join("\n\n");
 
-  console.log(
-    "[data.js/updateRoomContext] conversationForGPT");
+  console.log("[data.js/updateRoomContext] conversationForGPT");
 
   const messages = [
     {
@@ -256,7 +263,7 @@ async function updateRoomContext(userId) {
                   },
                   characters_in_room: {
                     type: "string",
-                    description: "Computer generated characters in the room.",
+                    description: "Computer generated characters in the room. Always use names for characters.",
                   },
                   unmovable_items_in_room: {
                     type: "string",
@@ -277,7 +284,7 @@ async function updateRoomContext(userId) {
                   players_conversation_ids_in_room: {
                     type: "string",
                     description:
-                      "Indicate which conversation numbers the player was in this room. Example: 1, 2, 3",
+                      "Indicate the messageIds when the player was in this room. Example: 1, 2, 3. When the player moves rooms, record that messageId in the new room.",
                   },
                 },
                 required: [
@@ -614,6 +621,7 @@ async function updatePlayerContext(userId) {
             ),
             fs.writeFile(filePaths.room, JSON.stringify([], null, 2)),
             fs.writeFile(filePaths.player, JSON.stringify([], null, 2)),
+            fs.writeFile(filePaths.quests, JSON.stringify([], null, 2)),
           ];
           await Promise.all(initPromises);
 
@@ -670,4 +678,223 @@ async function updatePlayerContext(userId) {
   }
 }
 
-module.exports = { updateRoomContext, updatePlayerContext, updateStoryContext };
+async function updateQuestContext(userId) {
+  console.log(
+    "[data.js/updateQuestContext] Starting updateQuestContext with the latest message and conversation history.",
+  );
+
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  const userData = await getUserData(filePaths);
+
+  if (!Array.isArray(userData.quests)) {
+    userData.quests = [];
+  }
+
+  // Get the most recent 5 messages from the conversation history
+  const recentMessages = userData.conversationHistory.slice(-5);
+
+  // Format the recent messages for GPT
+  const conversationForGPT = recentMessages
+    .map(
+      (message) =>
+        `User: ${message.userPrompt}\nAssistant: ${message.response}`,
+    )
+    .join("\n\n");
+
+  console.log("[data.js/updateQuestContext] conversationForGPT");
+
+  const messages = [
+    {
+      role: "system",
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the quests into the fields. Make quests very specific and actionable, don't make their goals vague. Take this data and update with anything new based on the latest conversation update. Add more quests anytime the player interacts in the game and it seems like a good opportunity to introduce more quests.`,
+    },
+    {
+      role: "system",
+      content: `Current quest data: ${JSON.stringify(userData.quests)} and Message History:\n${conversationForGPT}`,
+    },
+    {
+      role: "user",
+      content: `You must list as many quests as are described in the conversation in the below array. If the quest already exists, update the quest context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each quests state.`,
+    },
+  ];
+
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "update_quest_context",
+        description:
+          "List as many quests as are described in the conversation in the below array. If the quest already exists, update the quest context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each quests state.",
+        parameters: {
+          type: "object",
+          properties: {
+            quests: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  quest_id: {
+                    type: "string",
+                    description:
+                      "A unique identifier for the quest, such as a sequential number like 1, 2, 3...",
+                  },
+                  quest_name: {
+                    type: "string",
+                    description: "The name of the quest.",
+                  },
+                  quest_giver: {
+                    type: "string",
+                    description: "The NPC or character who gave the quest.",
+                  },
+                  quest_goal: {
+                    type: "string",
+                    description: "The objective or goal of the quest. This must be very specific and actionable.",
+                  },
+                  quest_characters: {
+                    type: "string",
+                    description:
+                      "The characters involved in the quest, including the quest giver and any other relevant NPCs.",
+                  },
+                  quest_reward: {
+                    type: "string",
+                    description:
+                      "The reward for completing the quest, such as items, information or money.",
+                  },
+                  quest_difficulty: {
+                    type: "string",
+                    description:
+                      "The difficulty level of the quest (e.g., very easy, easy, medium, hard, so hard). Generally the first quests should be very easy.",
+                  },
+                  quest_type: {
+                    type: "string",
+                    description:
+                      "The type of quest (e.g., puzzle, defeat enemy, obtain item, obtain information).",
+                  },
+                  quest_completed_percentage: {
+                    type: "integer",
+                    description:
+                      "The percentage of the quest that has been completed (0-100). Quests always start at 0%."
+                  }
+                },
+                required: [
+                  "quest_id",
+                  "quest_name",
+                  "quest_giver",
+                  "quest_goal",
+                  "quest_characters",
+                  "quest_reward",
+                  "quest_difficulty",
+                  "quest_type",
+                  "quest_completed_percentage",
+                ],
+              },
+            },
+          },
+          required: ["quests"],
+        },
+      },
+    },
+  ];
+
+  try {
+    console.log("Calling OpenAI API with the prepared messages and tools.");
+    console.log(
+      "Data sent to GPT:",
+      JSON.stringify({ messages, tools }, null, 2),
+    );
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-0125-preview",
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto",
+    });
+
+    const responseMessage = response.choices[0].message;
+    console.log(
+      "[data.js/updateQuestContext] Response Message:",
+      JSON.stringify(responseMessage, null, 2),
+    );
+
+    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+      const toolCall = responseMessage.tool_calls[0];
+      console.log(
+        "[data.js/updateQuestContext] Function call:",
+        JSON.stringify(toolCall, null, 2),
+      );
+
+      if (toolCall.function.name === "update_quest_context") {
+        const functionArgs = JSON.parse(toolCall.function.arguments);
+        console.log(
+          "[data.js/updateQuestContext] Function arguments:",
+          JSON.stringify(functionArgs, null, 2),
+        );
+
+        const updatedQuests = functionArgs.quests;
+        console.log(
+          "[data.js/updateQuestContext] Updated quests:",
+          JSON.stringify(updatedQuests, null, 2),
+        );
+
+        // Iterate over the updated quests
+        updatedQuests.forEach((updatedQuest) => {
+          // Check if the quest already exists in userData.quests
+          const existingQuestIndex = userData.quests.findIndex(
+            (quest) => quest.quest_id === updatedQuest.quest_id,
+          );
+
+          if (existingQuestIndex !== -1) {
+            // If the quest exists, update its properties
+            userData.quests[existingQuestIndex] = {
+              ...userData.quests[existingQuestIndex],
+              ...updatedQuest,
+            };
+          } else {
+            // If the quest doesn't exist, add it to userData.quests
+            userData.quests.push(updatedQuest);
+          }
+        });
+
+        // Preserve existing quests that were not updated
+        const existingQuests = userData.quests.filter(
+          (quest) =>
+            !updatedQuests.some(
+              (updatedQuest) => updatedQuest.quest_id === quest.quest_id,
+            ),
+        );
+
+        // Combine updated and existing quests
+        userData.quests = [...updatedQuests, ...existingQuests];
+
+        await fs.writeFile(
+          filePaths.quest,
+          JSON.stringify(userData.quests, null, 2),
+        );
+        console.log(
+          `[data.js/updateQuestContext] Updated user data saved for ID: ${userId}`,
+        );
+      } else {
+        console.log(
+          "[data.js/updateQuestContext] Unexpected function call:",
+          toolCall.function.name,
+        );
+      }
+    } else {
+      console.log(
+        "[data.js/updateQuestContext] No function call detected in the model's response.",
+      );
+    }
+  } catch (error) {
+    console.error(
+      "[data.js/updateQuestContext] Failed to update quest context:",
+      error,
+    );
+    throw error;
+  }
+}
+
+module.exports = {
+  updateRoomContext,
+  updatePlayerContext,
+  updateStoryContext,
+  updateQuestContext,
+};
