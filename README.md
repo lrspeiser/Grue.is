@@ -26,3 +26,45 @@ Future of programming
 
 Why Grue?
 - A grue is a fictional, predatory creature that dwells in the dark. The term was first used to identify a human-bat hybrid predator in the Dying Earth series. The term was then borrowed to introduce a similar monster in Zork, a 1977 interactive fiction computer game published by Infocom.
+- 
+# Grue: A Tribute to Classic Text-Based Adventure Games
+
+Grue is a homage to the classic text-based adventure games like Zork. I embarked on an experiment to connect such a game with a GPT-driven dungeon master, despite my lack of programming skills. To my delight, directing GPT to undertake the development resulted in a highly satisfying outcome. Experience it yourself at [Grue](http://grue.is).
+
+## Maximizing the Benefits of LLMs for Non-Programmers
+
+### Choosing Your Environment
+Unlike seasoned programmers who might opt for an IDE like Visual Studio, I found traditional environments challenging due to setup difficulties. Replit emerged as a standout solution, simplifying the entire development process without the need for intricate setup steps. This platform facilitated direct focus on coding, significantly easing tasks such as compilation, database management, and web deployment.
+
+### Language Selection
+Initially, I leaned towards Python for its popularity and extensive documentation. However, its strict formatting requirements presented obstacles for someone with my limited programming background. After experimenting with various languages, including Rust and Next.JS, I eventually settled on Node.js. This choice was influenced by its more forgiving nature in handling data exchange between front-end and back-end, a critical factor for the success of my project.
+
+### Utilizing Console Logs Effectively
+To overcome environmental and debugging challenges, I extensively utilized console logs. This strategy not only provided clear insights into the code's execution but also significantly improved the interaction with LLMs by offering them detailed context for troubleshooting and optimization.
+
+### Addressing Performance Considerations
+While I initially envisioned utilizing LLMs for every aspect of the game, practical considerations regarding speed and efficiency led me to a mixed approach. By precomputing certain elements and keeping basic functions local, I achieved a balance that ensured a smooth and responsive user experience.
+
+### Database Management: A Comparative Analysis
+Exploring various database solutions was pivotal in understanding the trade-offs between structured databases and flat files. My journey through SQLLite, Postgres, and various serverless databases highlighted the versatility of LLMs in database management, with a slight preference for the simplicity and flexibility of flat files in a non-programmer context.
+
+### The Art of Prompt Engineering
+My journey with LLMs taught me the importance of precise and clear prompt engineering to achieve desired outcomes efficiently. This skill was crucial in avoiding repetitive errors and ensuring that the code met the project's requirements without unnecessary complications.
+
+### The Importance of Comments
+Documenting code with clear comments became an essential practice, not only for potential future human collaborators but also for guiding LLMs in maintaining the integrity of the codebase.
+
+### The Value of Being a Connoisseur
+My experience underscored the importance of understanding the components and structure of code without necessarily being a coder myself. This knowledge empowered me to guide the development process more effectively and achieve better results in less time.
+
+## Vision for the Future
+
+### Expanding LLM Capabilities
+The integration of compilers and development environments into LLM experiences could revolutionize the coding process, making it more accessible and efficient for non-programmers. This advancement would accelerate development cycles and enhance the quality of software solutions.
+
+### The Evolution of Programming With LLMs
+As LLMs become more adept at handling code-specific tasks, the landscape of programming is set to transform significantly. This evolution will not render programmers obsolete but will instead elevate the role of creative and strategic thinking in the development process.
+
+## Why Grue?
+The name "Grue" pays homage to a creature from the realm of classic adventure games, symbolizing the project's roots in nostalgia while embracing the future of game development through innovative technology.
+
