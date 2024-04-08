@@ -13,10 +13,11 @@ const auth = new google.auth.GoogleAuth({
 });
 
 const driveService = google.drive({ version: "v3", auth });
+const defaultParentId = process.env['google_drive']
 
 async function createFolder(
   name,
-  parentId = "1MVm8Exe4Ly68-Mrw42MPkvNC0AsdGfXN",
+  parentId = defaultParentId,
 ) {
   console.log(`[createFolder] Attempting to create or find folder: ${name}`);
 
