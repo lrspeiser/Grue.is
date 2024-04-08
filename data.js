@@ -124,7 +124,7 @@ async function updateStoryContext(userId) {
                 player_profile: {
                   type: "string",
                   description:
-                    "Anytime the user expresses a preference to the AI, like to stop doing something or to do something different, record it in this field. As the user plays the game, collect more information about their style based on what they submit and how they react to the game. Are they sarcastic or serious? How serious of a gamer are they? Do they like to talk to characters or take actions? Are they kind or mean? Are they young or old? Naive or mature? Build a full profile of the user. This is very important for the game play.",
+                    "Every time the user types something, you should be able to get information about them to fill in this area. Even when they start you can use what they told you to describe the kind of person they might be. Anytime the user expresses a preference to the AI, like to stop doing something or to do something different, record it in this field. As the user plays the game, collect more information about their style based on what they submit and how they react to the game. Are they sarcastic or serious? How serious of a gamer are they? Do they like to talk to characters or take actions? Are they kind or mean? Are they young or old? Naive or mature? Build a full profile of the user. Limit this to 100 words, if it goes longer then rewrite it. This is very important for the game play.",
                 },
               },
               required: [
@@ -731,7 +731,7 @@ async function updateQuestContext(userId) {
   const messages = [
     {
       role: "system",
-      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the quests into the fields. Make quests very specific and actionable, don't make their goals vague. Take this data and update with anything new based on the latest conversation update. Add more quests anytime the player interacts in the game and it seems like a good opportunity to introduce more quests.`,
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the quests into the fields. There should always be two active quests at all time. If a quest gets over 50% complete, you should create another quest. Make quests very specific and actionable, don't make their goals vague. Take this data and update with anything new based on the latest conversation update. Add more quests anytime the player interacts in the game and it seems like a good opportunity to introduce more quests.`,
     },
     {
       role: "system",
@@ -739,7 +739,7 @@ async function updateQuestContext(userId) {
     },
     {
       role: "user",
-      content: `You must list as many quests as are described in the conversation in the below array. If the quest already exists, update the quest context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each quests state.`,
+      content: `You must continue to create quests based on the latest dialogue. If the quest already exists, update the quest context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each quests state.`,
     },
   ];
 
@@ -761,7 +761,7 @@ async function updateQuestContext(userId) {
                   quest_id: {
                     type: "string",
                     description:
-                      "A unique identifier for the quest, such as a sequential number like 1, 2, 3...",
+                      "A unique identifier for the quest, such as a sequential number like 1, 2, 3... Never replace an old quest with a new one, always generate a new number.",
                   },
                   quest_name: {
                     type: "string",
@@ -774,27 +774,27 @@ async function updateQuestContext(userId) {
                   quest_goal: {
                     type: "string",
                     description:
-                      "The objective or goal of the quest. This must be very specific and actionable.",
+                      "The objective or goal of the quest. This must be very specific and actionable like get me an item, eliminate a foe, return a person to me, etc.",
                   },
                   quest_characters: {
                     type: "string",
                     description:
-                      "The characters involved in the quest, including the quest giver and any other relevant NPCs.",
+                      "The characters involved in the quest, including the quest giver and any other relevant NPCs. You might ask them to find someone specific or avoid certain people or defeat these people.",
                   },
                   quest_reward: {
                     type: "string",
                     description:
-                      "The reward for completing the quest, such as items, information or money.",
+                      "The reward for completing the quest, such as items, information or money. Be specific.",
                   },
                   quest_difficulty: {
                     type: "string",
                     description:
-                      "The difficulty level of the quest (e.g., very easy, easy, medium, hard, so hard). Generally the first quests should be very easy.",
+                      "The difficulty level of the quest (e.g., very easy, easy, medium, hard, so hard). Generally the first quests should be very easy. Easy means it only takes a couple of turns to win it. As it gets harder they should have to do more to win the quest and that will take more thinking and turns.",
                   },
                   quest_type: {
                     type: "string",
                     description:
-                      "The type of quest (e.g., puzzle, defeat enemy, obtain item, obtain information).",
+                      "The type of quest (e.g., puzzle, defeat enemy, obtain item, obtain information, find a person). Be specific on what they have to do to solve the quest.",
                   },
                   quest_completed_percentage: {
                     type: "integer",

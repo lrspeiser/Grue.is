@@ -1,1 +1,29 @@
-[]
+[
+  {
+    "player_name": "User",
+    "player_id": 1,
+    "player_type": "user",
+    "player_looks": "dressed in Hogwarts robes, wand in hand, surrounded by books about Defense Against the Dark Arts and Ender’s Game strategies",
+    "player_location": "Gryffindor House common room",
+    "inventory": "wand, handwritten note from Professor McGonagall",
+    "player_health": "100"
+  },
+  {
+    "player_name": "Neville Longbottom",
+    "player_id": 2,
+    "player_type": "computer_controlled: ally",
+    "player_looks": "excited, talking about the latest Quidditch match",
+    "player_location": "Gryffindor House common room",
+    "inventory": "",
+    "player_health": "100"
+  },
+  {
+    "player_name": "Luna",
+    "player_id": 3,
+    "player_type": "computer_controlled: ally",
+    "player_looks": "studying a potion recipe",
+    "player_location": "Gryffindor House common room",
+    "inventory": "",
+    "player_health": "100"
+  }
+]

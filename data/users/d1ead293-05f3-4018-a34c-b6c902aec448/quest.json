@@ -1,1 +1,24 @@
-[]
+[
+  {
+    "quest_id": "1",
+    "quest_name": "Investigate the Mysterious Noises with Neville",
+    "quest_giver": "Neville Longbottom",
+    "quest_goal": "Investigate the source of the mysterious noises coming from the third floor.",
+    "quest_characters": "Harry Potter, Neville Longbottom",
+    "quest_reward": "Discovering a guarded secret.",
+    "quest_difficulty": "medium",
+    "quest_type": "explore",
+    "quest_completed_percentage": 0
+  },
+  {
+    "quest_id": "2",
+    "quest_name": "Make Friends in Gryffindor",
+    "quest_giver": "Professor McGonagall (indirectly)",
+    "quest_goal": "Make friends before starting your special assignment from McGonagall.",
+    "quest_characters": "Harry Potter, Neville Longbottom, Luna, Gryffindor Students",
+    "quest_reward": "Aiding in your upcoming assignment.",
+    "quest_difficulty": "easy",
+    "quest_type": "social interaction",
+    "quest_completed_percentage": 50
+  }
+]
