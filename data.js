@@ -1,3 +1,5 @@
+//data.js
+
 const fs = require("fs").promises;
 const path = require("path");
 const {
@@ -18,7 +20,22 @@ async function updateStoryContext(userId) {
   const userData = await getUserData(filePaths);
   console.log("[data.js/updateStoryContext] User data:", userData);
 
+  // Preserve Google Drive Folder ID
+  let googleDriveFolderId;
+
   let storyData = {};
+  try {
+    const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
+    storyData = JSON.parse(storyDataRaw) || {};
+    googleDriveFolderId = storyData["google_id"];
+    console.log("[data.js/updateStoryContext] Raw story data", storyDataRaw);
+  } catch (error) {
+    console.error(
+      "[data.js/updateStoryContext] Error reading story data:",
+      error,
+    );
+    storyData = {}; // Initialize with an empty object if the file doesn't exist or is empty
+  }
   try {
     const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
     console.log("[data.js/updateStoryContext] Raw story data");
@@ -92,7 +109,7 @@ async function updateStoryContext(userId) {
                 active_game: {
                   type: "boolean",
                   description:
-                    "As soon as you have enough information to populate the game_description and character_played_by_user, set this to ture. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false",
+                    "This should only be set to true when you have enough information to officially start the game. If you are still asking the user questions to figure out what they want, keep as false. As soon as you have enough information to populate the game_description and character_played_by_user, set this to true. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false again.",
                 },
                 character_played_by_user: {
                   type: "string",
@@ -162,6 +179,13 @@ async function updateStoryContext(userId) {
         );
 
         storyData = functionArgs.story_details;
+
+        if (googleDriveFolderId) {
+          storyData["google_id"] = googleDriveFolderId;
+          console.log(
+            "[data.js/updateStoryContext] Preserved Google Drive Folder ID in the updated story data.",
+          );
+        }
 
         await fs.writeFile(filePaths.story, JSON.stringify(storyData, null, 2));
         console.log(
@@ -263,7 +287,8 @@ async function updateRoomContext(userId) {
                   },
                   characters_in_room: {
                     type: "string",
-                    description: "Computer generated characters in the room. Always use names for characters.",
+                    description:
+                      "Computer generated characters in the room. Always use names for characters.",
                   },
                   unmovable_items_in_room: {
                     type: "string",
@@ -748,7 +773,8 @@ async function updateQuestContext(userId) {
                   },
                   quest_goal: {
                     type: "string",
-                    description: "The objective or goal of the quest. This must be very specific and actionable.",
+                    description:
+                      "The objective or goal of the quest. This must be very specific and actionable.",
                   },
                   quest_characters: {
                     type: "string",
@@ -773,8 +799,8 @@ async function updateQuestContext(userId) {
                   quest_completed_percentage: {
                     type: "integer",
                     description:
-                      "The percentage of the quest that has been completed (0-100). Quests always start at 0%."
-                  }
+                      "The percentage of the quest that has been completed (0-100). Quests always start at 0%.",
+                  },
                 },
                 required: [
                   "quest_id",

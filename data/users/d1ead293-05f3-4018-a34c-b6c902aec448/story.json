@@ -1,9 +1,10 @@
 {
-  "language_spoken": "",
-  "favorite_author": "",
+  "language_spoken": "English",
+  "favorite_author": "Orson Scott Card",
   "favorite_story": "Harry Potter",
   "active_game": true,
-  "character_played_by_user": "A new student at Hogwarts, inspired by Harry Potter",
-  "game_description": "Your journey begins with an acceptance letter to Hogwarts. Equipped with a new wand and an owl, you stand outside of King's Cross Station, eager but uncertain. The magical adventure ahead involves learning spells, making friends (and perhaps a few rivals), and uncovering hidden secrets within the castle. Your choices will shape your path and determine how your story unfolds.",
-  "player_profile": "prefers short responses, has chosen to board the Hogwarts Express"
+  "character_played_by_user": "Harry Potter",
+  "game_description": "Awakening in a cozy room within the walls of Hogwarts, you embark on a special assignment detailed by Professor McGonagall. Your task requires both magical prowess and strategic thinking, reminiscent of both your world and that of Ender Wiggin’s. As mysteries unfold, you will choose your path, ally with companions, and tackle challenges that test your skills and resolve. Can you uncover the hidden secrets of Hogwarts and prove yourself as more than just the Boy Who Lived, but as a master of both magic and mind?",
+  "player_profile": "",
+  "google_id": "14JqBMgv014IPkUZVZdzDp3BHtfpZXJ-n"
 }

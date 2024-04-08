@@ -1,54 +1,176 @@
 // util.js
-const fs = require("fs").promises;
+const fsp = require("fs").promises;
+const fs = require("fs");
 const path = require("path");
+const { google } = require("googleapis");
+const { Readable } = require('stream'); // Correctly import Readable
 
-async function ensureUserDirectoryAndFiles(userId) {
-  console.log("[ensureUserDirectoryAndFiles] Called with userId:", userId);
 
-  const userDirPath = path.join(__dirname, "data", "users", userId);
+// Initialize Google Drive API
+const auth = new google.auth.GoogleAuth({
+  keyFile: path.join(__dirname, "service-account-key.json"),
+  scopes: ["https://www.googleapis.com/auth/drive"],
+});
 
+const driveService = google.drive({ version: "v3", auth });
+
+async function createFolder(
+  name,
+  parentId = "1MVm8Exe4Ly68-Mrw42MPkvNC0AsdGfXN",
+) {
+  console.log(`[createFolder] Attempting to create or find folder: ${name}`);
+
+  // Search for an existing folder with the same name under the same parent.
+  try {
+    const query = `mimeType='application/vnd.google-apps.folder' and name='${name}' and '${parentId}' in parents and trashed=false`;
+    const searchResult = await driveService.files.list({
+      q: query,
+      spaces: "drive",
+      fields: "files(id, name)",
+    });
+
+    if (searchResult.data.files.length > 0) {
+      // If the folder already exists, use the existing folder's ID
+      const existingFolderId = searchResult.data.files[0].id;
+      console.log(
+        `[createFolder] Existing folder found with ID: ${existingFolderId}`,
+      );
+      return existingFolderId;
+    } else {
+      // If the folder does not exist, create it
+      const fileMetadata = {
+        name: name,
+        mimeType: "application/vnd.google-apps.folder",
+        parents: [parentId],
+      };
+      const folder = await driveService.files.create({
+        resource: fileMetadata,
+        fields: "id",
+      });
+      console.log(
+        `[createFolder] New folder created with ID: ${folder.data.id}`,
+      );
+      return folder.data.id; // Return the new folder ID
+    }
+  } catch (error) {
+    console.error(
+      `[createFolder] Error checking or creating folder: ${error.message}`,
+    );
+    throw error;
+  }
+}
+
+async function uploadJsonToDrive(folderId, name, dataPath) {
   console.log(
-    "[ensureUserDirectoryAndFiles] User directory path:",
-    userDirPath,
+    `[uploadJsonToDrive] Uploading ${name} to folder ID: ${folderId}`,
   );
 
-  await fs.mkdir(userDirPath, { recursive: true });
+  // Step 1: Search for the file in the specified folder
+  const searchResponse = await driveService.files.list({
+    q: `name='${name}' and '${folderId}' in parents and trashed=false`,
+    spaces: "drive",
+    fields: "files(id)",
+  });
 
-  console.log("[ensureUserDirectoryAndFiles] Directory ensured for user");
+  // Step 2: Read file content
+  const fileContent = await fsp.readFile(dataPath, "utf8");
 
-  const filePaths = {
-    conversation: path.join(userDirPath, "conversation.json"),
-    room: path.join(userDirPath, "room.json"),
-    player: path.join(userDirPath, "player.json"),
-    story: path.join(userDirPath, "story.json"),
-    quest: path.join(userDirPath, "quest.json"),
+  // Step 3: Convert file content to a stream
+  const media = {
+    mimeType: "application/json",
+    body: new Readable({
+      read() {
+        this.push(fileContent);
+        this.push(null); // End of stream
+      },
+    }),
   };
 
-  console.log(
-    "[ensureUserDirectoryAndFiles] Checking and initializing files if needed.",
-  );
-
-  for (const [key, filePath] of Object.entries(filePaths)) {
-    try {
-      await fs.access(filePath);
-      console.log(
-        `[ensureUserDirectoryAndFiles] ${key} file exists, skipping creation.`,
-      );
-    } catch {
-      console.log(
-        `[ensureUserDirectoryAndFiles] ${key} file does not exist, creating.`,
-      );
-      // Initializing conversation.json with an array and others with an empty object
-      const initialContent = key === "conversation" ? [] : {};
-      await fs.writeFile(filePath, JSON.stringify(initialContent, null, 2));
-      console.log(
-        `[ensureUserDirectoryAndFiles] ${key} file created with initial content.`,
-      );
-    }
+  if (searchResponse.data.files.length > 0) {
+    // File exists, update it
+    const fileId = searchResponse.data.files[0].id;
+    await driveService.files.update({
+      fileId,
+      media,
+    });
+    console.log(`[uploadJsonToDrive] Updated existing file: ${name}`);
+  } else {
+    // File does not exist, create it
+    const fileMetadata = {
+      name,
+      parents: [folderId],
+      mimeType: "application/json",
+    };
+    await driveService.files.create({
+      resource: fileMetadata,
+      media,
+      fields: "id",
+    });
+    console.log(`[uploadJsonToDrive] Uploaded new file: ${name}`);
   }
-
-  return filePaths;
 }
+
+async function ensureUserDirectoryAndFiles(userId) {
+    console.log("[ensureUserDirectoryAndFiles] Called with userId:", userId);
+
+    const userDirPath = path.join(__dirname, "data", "users", userId);
+    console.log("[ensureUserDirectoryAndFiles] User directory path:", userDirPath);
+
+    await fsp.mkdir(userDirPath, { recursive: true });
+    console.log("[ensureUserDirectoryAndFiles] Directory ensured for user");
+
+    const filePaths = {
+        conversation: path.join(userDirPath, "conversation.json"),
+        room: path.join(userDirPath, "room.json"),
+        player: path.join(userDirPath, "player.json"),
+        story: path.join(userDirPath, "story.json"),
+        quest: path.join(userDirPath, "quest.json"),
+    };
+
+    let userFolderId;
+    try {
+        const storyContent = await fsp.readFile(filePaths.story, "utf8");
+        const storyData = JSON.parse(storyContent);
+        userFolderId = storyData.google_id;
+        if (userFolderId) {
+            console.log(`[ensureUserDirectoryAndFiles] Using existing Google Drive Folder ID from story.json: ${userFolderId}`);
+        } else {
+            throw new Error("Google Drive Folder ID not found or invalid in story.json");
+        }
+    } catch (error) {
+        console.log("[ensureUserDirectoryAndFiles] Google Drive Folder ID not found or invalid in story.json, checking or creating new folder.");
+        userFolderId = await createFolder(userId);
+        let storyContent;
+        try {
+            storyContent = JSON.parse(await fsp.readFile(filePaths.story, "utf8"));
+        } catch (error) {
+            storyContent = {};
+        }
+        storyContent.google_id = userFolderId;
+        await fsp.writeFile(filePaths.story, JSON.stringify(storyContent, null, 2));
+        console.log("[ensureUserDirectoryAndFiles] story.json updated with Google Drive folder ID.");
+    }
+
+    for (const [key, filePath] of Object.entries(filePaths)) {
+        try {
+            await fsp.access(filePath);
+            console.log(`[ensureUserDirectoryAndFiles] ${key} file exists, skipping creation.`);
+        } catch (error) {
+            console.log(`[ensureUserDirectoryAndFiles] ${key} file does not exist, creating.`);
+            const initialContent = key === "conversation" ? [] : {};
+            await fsp.writeFile(filePath, JSON.stringify(initialContent, null, 2));
+            console.log(`[ensureUserDirectoryAndFiles] ${key} file created with initial content.`);
+        }
+
+        console.log(`[ensureUserDirectoryAndFiles] Initiating backup for ${key} file to Google Drive.`);
+        uploadJsonToDrive(userFolderId, `${key}.json`, filePath)
+            .then(() => console.log(`[ensureUserDirectoryAndFiles] Backup completed for ${key}.`))
+            .catch(error => console.error(`[ensureUserDirectoryAndFiles] Backup failed for ${key}: ${error}`));
+    }
+
+    return filePaths;
+}
+
 
 async function getUserData(filePaths) {
   console.log("[getUserData] Called with filePaths:", filePaths);
@@ -90,7 +212,7 @@ async function getUserData(filePaths) {
 
 async function readJsonFileSafe(filePath, defaultValue) {
   try {
-    const fileContent = await fs.readFile(filePath, "utf8");
+    const fileContent = await fsp.readFile(filePath, "utf8");
     console.log(
       `[readJsonFileSafe] Raw file content for ${filePath}:`,
       fileContent,
