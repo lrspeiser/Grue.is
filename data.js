@@ -483,6 +483,25 @@ async function updatePlayerContext(userId) {
     playerDataJson,
   );
 
+  // Read story data directly from the JSON file
+  let storyData = {};
+  try {
+    const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
+    storyData = JSON.parse(storyDataRaw) || {};
+  } catch (error) {
+    console.error(
+      "[data.js/updatePlayerContext] Error reading story data:",
+      error,
+    );
+  }
+
+  const storyDataJson = JSON.stringify(storyData, null, 2);
+  console.log(
+    "[data.js/updatePlayerContext] Story Data JSON:",
+    storyDataJson,
+  );
+
+
   // Formatting the last five messages for the GPT call
   let formattedHistory = "";
   if (conversationHistory && conversationHistory.length > 0) {
@@ -501,11 +520,11 @@ async function updatePlayerContext(userId) {
   const messages = [
     {
       role: "system",
-      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. This function will describe every character in the world as we encounter them. Even if we don't know the name, fill out as much as possible in the function below. Here are all the characters we know so far: ${playerDataJson}. Last five messages:\n${formattedHistory} Take this data and update with anything new based on the latest conversation update. For instance if the player takes something from the room, you must add it to their inventory. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one. If there are multiple players, return an array of player objects. For instance, if there is another character in the room, immediately create that player record with as much detail as possible. Also, if the user says they want to quit the game take their health score to 0. That will reset the game and erase all their data so be sure that is what they want. Also, if the user is violating the rules we will say in the response that a grue has killed them and you should also set their health to zero.`,
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. This function will describe every character in the world as we encounter them. Even if we don't know the name, fill out as much as possible in the function below. Here is the story and user data: ${storyDataJson}. Here are all the characters we know so far: ${playerDataJson}. Last five messages:\n${formattedHistory} Take this data and update with anything new based on the latest conversation update. For instance if the player takes something from the room, you must add it to their inventory. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one. If there are multiple players, return an array of player objects. For instance, if there is another character in the room, immediately create that player record with as much detail as possible. Also, if the user says they want to quit the game take their health score to 0. That will reset the game and erase all their data so be sure that is what they want. Also, if the user is violating the rules we will say in the response that a grue has killed them and you should also set their health to zero.`,
     },
     {
       role: "user",
-      content: `You must identify every character in the location from the dialogue and add them to the array below, generating as many characters as needed to match the conversation details. Update the player context based on the latest conversations. The function should output structured data regarding the player's or players' state, including player details and inventory. If there is nothing new but there was content there before, output the previous content again. If there is no content for the field, return nothing. Most locations will have multiple characters in the game and you must return an array of players with their details.`,
+      content: `You must identify every character in the location from the dialogue and add them to the array below, generating as many characters as needed to match the conversation details. If the conversation doesn't have much detail, take the concept of the story and make up the details to fit that, including the name of the character, their appearance, their friend or foe status, and any items they might have on them. Update the player context based on the latest conversations. The function should output structured data regarding the player's or players' state, including player details and inventory. If there is nothing new but there was content there before, output the previous content again. If there is no content for the field, return nothing. Most locations will have multiple characters in the game and you must return an array of players with their details.`,
     },
   ];
 
@@ -515,7 +534,7 @@ async function updatePlayerContext(userId) {
       function: {
         name: "update_player_context",
         description:
-          "You must identify every character in the location from the dialogue and add them to the array below, generating as many characters as needed to match the conversation details. Update the player context based on the latest conversations. The function should output structured data regarding the player's or players' state, including player details and inventory. If there is nothing new but there was content there before, output the previous content again. If there is no content for the field, return nothing. Most locations will have multiple characters in the game and you must return an array of players with their details.",
+          "You must identify every character in the location from the dialogue and add them to the array below, generating as many characters as needed to match the conversation details. If the conversation doesn't have much detail, take the concept of the story and make up the details to fit that, including the name of the character, their appearance, their friend or foe status, and any items they might have on them. Update the player context based on the latest conversations. The function should output structured data regarding the player's or players' state, including player details and inventory. If there is nothing new but there was content there before, output the previous content again. If there is no content for the field, return nothing. Most locations will have multiple characters in the game and you must return an array of players with their details.",
         parameters: {
           type: "object",
           properties: {
@@ -715,6 +734,24 @@ async function updateQuestContext(userId) {
     userData.quests = [];
   }
 
+  // Read story data directly from the JSON file
+  let storyData = {};
+  try {
+    const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
+    storyData = JSON.parse(storyDataRaw) || {};
+  } catch (error) {
+    console.error(
+      "[data.js/updatePlayerContext] Error reading story data:",
+      error,
+    );
+  }
+
+  const storyDataJson = JSON.stringify(storyData, null, 2);
+  console.log(
+    "[data.js/updatePlayerContext] Story Data JSON:",
+    storyDataJson,
+  );
+
   // Get the most recent 5 messages from the conversation history
   const recentMessages = userData.conversationHistory.slice(-5);
 
@@ -735,7 +772,7 @@ async function updateQuestContext(userId) {
     },
     {
       role: "system",
-      content: `Current quest data: ${JSON.stringify(userData.quests)} and Message History:\n${conversationForGPT}`,
+      content: `Story data: Here is the story and user data: ${storyDataJson}. Current quest data: ${JSON.stringify(userData.quests)} and Message History:\n${conversationForGPT}`,
     },
     {
       role: "user",
@@ -749,7 +786,7 @@ async function updateQuestContext(userId) {
       function: {
         name: "update_quest_context",
         description:
-          "List as many quests as are described in the conversation in the below array. If the quest already exists, update the quest context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each quests state.",
+          "User the conversation details to create quests that the story can use to give the user challenges. Make sure there are always several possible quests and make them very specific. Unless they are easy make sure to define the steps the user might have to complete to win the quest. If the quest already exists, update the quest context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each quests state.",
         parameters: {
           type: "object",
           properties: {
@@ -769,7 +806,7 @@ async function updateQuestContext(userId) {
                   },
                   quest_giver: {
                     type: "string",
-                    description: "The NPC or character who gave the quest.",
+                    description: "The NPC or character who gave the quest. This might be needed so the user can come back to complete the quest and get their prize from the giver of the quest.",
                   },
                   quest_goal: {
                     type: "string",
@@ -779,7 +816,7 @@ async function updateQuestContext(userId) {
                   quest_characters: {
                     type: "string",
                     description:
-                      "The characters involved in the quest, including the quest giver and any other relevant NPCs. You might ask them to find someone specific or avoid certain people or defeat these people.",
+                      "The characters involved in the quest and why the user needs to interact with them to complete the quest. You might ask them to find someone specific or avoid certain people or defeat these people.",
                   },
                   quest_reward: {
                     type: "string",
@@ -789,7 +826,7 @@ async function updateQuestContext(userId) {
                   quest_difficulty: {
                     type: "string",
                     description:
-                      "The difficulty level of the quest (e.g., very easy, easy, medium, hard, so hard). Generally the first quests should be very easy. Easy means it only takes a couple of turns to win it. As it gets harder they should have to do more to win the quest and that will take more thinking and turns.",
+                      "The difficulty level of the quest (e.g., very easy, easy, medium, hard, so hard). Generally the first quests should be very easy. Easy means it only takes a couple of turns to win it. As it gets harder they should have to do more to win the quest and that will take more thinking, risk and turns. Give the risks to the user for taking on the quest including their chance of getting killed trying to take it on.",
                   },
                   quest_type: {
                     type: "string",

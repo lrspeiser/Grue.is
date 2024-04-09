@@ -5,10 +5,11 @@ const path = require("path");
 const { google } = require("googleapis");
 const { Readable } = require('stream'); // Correctly import Readable
 
+const serviceAccountCredentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
 
 // Initialize Google Drive API
 const auth = new google.auth.GoogleAuth({
-  keyFile: path.join(__dirname, "service-account-key.json"),
+  credentials: serviceAccountCredentials,
   scopes: ["https://www.googleapis.com/auth/drive"],
 });
 

@@ -3,9 +3,11 @@ const path = require("path");
 const fs = require("fs"); // Use the original fs for createWriteStream
 const fsp = require("fs").promises; // Use fs.promises for async file operations
 
-// Initialize Google Drive API with your service account
+const serviceAccountCredentials = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+
+// Initialize Google Drive API
 const auth = new google.auth.GoogleAuth({
-  keyFile: path.join(__dirname, "service-account-key.json"), // Ensure this path is correct
+  credentials: serviceAccountCredentials,
   scopes: ["https://www.googleapis.com/auth/drive"],
 });
 
@@ -54,5 +56,5 @@ async function downloadFile(fileId) {
 }
 
 // Example usage: Replace 'YOUR_FILE_ID_HERE' with the actual file ID
-const fileId = "17XIET0f6tP8dfrA4LQhnJvRv5peRtqIo"; // Example: '1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs'
+const fileId = "17XIET0f6tP8dfrA4LQhnJvRv5peRtqIo"; 
 downloadFile(fileId);
