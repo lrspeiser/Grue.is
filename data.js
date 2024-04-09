@@ -56,7 +56,9 @@ async function updateStoryContext(userId) {
 
   let formattedHistory = "";
   if (userData.conversationHistory && userData.conversationHistory.length > 0) {
-    formattedHistory = userData.conversationHistory
+    // Get only the last 5 messages
+    const lastFiveMessages = userData.conversationHistory.slice(-5);
+    formattedHistory = lastFiveMessages
       .map(
         (msg) =>
           `#${msg.messageId} [${msg.timestamp}]:\nUser: ${msg.userPrompt}\nAssistant: ${msg.response}`,
@@ -67,6 +69,7 @@ async function updateStoryContext(userId) {
     "[data.js/updateStoryContext] Formatted Conversation History for GPT:",
     formattedHistory,
   );
+
 
   const messages = [
     {
@@ -247,7 +250,7 @@ async function updateRoomContext(userId) {
     },
     {
       role: "user",
-      content: `You must list as many rooms or locations are described in the conversation in the below array. If the room already exists, update the room context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each room's state, including room details and item interactions.`,
+      content: `You must list as many rooms or locations are described in the conversation in the below array. If the user goes in a direction, you must create a new room or location for that direction. If there are available directions for the user to go in, create those rooms or locations in preparation for them to go in those directions. If the room already exists, update the room context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each room's state, including room details and item interactions.`,
     },
   ];
 
@@ -257,7 +260,7 @@ async function updateRoomContext(userId) {
       function: {
         name: "update_room_context",
         description:
-          "List as many rooms or locations are described in the conversation in the below array. If the room already exists, update the room context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each room's state, including room details and item interactions.",
+          "You must list as many rooms or locations are described in the conversation in the below array. If the user goes in a direction, you must create a new room or location for that direction. If there are available directions for the user to go in, create those rooms or locations in preparation for them to go in those directions. If the room already exists, update the room context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each room's state, including room details and item interactions.",
         parameters: {
           type: "object",
           properties: {
@@ -309,7 +312,7 @@ async function updateRoomContext(userId) {
                   players_conversation_ids_in_room: {
                     type: "string",
                     description:
-                      "Indicate the messageIds when the player was in this room. Example: 1, 2, 3. When the player moves rooms, record that messageId in the new room.",
+                      "Indicate the messageIds from the conversatoin history when the player was in this room. Example: 1, 2, 3. When the player moves rooms, record that messageId in the new room. Don't make up any ids for this, if you don't see it in the conversation message ids, then leave this blank.",
                   },
                 },
                 required: [
@@ -372,33 +375,32 @@ async function updateRoomContext(userId) {
           JSON.stringify(updatedRooms, null, 2),
         );
 
+        // Read all the existing rooms from userData.locations
+        const existingRooms = userData.locations;
+
+        // Create a map of existing rooms by room_id for faster lookup
+        const existingRoomsMap = new Map(
+          existingRooms.map((room) => [room.room_id, room]),
+        );
+
         // Iterate over the updated rooms
         updatedRooms.forEach((updatedRoom) => {
-          // Check if the room already exists in userData.locations
-          const existingRoomIndex = userData.locations.findIndex(
-            (location) => location.room_id === updatedRoom.room_id,
-          );
-
-          if (existingRoomIndex !== -1) {
+          // Check if the room already exists in the map
+          if (existingRoomsMap.has(updatedRoom.room_id)) {
             // If the room exists, update its properties
-            userData.locations[existingRoomIndex] = {
-              ...userData.locations[existingRoomIndex],
-              ...updatedRoom,
-            };
+            const existingRoom = existingRoomsMap.get(updatedRoom.room_id);
+            Object.assign(existingRoom, updatedRoom);
           } else {
-            // If the room doesn't exist, add it to userData.locations
-            userData.locations.push(updatedRoom);
+            // If the room doesn't exist, add it to the map
+            existingRoomsMap.set(updatedRoom.room_id, updatedRoom);
           }
         });
 
-        // Preserve existing rooms that were not updated
-        const existingRooms = userData.locations.filter(
-          (location) =>
-            !updatedRooms.some((room) => room.room_id === location.room_id),
-        );
+        // Convert the map values back to an array
+        const updatedLocations = Array.from(existingRoomsMap.values());
 
-        // Combine updated and existing rooms
-        userData.locations = [...updatedRooms, ...existingRooms];
+        // Update userData.locations with the updated locations
+        userData.locations = updatedLocations;
 
         await fs.writeFile(
           filePaths.room,
@@ -496,16 +498,13 @@ async function updatePlayerContext(userId) {
   }
 
   const storyDataJson = JSON.stringify(storyData, null, 2);
-  console.log(
-    "[data.js/updatePlayerContext] Story Data JSON:",
-    storyDataJson,
-  );
+  console.log("[data.js/updatePlayerContext] Story Data JSON:", storyDataJson);
 
-
-  // Formatting the last five messages for the GPT call
   let formattedHistory = "";
   if (conversationHistory && conversationHistory.length > 0) {
-    formattedHistory = conversationHistory
+    // Get only the last 5 messages
+    const lastFiveMessages = conversationHistory.slice(-5);
+    formattedHistory = lastFiveMessages
       .map(
         (msg) =>
           `#${msg.messageId} [${msg.timestamp}]:\nUser: ${msg.userPrompt}\nAssistant: ${msg.response}`,
@@ -673,33 +672,54 @@ async function updatePlayerContext(userId) {
           return null; // Return null to indicate game reset
         }
 
-        // Update the existing player data with the received updates
-        playerData = playerData.map((player) => {
-          const updatedPlayer = updatedPlayers.find(
-            (p) => p.player_id === player.player_id,
+        // Read the existing player data from the player.json file
+        let existingPlayerData = [];
+        try {
+          const existingPlayerDataRaw = await fs.readFile(
+            filePaths.player,
+            "utf8",
           );
-          return updatedPlayer ? { ...player, ...updatedPlayer } : player;
-        });
+          existingPlayerData = JSON.parse(existingPlayerDataRaw) || [];
+        } catch (error) {
+          console.error(
+            "[data.js/updatePlayerContext] Error reading existing player data:",
+            error,
+          );
+        }
 
-        // Add new players that don't exist in the current data
+        // Create a map of existing players by player_id for faster lookup
+        const existingPlayersMap = new Map(
+          existingPlayerData.map((player) => [player.player_id, player]),
+        );
+
+        // Iterate over the updated players
         updatedPlayers.forEach((updatedPlayer) => {
-          if (
-            !playerData.some((p) => p.player_id === updatedPlayer.player_id)
-          ) {
-            playerData.push(updatedPlayer);
+          // Check if the player already exists in the map
+          if (existingPlayersMap.has(updatedPlayer.player_id)) {
+            // If the player exists, update its properties
+            const existingPlayer = existingPlayersMap.get(
+              updatedPlayer.player_id,
+            );
+            Object.assign(existingPlayer, updatedPlayer);
+          } else {
+            // If the player doesn't exist, add it to the map
+            existingPlayersMap.set(updatedPlayer.player_id, updatedPlayer);
           }
         });
+
+        // Convert the map values back to an array
+        const updatedPlayerData = Array.from(existingPlayersMap.values());
 
         // Save updated player data to the player.json file
         await fs.writeFile(
           filePaths.player,
-          JSON.stringify(playerData, null, 2),
+          JSON.stringify(updatedPlayerData, null, 2),
         );
         console.log(
           `[data.js/updatePlayerContext] Updated player data saved for ID: ${userId}`,
         );
 
-        return JSON.stringify(playerData); // Or any other info you need to return
+        return JSON.stringify(updatedPlayerData); // Or any other info you need to return
       } else {
         console.log(
           "[data.js/updatePlayerContext] Unexpected function call:",
@@ -741,16 +761,13 @@ async function updateQuestContext(userId) {
     storyData = JSON.parse(storyDataRaw) || {};
   } catch (error) {
     console.error(
-      "[data.js/updatePlayerContext] Error reading story data:",
+      "[data.js/updateQuestContext] Error reading story data:",
       error,
     );
   }
 
   const storyDataJson = JSON.stringify(storyData, null, 2);
-  console.log(
-    "[data.js/updatePlayerContext] Story Data JSON:",
-    storyDataJson,
-  );
+  console.log("[data.js/updateQuestContext] Story Data JSON:", storyDataJson);
 
   // Get the most recent 5 messages from the conversation history
   const recentMessages = userData.conversationHistory.slice(-5);
@@ -806,7 +823,8 @@ async function updateQuestContext(userId) {
                   },
                   quest_giver: {
                     type: "string",
-                    description: "The NPC or character who gave the quest. This might be needed so the user can come back to complete the quest and get their prize from the giver of the quest.",
+                    description:
+                      "The NPC or character who gave the quest. This might be needed so the user can come back to complete the quest and get their prize from the giver of the quest.",
                   },
                   quest_goal: {
                     type: "string",

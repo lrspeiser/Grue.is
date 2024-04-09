@@ -10,7 +10,10 @@ const {
   updateStoryContext,
   updateQuestContext,
 } = require("./data.js");
-const { ensureUserDirectoryAndFiles, getUserData } = require("./util");
+const {
+  ensureUserDirectoryAndFiles,
+  getUserData,
+} = require("./util");
 
 const app = express();
 const PORT = 3000;
@@ -105,59 +108,10 @@ app.post("/api/users", async (req, res) => {
       ];
 
       await Promise.all(initPromises);
-
-      // Check if it's the user's first time
-      if (userData.conversationHistory.length === 0) {
-        console.log(`[/api/users] First time user detected for ID: ${userId}`);
-
-        // Create a new message object with the predefined user message
-        const firstTimeMessage = {
-          userId: userId,
-          messages: [
-            {
-              role: "user",
-              content:
-                "This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. You can tell me specifically, or give me the name of an author, story, or movie that can help guide the creation of our world. And if you speak a language other than english just let us know.",
-            },
-          ],
-        };
-
-        console.log(
-          `[/api/users] Sending first time message to /api/chat endpoint for user ID: ${userId}`,
-        );
-
-        // Send the message to the /api/chat endpoint
-        const response = await fetch("http://localhost:3000/api/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(firstTimeMessage),
-        });
-
-        console.log(
-          `[/api/users] Received response from /api/chat endpoint for user ID: ${userId}`,
-        );
-
-        // Get the response from the /api/chat endpoint
-        const chatResponse = await response.text();
-
-        console.log(
-          `[/api/users] Chat response for user ID: ${userId}:`,
-          chatResponse,
-        );
-
-        // Include the chat response in the user data
-        userData.firstTimeResponse = chatResponse;
-
-        console.log(
-          `[/api/users] Updated user data with first time response for user ID: ${userId}`,
-        );
-      }
     }
 
     console.log(`[/api/users] User data processed for ID: ${userId}`);
-  res.json({ ...userData, userId, firstTimeResponse: userData.firstTimeResponse }); // Include the firstTimeResponse in the response
+    res.json({ ...userData, userId }); // Ensure userId is always returned
   } catch (error) {
     console.error(
       `[/api/users] Failed to process user data for ID: ${userId}, error: ${error}`,

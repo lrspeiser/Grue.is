@@ -77,6 +77,14 @@ document.addEventListener("DOMContentLoaded", () => {
             );
             conversationHistory = [];
           }
+          // Check if it's the user's first time
+          if (conversationHistory.length === 0) {
+            console.log(`[front.js/init] First time user detected for ID: ${userId}`);
+            const firstTimeUserMessage = "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
+            console.log(`[front.js/init] Sending first time user message: ${firstTimeUserMessage}`);
+            // Send the first-time user message using the callChatAPI function
+            callChatAPI(firstTimeUserMessage, userId);
+          }
         } else {
           console.error("[front.js/init] Invalid userId received", data);
           throw new Error("Invalid userId received");
