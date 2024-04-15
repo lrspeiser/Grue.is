@@ -1,12 +1,11 @@
-//data.js
+//data.js - never remove this comment
+const { getDbClient } = require('./dbClient');
+const { ref, set, get, remove } = require("firebase/database"); // Correct import for Firebase database functions
+const db = getDbClient();
 
 const fs = require("fs").promises;
 const path = require("path");
-const {
-  ensureUserDirectoryAndFiles,
-  getUserData,
-  isStoryDataPopulated,
-} = require("./util");
+const { ensureUserDirectoryAndFiles, getUserData } = require("./util");
 
 const OpenAIApi = require("openai"); //never change this
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
@@ -14,39 +13,21 @@ const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
 async function updateStoryContext(userId) {
   console.log("[data.js/updateStoryContext] Starting updateStoryContext");
 
-  const filePaths = await ensureUserDirectoryAndFiles(userId);
-  console.log("[data.js/updateStoryContext] File paths:", filePaths);
+  await ensureUserDirectoryAndFiles(userId);
+  console.log("[data.js/updateStoryContext] User data ensured in ReplDB");
 
-  const userData = await getUserData(filePaths);
+  const userData = await getUserData(userId);
   console.log("[data.js/updateStoryContext] User data:", userData);
 
-  // Preserve Google Drive Folder ID
-  let googleDriveFolderId;
+  // Define dbClient here by calling getDbClient()
+  const dbClient = await getDbClient();
 
-  let storyData = {};
-  try {
-    const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
-    storyData = JSON.parse(storyDataRaw) || {};
-    googleDriveFolderId = storyData["google_id"];
-    console.log("[data.js/updateStoryContext] Raw story data", storyDataRaw);
-  } catch (error) {
-    console.error(
-      "[data.js/updateStoryContext] Error reading story data:",
-      error,
-    );
-    storyData = {}; // Initialize with an empty object if the file doesn't exist or is empty
-  }
-  try {
-    const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
-    console.log("[data.js/updateStoryContext] Raw story data");
-    storyData = JSON.parse(storyDataRaw) || {};
-  } catch (error) {
-    console.error(
-      "[data.js/updateStoryContext] Error reading story data:",
-      error,
-    );
-    storyData = {}; // Initialize with an empty object if the file doesn't exist or is empty
-  }
+  let storyDataResponse = await dbClient.get(`${userId}_story`);
+  let storyData = storyDataResponse ? storyDataResponse.value : {};
+  console.log(
+    "[data.js/updateStoryContext] Retrieved story data from ReplDB:",
+    JSON.stringify(storyData),
+  );
 
   console.log(
     "[data.js/updateStoryContext] Retrieved Conversation History for GPT",
@@ -55,7 +36,7 @@ async function updateStoryContext(userId) {
   console.log("[data.js/updateStoryContext] Story Data JSON");
 
   let formattedHistory = "";
-  if (userData.conversationHistory && userData.conversationHistory.length > 0) {
+  if (userData.conversationHistory && Array.isArray(userData.conversationHistory)) {
     // Get only the last 5 messages
     const lastFiveMessages = userData.conversationHistory.slice(-5);
     formattedHistory = lastFiveMessages
@@ -69,7 +50,6 @@ async function updateStoryContext(userId) {
     "[data.js/updateStoryContext] Formatted Conversation History for GPT:",
     formattedHistory,
   );
-
 
   const messages = [
     {
@@ -182,17 +162,9 @@ async function updateStoryContext(userId) {
         );
 
         storyData = functionArgs.story_details;
-
-        if (googleDriveFolderId) {
-          storyData["google_id"] = googleDriveFolderId;
-          console.log(
-            "[data.js/updateStoryContext] Preserved Google Drive Folder ID in the updated story data.",
-          );
-        }
-
-        await fs.writeFile(filePaths.story, JSON.stringify(storyData, null, 2));
+        await dbClient.set(`${userId}_story`, storyData);
         console.log(
-          `[data.js/updateStoryContext] Updated story data saved for ID: ${userId}`,
+          `[data.js/updateStoryContext] Updated story data saved in ReplDB for ID: ${userId}`,
         );
       } else {
         console.log(
@@ -219,16 +191,18 @@ async function updateRoomContext(userId) {
     "[data.js/updateRoomContext] Starting updateRoomContext with the latest message and conversation history.",
   );
 
-  const filePaths = await ensureUserDirectoryAndFiles(userId);
-  const userData = await getUserData(filePaths);
+  await ensureUserDirectoryAndFiles(userId);
+  const userData = await getUserData(userId);
 
   if (!Array.isArray(userData.locations)) {
     userData.locations = [];
   }
 
   // Get the most recent 5 messages from the conversation history
-  const recentMessages = userData.conversationHistory.slice(-5);
-
+  const recentMessages = userData.conversationHistory && Array.isArray(userData.conversationHistory)
+  ? userData.conversationHistory.slice(-5)
+  : [];
+  
   // Format the recent messages for GPT
   const conversationForGPT = recentMessages
     .map(
@@ -312,7 +286,7 @@ async function updateRoomContext(userId) {
                   players_conversation_ids_in_room: {
                     type: "string",
                     description:
-                      "Indicate the messageIds from the conversatoin history when the player was in this room. Example: 1, 2, 3. When the player moves rooms, record that messageId in the new room. Don't make up any ids for this, if you don't see it in the conversation message ids, then leave this blank.",
+                      "Indicate the messageIds from the conversation history when the player was in this room. Example: 1, 2, 3. When the player moves rooms, record that messageId in the new room. Don't make up any ids for this, if you don't see it in the conversation message ids, then leave this blank.",
                   },
                 },
                 required: [
@@ -375,8 +349,9 @@ async function updateRoomContext(userId) {
           JSON.stringify(updatedRooms, null, 2),
         );
 
-        // Read all the existing rooms from userData.locations
-        const existingRooms = userData.locations;
+        // Read all the existing rooms from ReplDB
+        const dbClient = await getDbClient();
+        const existingRooms = (await dbClient.get(`${userId}_locations`)) || [];
 
         // Create a map of existing rooms by room_id for faster lookup
         const existingRoomsMap = new Map(
@@ -399,15 +374,10 @@ async function updateRoomContext(userId) {
         // Convert the map values back to an array
         const updatedLocations = Array.from(existingRoomsMap.values());
 
-        // Update userData.locations with the updated locations
-        userData.locations = updatedLocations;
-
-        await fs.writeFile(
-          filePaths.room,
-          JSON.stringify(userData.locations, null, 2),
-        );
+        // Update ReplDB with the updated locations
+        await dbClient.set(`${userId}_locations`, updatedLocations);
         console.log(
-          `[data.js/updateRoomContext] Updated user data saved for ID: ${userId}`,
+          `[data.js/updateRoomContext] Updated room data saved in ReplDB for user ID: ${userId}`,
         );
       } else {
         console.log(
@@ -434,50 +404,19 @@ async function updatePlayerContext(userId) {
     "[data.js/updatePlayerContext] Starting with the latest message.",
   );
 
-  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  await ensureUserDirectoryAndFiles(userId);
 
-  // Initialize conversationHistory as an empty array
-  let conversationHistory = [];
+  const userData = await getUserData(userId);
+  const conversationHistory = userData.conversationHistory || [];
 
-  try {
-    const conversationData = await fs.readFile(filePaths.conversation, "utf8");
-    const parsedData = JSON.parse(conversationData);
-
-    // Check if conversationHistory exists and is an array before attempting to slice it
-    if (parsedData && Array.isArray(parsedData.conversationHistory)) {
-      conversationHistory = parsedData.conversationHistory;
-    } else {
-      console.warn(
-        "[data.js/updatePlayerContext] conversationHistory is not an array or is missing. Initializing as an empty array.",
-      );
-      // Initialize conversationHistory as an empty array if it's not an array or missing
-      conversationHistory = [];
-    }
-  } catch (error) {
-    console.error(
-      "[data.js/updatePlayerContext] Error reading conversation history:",
-      error,
-    );
-    // You might decide to initialize conversationHistory as an empty array here too, to ensure further operations don't fail.
-  }
-
-  // Proceed with using conversationHistory as an array confidently
   console.log(
     "[data.js/updatePlayerContext] Retrieved Conversation History for GPT:",
     JSON.stringify(conversationHistory, null, 2),
   );
 
-  // Read player data directly from the JSON file
-  let playerData = {};
-  try {
-    const playerDataRaw = await fs.readFile(filePaths.player, "utf8");
-    playerData = JSON.parse(playerDataRaw) || {};
-  } catch (error) {
-    console.error(
-      "[data.js/updatePlayerContext] Error reading player data:",
-      error,
-    );
-  }
+  // Read player data directly from ReplDB
+  const dbClient = await getDbClient();
+  let playerData = (await dbClient.get(`${userId}_player`)) || {};
 
   const playerDataJson = JSON.stringify(playerData, null, 2);
   console.log(
@@ -485,17 +424,8 @@ async function updatePlayerContext(userId) {
     playerDataJson,
   );
 
-  // Read story data directly from the JSON file
-  let storyData = {};
-  try {
-    const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
-    storyData = JSON.parse(storyDataRaw) || {};
-  } catch (error) {
-    console.error(
-      "[data.js/updatePlayerContext] Error reading story data:",
-      error,
-    );
-  }
+  // Read story data directly from ReplDB
+  let storyData = (await dbClient.get(`${userId}_story`)) || {};
 
   const storyDataJson = JSON.stringify(storyData, null, 2);
   console.log("[data.js/updatePlayerContext] Story Data JSON:", storyDataJson);
@@ -645,47 +575,34 @@ async function updatePlayerContext(userId) {
             "[data.js/updatePlayerContext] User's player health has reached zero. Resetting game.",
           );
 
-          // Reset favorite_author and favorite_story in story.json
-          const storyData = JSON.parse(
-            await fs.readFile(filePaths.story, "utf8"),
-          );
+          // Reset favorite_author and favorite_story in story data
           storyData.favorite_author = "";
           storyData.favorite_story = "";
-          await fs.writeFile(
-            filePaths.story,
-            JSON.stringify(storyData, null, 2),
-          );
+          await dbClient.set(`${userId}_story`, storyData);
 
-          // Reset conversation.json, player.json, and room.json
-          const initPromises = [
-            fs.writeFile(
-              filePaths.conversation,
-              JSON.stringify({ conversationHistory: [] }, null, 2),
+          // Reset conversation, player, room, and quest data
+          const initData = {
+            conversationHistory: [],
+            room: [],
+            player: [],
+            quest: [],
+          };
+          await Promise.all([
+            dbClient.set(
+              `${userId}_conversation`,
+              initData.conversationHistory,
             ),
-            fs.writeFile(filePaths.room, JSON.stringify([], null, 2)),
-            fs.writeFile(filePaths.player, JSON.stringify([], null, 2)),
-            fs.writeFile(filePaths.quests, JSON.stringify([], null, 2)),
-          ];
-          await Promise.all(initPromises);
+            dbClient.set(`${userId}_room`, initData.room),
+            dbClient.set(`${userId}_player`, initData.player),
+            dbClient.set(`${userId}_quest`, initData.quest),
+          ]);
 
           console.log("[data.js/updatePlayerContext] Game reset completed.");
           return null; // Return null to indicate game reset
         }
 
-        // Read the existing player data from the player.json file
-        let existingPlayerData = [];
-        try {
-          const existingPlayerDataRaw = await fs.readFile(
-            filePaths.player,
-            "utf8",
-          );
-          existingPlayerData = JSON.parse(existingPlayerDataRaw) || [];
-        } catch (error) {
-          console.error(
-            "[data.js/updatePlayerContext] Error reading existing player data:",
-            error,
-          );
-        }
+        // Read the existing player data from ReplDB
+        let existingPlayerData = (await dbClient.get(`${userId}_player`)) || [];
 
         // Create a map of existing players by player_id for faster lookup
         const existingPlayersMap = new Map(
@@ -710,13 +627,10 @@ async function updatePlayerContext(userId) {
         // Convert the map values back to an array
         const updatedPlayerData = Array.from(existingPlayersMap.values());
 
-        // Save updated player data to the player.json file
-        await fs.writeFile(
-          filePaths.player,
-          JSON.stringify(updatedPlayerData, null, 2),
-        );
+        // Save updated player data to ReplDB
+        await dbClient.set(`${userId}_player`, updatedPlayerData);
         console.log(
-          `[data.js/updatePlayerContext] Updated player data saved for ID: ${userId}`,
+          `[data.js/updatePlayerContext] Updated player data saved in ReplDB for user ID: ${userId}`,
         );
 
         return JSON.stringify(updatedPlayerData); // Or any other info you need to return
@@ -747,31 +661,25 @@ async function updateQuestContext(userId) {
     "[data.js/updateQuestContext] Starting updateQuestContext with the latest message and conversation history.",
   );
 
-  const filePaths = await ensureUserDirectoryAndFiles(userId);
-  const userData = await getUserData(filePaths);
+  await ensureUserDirectoryAndFiles(userId);
+  const userData = await getUserData(userId);
 
-  if (!Array.isArray(userData.quests)) {
-    userData.quests = [];
+  if (!Array.isArray(userData.quest)) {
+    userData.quest = [];
   }
 
-  // Read story data directly from the JSON file
-  let storyData = {};
-  try {
-    const storyDataRaw = await fs.readFile(filePaths.story, "utf8");
-    storyData = JSON.parse(storyDataRaw) || {};
-  } catch (error) {
-    console.error(
-      "[data.js/updateQuestContext] Error reading story data:",
-      error,
-    );
-  }
+  // Read story data directly from ReplDB
+  const dbClient = await getDbClient();
+  let storyData = (await dbClient.get(`${userId}_story`)) || {};
 
   const storyDataJson = JSON.stringify(storyData, null, 2);
   console.log("[data.js/updateQuestContext] Story Data JSON:", storyDataJson);
 
   // Get the most recent 5 messages from the conversation history
-  const recentMessages = userData.conversationHistory.slice(-5);
-
+  const recentMessages = userData.conversationHistory && Array.isArray(userData.conversationHistory)
+  ? userData.conversationHistory.slice(-5)
+  : [];
+  
   // Format the recent messages for GPT
   const conversationForGPT = recentMessages
     .map(
@@ -916,42 +824,34 @@ async function updateQuestContext(userId) {
           JSON.stringify(updatedQuests, null, 2),
         );
 
+        // Read existing quests from ReplDB
+        const existingQuests = (await dbClient.get(`${userId}_quest`)) || [];
+
+        // Create a map of existing quests by quest_id for faster lookup
+        const existingQuestsMap = new Map(
+          existingQuests.map((quest) => [quest.quest_id, quest]),
+        );
+
         // Iterate over the updated quests
         updatedQuests.forEach((updatedQuest) => {
-          // Check if the quest already exists in userData.quests
-          const existingQuestIndex = userData.quests.findIndex(
-            (quest) => quest.quest_id === updatedQuest.quest_id,
-          );
-
-          if (existingQuestIndex !== -1) {
+          // Check if the quest already exists in the map
+          if (existingQuestsMap.has(updatedQuest.quest_id)) {
             // If the quest exists, update its properties
-            userData.quests[existingQuestIndex] = {
-              ...userData.quests[existingQuestIndex],
-              ...updatedQuest,
-            };
+            const existingQuest = existingQuestsMap.get(updatedQuest.quest_id);
+            Object.assign(existingQuest, updatedQuest);
           } else {
-            // If the quest doesn't exist, add it to userData.quests
-            userData.quests.push(updatedQuest);
+            // If the quest doesn't exist, add it to the map
+            existingQuestsMap.set(updatedQuest.quest_id, updatedQuest);
           }
         });
 
-        // Preserve existing quests that were not updated
-        const existingQuests = userData.quests.filter(
-          (quest) =>
-            !updatedQuests.some(
-              (updatedQuest) => updatedQuest.quest_id === quest.quest_id,
-            ),
-        );
+        // Convert the map values back to an array
+        const updatedQuestData = Array.from(existingQuestsMap.values());
 
-        // Combine updated and existing quests
-        userData.quests = [...updatedQuests, ...existingQuests];
-
-        await fs.writeFile(
-          filePaths.quest,
-          JSON.stringify(userData.quests, null, 2),
-        );
+        // Save updated quests to ReplDB
+        await dbClient.set(`${userId}_quest`, updatedQuestData);
         console.log(
-          `[data.js/updateQuestContext] Updated user data saved for ID: ${userId}`,
+          `[data.js/updateQuestContext] Updated quest data saved in ReplDB for user ID: ${userId}`,
         );
       } else {
         console.log(

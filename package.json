@@ -10,11 +10,16 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@replit/database": "^3.0.0",
     "@types/node": "^18.0.6",
     "axios": "^1.6.8",
     "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "firebase": "^10.11.0",
     "googleapis": "^134.0.0",
+    "mongodb": "^6.5.0",
+    "mongoose": "^8.3.1",
     "openai": "^4.31.0",
     "uuid": "^9.0.1"
   }
