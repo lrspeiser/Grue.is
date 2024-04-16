@@ -1,11 +1,13 @@
-//data.js - never remove this comment
-const { getDbClient } = require('./dbClient');
-const { ref, set, get, remove } = require("firebase/database"); // Correct import for Firebase database functions
-const db = getDbClient();
+//data.js
 
 const fs = require("fs").promises;
 const path = require("path");
-const { ensureUserDirectoryAndFiles, getUserData } = require("./util");
+const {
+  ensureUserDirectoryAndFiles,
+  getUserData,
+  writeJsonToFirebase,
+  readJsonFromFirebase,
+} = require("./util");
 
 const OpenAIApi = require("openai"); //never change this
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
@@ -13,32 +15,29 @@ const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
 async function updateStoryContext(userId) {
   console.log("[data.js/updateStoryContext] Starting updateStoryContext");
 
-  await ensureUserDirectoryAndFiles(userId);
-  console.log("[data.js/updateStoryContext] User data ensured in ReplDB");
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  console.log("[data.js/updateStoryContext] File paths:", filePaths);
 
-  const userData = await getUserData(userId);
+  const userData = await getUserData(filePaths);
   console.log("[data.js/updateStoryContext] User data:", userData);
 
-  // Define dbClient here by calling getDbClient()
-  const dbClient = await getDbClient();
+  // Initialize storyData and retrieve from Firebase
+  let storyData = {};
+  try {
+    storyData = (await readJsonFromFirebase(filePaths.story)) || {};
+    console.log("[data.js/updateStoryContext] Retrieved story data", storyData);
+  } catch (error) {
+    console.error(
+      "[data.js/updateStoryContext] Error reading story data:",
+      error,
+    );
+    storyData = {}; // Initialize with an empty object if no data is found or an error occurs
+  }
 
-  let storyDataResponse = await dbClient.get(`${userId}_story`);
-  let storyData = storyDataResponse ? storyDataResponse.value : {};
-  console.log(
-    "[data.js/updateStoryContext] Retrieved story data from ReplDB:",
-    JSON.stringify(storyData),
-  );
-
-  console.log(
-    "[data.js/updateStoryContext] Retrieved Conversation History for GPT",
-  );
-  const storyDataJson = JSON.stringify(storyData, null, 2);
-  console.log("[data.js/updateStoryContext] Story Data JSON");
-
+  // Formatting and preparing data for OpenAI call
   let formattedHistory = "";
-  if (userData.conversationHistory && Array.isArray(userData.conversationHistory)) {
-    // Get only the last 5 messages
-    const lastFiveMessages = userData.conversationHistory.slice(-5);
+  if (userData.conversation && userData.conversation.length > 0) {
+    const lastFiveMessages = userData.conversation.slice(-5);
     formattedHistory = lastFiveMessages
       .map(
         (msg) =>
@@ -51,6 +50,106 @@ async function updateStoryContext(userId) {
     formattedHistory,
   );
 
+  const { messages, tools } = getStoryContextMessages(
+    storyData,
+    formattedHistory,
+  );
+
+  try {
+    console.log(
+      "[data.js/updateStoryContext] Calling OpenAI API with the prepared messages and tools.",
+      {
+        messages,
+        tools,
+      },
+    );
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-0125-preview",
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto",
+    });
+
+    const responseMessage = response.choices[0].message;
+    console.log(
+      "[data.js/updateStoryContext] Response Message:",
+      responseMessage,
+    );
+
+    // Check if there are tool calls and handle them
+    if (
+      responseMessage &&
+      responseMessage.tool_calls &&
+      responseMessage.tool_calls.length > 0
+    ) {
+      const toolCall = responseMessage.tool_calls[0]; // Assume we only deal with one tool call for simplicity
+      if (toolCall && toolCall.function && toolCall.function.arguments) {
+        const functionArgs = JSON.parse(toolCall.function.arguments);
+        const updatedStoryData = functionArgs.story_details; // Directly using the nested story_details
+
+        if (updatedStoryData) {
+          console.log(
+            "[data.js/updateStoryContext] Updated Story Data from tool call:",
+            updatedStoryData,
+          );
+
+          // Check if active_game changed from true to false
+          if (
+            storyData.active_game === true &&
+            updatedStoryData.active_game === false
+          ) {
+            console.log(
+              "[data.js/updateStoryContext] active_game changed from true to false. Clearing conversation, player, room, and quest data.",
+            );
+
+            // Clear conversation, player, room, and quest data
+            await writeJsonToFirebase(filePaths.conversation, []);
+            await writeJsonToFirebase(filePaths.player, {});
+            await writeJsonToFirebase(filePaths.room, {});
+            await writeJsonToFirebase(filePaths.quest, {});
+
+            // Reset character_played_by_user and game_description in story data
+            updatedStoryData.character_played_by_user = "";
+            updatedStoryData.game_description = "";
+          }
+
+          await writeJsonToFirebase(filePaths.story, updatedStoryData);
+          console.log(
+            "[data.js/updateStoryContext] Story data updated in Firebase for user ID:",
+            userId,
+          );
+        } else {
+          console.log(
+            "[data.js/updateStoryContext] No valid story data to update.",
+          );
+        }
+      }
+    } else if (responseMessage && responseMessage.content) {
+      // Handle direct content updates (fallback if needed)
+      const updatedStoryData = JSON.parse(responseMessage.content);
+      await writeJsonToFirebase(filePaths.story, updatedStoryData);
+      console.log(
+        "[data.js/updateStoryContext] Story data updated in Firebase for user ID:",
+        userId,
+      );
+    } else {
+      console.log(
+        "[data.js/updateStoryContext] No update needed or provided by API.",
+      );
+    }
+  } catch (error) {
+    console.error(
+      "[data.js/updateStoryContext] Failed to update story context:",
+      error,
+    );
+    throw error;
+  }
+}
+
+function getStoryContextMessages(storyData, formattedHistory) {
+  const storyDataJson = JSON.stringify(storyData, null, 2);
+
   const messages = [
     {
       role: "system",
@@ -58,7 +157,7 @@ async function updateStoryContext(userId) {
     },
     {
       role: "user",
-      content: `Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. If the user is trying to quit the game and we've confirmed with them they do, set the active_game to false. Also, if they die, health goes to zero, or if they behave badly, set it to false. It is important that we continue to collect the users preferences and behaviors so we can customize the game for them.`,
+      content: `Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. If the user is trying to quit the game and after you asked them in a follow up conversation thread if they are sure they want to quit and they still said they wanted to quit, set the active_game to false. Also, if they die, health goes to zero, or if they behave badly, set it to false. It is important that we continue to collect the users preferences and behaviors so we can customize the game for them.`,
     },
   ];
 
@@ -68,7 +167,7 @@ async function updateStoryContext(userId) {
       function: {
         name: "update_story_context",
         description:
-          "Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. If the user is trying to quit the game and we've confirmed with them they do, set the active_game to false. Also, if they die, health goes to zero, or if they behave badly, set it to false. It is important that we continue to collect the users preferences and behaviors so we can customize the game for them.",
+          "Based on the conversation history and the existing story data, generate an updated story outline that incorporates the user's preferences and characteristics. If the user is trying to quit the game and after you asked them in a follow up conversation thread if they are sure they want to quit and they still said they wanted to quit, set the active_game to false. Also, if they die, health goes to zero, or if they behave badly, set it to false. It is important that we continue to collect the users preferences and behaviors so we can customize the game for them.",
         parameters: {
           type: "object",
           properties: {
@@ -127,6 +226,55 @@ async function updateStoryContext(userId) {
     },
   ];
 
+  return { messages, tools };
+}
+
+async function updateRoomContext(userId) {
+  console.log(
+    "[data.js/updateRoomContext] Starting updateRoomContext with the latest message and conversation history.",
+  );
+
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  const userData = await getUserData(filePaths);
+
+  if (!Array.isArray(userData.locations)) {
+    userData.locations = [];
+  }
+
+  // Read room data from Firebase
+  let roomData = {};
+  try {
+    roomData = (await readJsonFromFirebase(filePaths.room)) || {};
+    console.log(
+      "[data.js/updateRoomContext] Retrieved Room Data from Firebase:",
+      JSON.stringify(roomData, null, 2),
+    );
+  } catch (error) {
+    console.error(
+      "[data.js/updateRoomContext] Error reading room data from Firebase:",
+      error,
+    );
+  }
+
+  // Get the most recent 5 messages from the conversation history
+  const recentMessages = userData.conversation.slice(-5);
+
+  // Format the recent messages for GPT
+  const conversationForGPT = recentMessages
+    .map(
+      (message) =>
+        `User: ${message.userPrompt}\nAssistant: ${message.response}`,
+    )
+    .join("\n\n");
+
+  console.log("[data.js/updateRoomContext] conversationForGPT");
+
+  const { messages, tools } = getRoomContextMessages(
+    userData.locations,
+    roomData,
+    conversationForGPT,
+  );
+
   try {
     console.log("Calling OpenAI API with the prepared messages and tools.");
     console.log(
@@ -143,84 +291,91 @@ async function updateStoryContext(userId) {
 
     const responseMessage = response.choices[0].message;
     console.log(
-      "[data.js/updateStoryContext] Response Message:",
+      "[data.js/updateRoomContext] Response Message:",
       JSON.stringify(responseMessage, null, 2),
     );
 
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       const toolCall = responseMessage.tool_calls[0];
       console.log(
-        "[data.js/updateStoryContext] Function call:",
+        "[data.js/updateRoomContext] Function call:",
         JSON.stringify(toolCall, null, 2),
       );
 
-      if (toolCall.function.name === "update_story_context") {
+      if (toolCall.function.name === "update_room_context") {
         const functionArgs = JSON.parse(toolCall.function.arguments);
         console.log(
-          "[data.js/updateStoryContext] Function arguments:",
+          "[data.js/updateRoomContext] Function arguments:",
           JSON.stringify(functionArgs, null, 2),
         );
 
-        storyData = functionArgs.story_details;
-        await dbClient.set(`${userId}_story`, storyData);
+        const updatedRooms = functionArgs.rooms;
         console.log(
-          `[data.js/updateStoryContext] Updated story data saved in ReplDB for ID: ${userId}`,
+          "[data.js/updateRoomContext] Updated rooms:",
+          JSON.stringify(updatedRooms, null, 2),
         );
+
+        // Read existing room data from Firebase
+        const existingRoomData =
+          (await readJsonFromFirebase(filePaths.room)) || [];
+
+        // Iterate over the updated rooms
+        updatedRooms.forEach((updatedRoom) => {
+          // Check if the room already exists in existingRoomData
+          const existingRoomIndex = existingRoomData.findIndex(
+            (room) => room.room_id === updatedRoom.room_id,
+          );
+
+          if (existingRoomIndex !== -1) {
+            // If the room exists, update its properties
+            existingRoomData[existingRoomIndex] = {
+              ...existingRoomData[existingRoomIndex],
+              ...updatedRoom,
+            };
+          } else {
+            // If the room doesn't exist, add it to existingRoomData
+            existingRoomData.push(updatedRoom);
+          }
+        });
+
+        // Write updated room data to Firebase
+        await writeJsonToFirebase(filePaths.room, existingRoomData);
+        console.log(
+          `[data.js/updateRoomContext] Updated room data saved for ID: ${userId}`,
+        );
+
+        return JSON.stringify(existingRoomData); // Or any other info you need to return
       } else {
         console.log(
-          "[data.js/updateStoryContext] Unexpected function call:",
+          "[data.js/updateRoomContext] Unexpected function call:",
           toolCall.function.name,
         );
+        return null; // Handle unexpected function call
       }
     } else {
       console.log(
-        "[data.js/updateStoryContext] No function call detected in the model's response.",
+        "[data.js/updateRoomContext] No function call detected in the model's response.",
       );
+      return responseMessage.content; // Handle no function call
     }
   } catch (error) {
     console.error(
-      "[data.js/updateStoryContext] Failed to update story context:",
+      "[data.js/updateRoomContext] Failed to update room context:",
       error,
     );
     throw error;
   }
 }
 
-async function updateRoomContext(userId) {
-  console.log(
-    "[data.js/updateRoomContext] Starting updateRoomContext with the latest message and conversation history.",
-  );
-
-  await ensureUserDirectoryAndFiles(userId);
-  const userData = await getUserData(userId);
-
-  if (!Array.isArray(userData.locations)) {
-    userData.locations = [];
-  }
-
-  // Get the most recent 5 messages from the conversation history
-  const recentMessages = userData.conversationHistory && Array.isArray(userData.conversationHistory)
-  ? userData.conversationHistory.slice(-5)
-  : [];
-  
-  // Format the recent messages for GPT
-  const conversationForGPT = recentMessages
-    .map(
-      (message) =>
-        `User: ${message.userPrompt}\nAssistant: ${message.response}`,
-    )
-    .join("\n\n");
-
-  console.log("[data.js/updateRoomContext] conversationForGPT");
-
+function getRoomContextMessages(locations, roomData, conversationForGPT) {
   const messages = [
     {
       role: "system",
-      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the room into the fields. If any, here is the current location data where the player may be or has been in the past: ${JSON.stringify(userData.locations)}. Take this data and update with anything new based on the latest conversation update. That means if we need to add anything, you must include the original data in the output or it will be deleted. If it is a new location, create it. Make sure that when the player moves to a new room or location, that you remove them from the previous room and add them to the new room. I character can only ever be in one room at a time and the last response message is the final decider if the character is moving between rooms.`,
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the room into the fields. If any, here is the current location data where the player may be or has been in the past: ${JSON.stringify(locations)}. Take this data and update with anything new based on the latest conversation update. That means if we need to add anything, you must include the original data in the output or it will be deleted. If it is a new location, create it. Make sure that when the player moves to a new room or location, that you remove them from the previous room and add them to the new room. I character can only ever be in one room at a time and the last response message is the final decider if the character is moving between rooms.`,
     },
     {
       role: "system",
-      content: `Current room data: ${JSON.stringify(userData.room)} and Message History:\n${conversationForGPT}`,
+      content: `Current room data: ${JSON.stringify(roomData)} and Message History:\n${conversationForGPT}`,
     },
     {
       role: "user",
@@ -286,7 +441,7 @@ async function updateRoomContext(userId) {
                   players_conversation_ids_in_room: {
                     type: "string",
                     description:
-                      "Indicate the messageIds from the conversation history when the player was in this room. Example: 1, 2, 3. When the player moves rooms, record that messageId in the new room. Don't make up any ids for this, if you don't see it in the conversation message ids, then leave this blank.",
+                      "Indicate the messageIds from the conversatoin history when the player was in this room. Example: 1, 2, 3. When the player moves rooms, record that messageId in the new room. Don't make up any ids for this, if you don't see it in the conversation message ids, then leave this blank.",
                   },
                 },
                 required: [
@@ -310,93 +465,7 @@ async function updateRoomContext(userId) {
     },
   ];
 
-  try {
-    console.log("Calling OpenAI API with the prepared messages and tools.");
-    console.log(
-      "Data sent to GPT:",
-      JSON.stringify({ messages, tools }, null, 2),
-    );
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-0125-preview",
-      messages: messages,
-      tools: tools,
-      tool_choice: "auto",
-    });
-
-    const responseMessage = response.choices[0].message;
-    console.log(
-      "[data.js/updateRoomContext] Response Message:",
-      JSON.stringify(responseMessage, null, 2),
-    );
-
-    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      const toolCall = responseMessage.tool_calls[0];
-      console.log(
-        "[data.js/updateRoomContext] Function call:",
-        JSON.stringify(toolCall, null, 2),
-      );
-
-      if (toolCall.function.name === "update_room_context") {
-        const functionArgs = JSON.parse(toolCall.function.arguments);
-        console.log(
-          "[data.js/updateRoomContext] Function arguments:",
-          JSON.stringify(functionArgs, null, 2),
-        );
-
-        const updatedRooms = functionArgs.rooms;
-        console.log(
-          "[data.js/updateRoomContext] Updated rooms:",
-          JSON.stringify(updatedRooms, null, 2),
-        );
-
-        // Read all the existing rooms from ReplDB
-        const dbClient = await getDbClient();
-        const existingRooms = (await dbClient.get(`${userId}_locations`)) || [];
-
-        // Create a map of existing rooms by room_id for faster lookup
-        const existingRoomsMap = new Map(
-          existingRooms.map((room) => [room.room_id, room]),
-        );
-
-        // Iterate over the updated rooms
-        updatedRooms.forEach((updatedRoom) => {
-          // Check if the room already exists in the map
-          if (existingRoomsMap.has(updatedRoom.room_id)) {
-            // If the room exists, update its properties
-            const existingRoom = existingRoomsMap.get(updatedRoom.room_id);
-            Object.assign(existingRoom, updatedRoom);
-          } else {
-            // If the room doesn't exist, add it to the map
-            existingRoomsMap.set(updatedRoom.room_id, updatedRoom);
-          }
-        });
-
-        // Convert the map values back to an array
-        const updatedLocations = Array.from(existingRoomsMap.values());
-
-        // Update ReplDB with the updated locations
-        await dbClient.set(`${userId}_locations`, updatedLocations);
-        console.log(
-          `[data.js/updateRoomContext] Updated room data saved in ReplDB for user ID: ${userId}`,
-        );
-      } else {
-        console.log(
-          "[data.js/updateRoomContext] Unexpected function call:",
-          toolCall.function.name,
-        );
-      }
-    } else {
-      console.log(
-        "[data.js/updateRoomContext] No function call detected in the model's response.",
-      );
-    }
-  } catch (error) {
-    console.error(
-      "[data.js/updateRoomContext] Failed to update room context:",
-      error,
-    );
-    throw error;
-  }
+  return { messages, tools };
 }
 
 async function updatePlayerContext(userId) {
@@ -404,47 +473,171 @@ async function updatePlayerContext(userId) {
     "[data.js/updatePlayerContext] Starting with the latest message.",
   );
 
-  await ensureUserDirectoryAndFiles(userId);
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
 
-  const userData = await getUserData(userId);
-  const conversationHistory = userData.conversationHistory || [];
-
-  console.log(
-    "[data.js/updatePlayerContext] Retrieved Conversation History for GPT:",
-    JSON.stringify(conversationHistory, null, 2),
-  );
-
-  // Read player data directly from ReplDB
-  const dbClient = await getDbClient();
-  let playerData = (await dbClient.get(`${userId}_player`)) || {};
-
-  const playerDataJson = JSON.stringify(playerData, null, 2);
-  console.log(
-    "[data.js/updatePlayerContext] Player Data JSON:",
-    playerDataJson,
-  );
-
-  // Read story data directly from ReplDB
-  let storyData = (await dbClient.get(`${userId}_story`)) || {};
-
-  const storyDataJson = JSON.stringify(storyData, null, 2);
-  console.log("[data.js/updatePlayerContext] Story Data JSON:", storyDataJson);
-
-  let formattedHistory = "";
-  if (conversationHistory && conversationHistory.length > 0) {
-    // Get only the last 5 messages
-    const lastFiveMessages = conversationHistory.slice(-5);
-    formattedHistory = lastFiveMessages
-      .map(
-        (msg) =>
-          `#${msg.messageId} [${msg.timestamp}]:\nUser: ${msg.userPrompt}\nAssistant: ${msg.response}`,
-      )
-      .join("\n\n");
+  // Read conversation data from Firebase
+  let conversationHistory = [];
+  try {
+    conversationHistory =
+      (await readJsonFromFirebase(filePaths.conversation)) || [];
+    console.log(
+      "[data.js/updatePlayerContext] Retrieved Conversation History from Firebase:",
+      JSON.stringify(conversationHistory, null, 2),
+    );
+  } catch (error) {
+    console.error(
+      "[data.js/updatePlayerContext] Error reading conversation history from Firebase:",
+      error,
+    );
   }
+
+  // Read player data from Firebase
+  let playerData = {};
+  try {
+    playerData = (await readJsonFromFirebase(filePaths.player)) || {};
+    console.log(
+      "[data.js/updatePlayerContext] Retrieved Player Data from Firebase:",
+      JSON.stringify(playerData, null, 2),
+    );
+  } catch (error) {
+    console.error(
+      "[data.js/updatePlayerContext] Error reading player data from Firebase:",
+      error,
+    );
+  }
+
+  // Read story data from Firebase
+  let storyData = {};
+  try {
+    storyData = (await readJsonFromFirebase(filePaths.story)) || {};
+    console.log(
+      "[data.js/updatePlayerContext] Retrieved Story Data from Firebase:",
+      JSON.stringify(storyData, null, 2),
+    );
+  } catch (error) {
+    console.error(
+      "[data.js/updatePlayerContext] Error reading story data from Firebase:",
+      error,
+    );
+  }
+
+  // Get only the last 5 messages from the conversation history
+  const lastFiveMessages = conversationHistory.slice(-5);
+  const formattedHistory = lastFiveMessages
+    .map(
+      (msg) =>
+        `#${msg.messageId} [${msg.timestamp}]:\nUser: ${msg.userPrompt}\nAssistant: ${msg.response}`,
+    )
+    .join("\n\n");
+
   console.log(
     "[data.js/updatePlayerContext] Formatted Conversation History for GPT:",
     formattedHistory,
   );
+
+  const { messages, tools } = getPlayerContextMessages(
+    storyData,
+    playerData,
+    formattedHistory,
+  );
+
+  try {
+    console.log("Calling OpenAI API with the prepared messages and tools.");
+    console.log(
+      "Data sent to GPT:",
+      JSON.stringify({ messages, tools }, null, 2),
+    );
+
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-0125-preview",
+      messages: messages,
+      tools: tools,
+      tool_choice: "auto",
+    });
+
+    console.log(
+      "[data.js/updatePlayerContext] Raw OpenAI API response:",
+      JSON.stringify(response, null, 2),
+    );
+
+    const responseMessage = response.choices[0].message;
+    console.log("Response Message:", JSON.stringify(responseMessage, null, 2));
+
+    // Check if the model wanted to call a function
+    console.log("[data.js/updatePlayerContext] Checking for function calls...");
+    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+      const functionCall = responseMessage.tool_calls[0];
+      console.log(
+        "[data.js/updatePlayerContext] Function call:",
+        JSON.stringify(functionCall, null, 2),
+      );
+
+      if (functionCall.function.name === "update_player_context") {
+        const functionArgs = JSON.parse(functionCall.function.arguments);
+        console.log(
+          "[data.js/updatePlayerContext] Function arguments:",
+          JSON.stringify(functionArgs, null, 2),
+        );
+
+        const updatedPlayers = functionArgs.players;
+        console.log(
+          "[data.js/updatePlayerContext] Updated players:",
+          JSON.stringify(updatedPlayers, null, 2),
+        );
+
+        // Read the existing player data from Firebase
+        const existingPlayerData =
+          (await readJsonFromFirebase(filePaths.player)) || [];
+
+        updatedPlayers.forEach((updatedPlayer) => {
+          const existingPlayerIndex = existingPlayerData.findIndex(
+            (player) => player.player_id === updatedPlayer.player_id,
+          );
+
+          if (existingPlayerIndex !== -1) {
+            // If the player exists, update its properties
+            existingPlayerData[existingPlayerIndex] = {
+              ...existingPlayerData[existingPlayerIndex],
+              ...updatedPlayer,
+            };
+          } else {
+            // If the player doesn't exist, add it to existingPlayerData
+            existingPlayerData.push(updatedPlayer);
+          }
+        });
+
+        // Write updated player data to Firebase
+        await writeJsonToFirebase(filePaths.player, existingPlayerData);
+        console.log(
+          `[data.js/updatePlayerContext] Updated player data saved for ID: ${userId}`,
+        );
+
+        return JSON.stringify(existingPlayerData); // Or any other info you need to return
+      } else {
+        console.log(
+          "[data.js/updatePlayerContext] Unexpected function call:",
+          functionCall.function.name,
+        );
+        return null; // Handle unexpected function call
+      }
+    } else {
+      console.log(
+        "[data.js/updatePlayerContext] No function call detected in the model's response.",
+      );
+      return responseMessage.content; // Handle no function call
+    }
+  } catch (error) {
+    console.error(
+      "[data.js/updatePlayerContext] Failed to update player context:",
+      error,
+    );
+    throw error;
+  }
+}
+
+function getPlayerContextMessages(storyData, playerData, formattedHistory) {
+  const storyDataJson = JSON.stringify(storyData, null, 2);
+  const playerDataJson = JSON.stringify(playerData, null, 2);
 
   const messages = [
     {
@@ -525,6 +718,73 @@ async function updatePlayerContext(userId) {
     },
   ];
 
+  return { messages, tools };
+}
+
+async function updateQuestContext(userId) {
+  console.log(
+    "[data.js/updateQuestContext] Starting updateQuestContext with the latest message and conversation history.",
+  );
+
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  const userData = await getUserData(filePaths);
+
+  if (!Array.isArray(userData.quest)) {
+    userData.quest = [];
+  }
+
+  // Read story data from Firebase
+  let storyData = {};
+  try {
+    storyData = (await readJsonFromFirebase(filePaths.story)) || {};
+    console.log(
+      "[data.js/updateQuestContext] Retrieved Story Data from Firebase:",
+      JSON.stringify(storyData, null, 2),
+    );
+  } catch (error) {
+    console.error(
+      "[data.js/updateQuestContext] Error reading story data from Firebase:",
+      error,
+    );
+  }
+
+  // Read quest data from Firebase
+  let questData = [];
+  try {
+    questData = (await readJsonFromFirebase(filePaths.quest)) || [];
+    console.log(
+      "[data.js/updateQuestContext] Retrieved Quest Data from Firebase:",
+      JSON.stringify(questData, null, 2),
+    );
+  } catch (error) {
+    console.error(
+      "[data.js/updateQuestContext] Error reading quest data from Firebase:",
+      error,
+    );
+  }
+
+  // Get the most recent 5 messages from the conversation history
+  const recentMessages = userData.conversation.slice(-5);
+
+  // Format the recent messages for GPT
+  const conversationForGPT = recentMessages
+    .map(
+      (message) =>
+        `User: ${message.userPrompt}\nAssistant: ${message.response}`,
+    )
+    .join("\n\n");
+
+  console.log(
+    "[data.js/updateQuestContext] Formatted Conversation for GPT:",
+    conversationForGPT,
+  );
+
+  const { messages, tools } = getQuestContextMessages(
+    storyData,
+    questData,
+    conversationForGPT,
+  );
+
   try {
     console.log("Calling OpenAI API with the prepared messages and tools.");
     console.log(
@@ -539,156 +799,92 @@ async function updatePlayerContext(userId) {
       tool_choice: "auto",
     });
 
-    console.log("Raw OpenAI API response:", JSON.stringify(response, null, 2));
+    console.log(
+      "[data.js/updateQuestContext] Raw OpenAI API response:",
+      JSON.stringify(response, null, 2),
+    );
 
     const responseMessage = response.choices[0].message;
-    console.log("Response Message:", JSON.stringify(responseMessage, null, 2));
+    console.log(
+      "[data.js/updateQuestContext] Response Message:",
+      JSON.stringify(responseMessage, null, 2),
+    );
 
-    // Check if the model wanted to call a function
-    console.log("[data.js/updatePlayerContext] Checking for function calls...");
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      const functionCall = responseMessage.tool_calls[0];
+      const toolCall = responseMessage.tool_calls[0];
       console.log(
-        "[data.js/updatePlayerContext] Function call:",
-        JSON.stringify(functionCall, null, 2),
+        "[data.js/updateQuestContext] Function call:",
+        JSON.stringify(toolCall, null, 2),
       );
 
-      if (functionCall.function.name === "update_player_context") {
-        const functionArgs = JSON.parse(functionCall.function.arguments);
+      if (toolCall.function.name === "update_quest_context") {
+        const functionArgs = JSON.parse(toolCall.function.arguments);
         console.log(
-          "[data.js/updatePlayerContext] Function arguments:",
+          "[data.js/updateQuestContext] Function arguments:",
           JSON.stringify(functionArgs, null, 2),
         );
 
-        const updatedPlayers = functionArgs.players;
+        const updatedQuests = functionArgs.quests;
         console.log(
-          "[data.js/updatePlayerContext] Updated players:",
-          JSON.stringify(updatedPlayers, null, 2),
+          "[data.js/updateQuestContext] Updated quests:",
+          JSON.stringify(updatedQuests, null, 2),
         );
 
-        // Check if the user's player health has reached zero
-        const userPlayer = updatedPlayers.find(
-          (player) => player.player_type === "user",
-        );
-        if (userPlayer && userPlayer.player_health === "0") {
-          console.log(
-            "[data.js/updatePlayerContext] User's player health has reached zero. Resetting game.",
+        // Read existing quest data from Firebase
+        const existingQuestData =
+          (await readJsonFromFirebase(filePaths.quest)) || [];
+
+        // Iterate over the updated quests
+        updatedQuests.forEach((updatedQuest) => {
+          // Check if the quest already exists in existingQuestData
+          const existingQuestIndex = existingQuestData.findIndex(
+            (quest) => quest.quest_id === updatedQuest.quest_id,
           );
 
-          // Reset favorite_author and favorite_story in story data
-          storyData.favorite_author = "";
-          storyData.favorite_story = "";
-          await dbClient.set(`${userId}_story`, storyData);
-
-          // Reset conversation, player, room, and quest data
-          const initData = {
-            conversationHistory: [],
-            room: [],
-            player: [],
-            quest: [],
-          };
-          await Promise.all([
-            dbClient.set(
-              `${userId}_conversation`,
-              initData.conversationHistory,
-            ),
-            dbClient.set(`${userId}_room`, initData.room),
-            dbClient.set(`${userId}_player`, initData.player),
-            dbClient.set(`${userId}_quest`, initData.quest),
-          ]);
-
-          console.log("[data.js/updatePlayerContext] Game reset completed.");
-          return null; // Return null to indicate game reset
-        }
-
-        // Read the existing player data from ReplDB
-        let existingPlayerData = (await dbClient.get(`${userId}_player`)) || [];
-
-        // Create a map of existing players by player_id for faster lookup
-        const existingPlayersMap = new Map(
-          existingPlayerData.map((player) => [player.player_id, player]),
-        );
-
-        // Iterate over the updated players
-        updatedPlayers.forEach((updatedPlayer) => {
-          // Check if the player already exists in the map
-          if (existingPlayersMap.has(updatedPlayer.player_id)) {
-            // If the player exists, update its properties
-            const existingPlayer = existingPlayersMap.get(
-              updatedPlayer.player_id,
-            );
-            Object.assign(existingPlayer, updatedPlayer);
+          if (existingQuestIndex !== -1) {
+            // If the quest exists, update its properties
+            existingQuestData[existingQuestIndex] = {
+              ...existingQuestData[existingQuestIndex],
+              ...updatedQuest,
+            };
           } else {
-            // If the player doesn't exist, add it to the map
-            existingPlayersMap.set(updatedPlayer.player_id, updatedPlayer);
+            // If the quest doesn't exist, add it to existingQuestData
+            existingQuestData.push(updatedQuest);
           }
         });
 
-        // Convert the map values back to an array
-        const updatedPlayerData = Array.from(existingPlayersMap.values());
-
-        // Save updated player data to ReplDB
-        await dbClient.set(`${userId}_player`, updatedPlayerData);
+        // Write updated quest data to Firebase
+        await writeJsonToFirebase(filePaths.quest, existingQuestData);
         console.log(
-          `[data.js/updatePlayerContext] Updated player data saved in ReplDB for user ID: ${userId}`,
+          `[data.js/updateQuestContext] Updated quest data saved for ID: ${userId}`,
         );
 
-        return JSON.stringify(updatedPlayerData); // Or any other info you need to return
+        return JSON.stringify(existingQuestData); // Or any other info you need to return
       } else {
         console.log(
-          "[data.js/updatePlayerContext] Unexpected function call:",
-          functionCall.function.name,
+          "[data.js/updateQuestContext] Unexpected function call:",
+          toolCall.function.name,
         );
         return null; // Handle unexpected function call
       }
     } else {
       console.log(
-        "[data.js/updatePlayerContext] No function call detected in the model's response.",
+        "[data.js/updateQuestContext] No function call detected in the model's response.",
       );
       return responseMessage.content; // Handle no function call
     }
   } catch (error) {
     console.error(
-      "[data.js/updatePlayerContext] Failed to update player context:",
+      "[data.js/updateQuestContext] Failed to update quest context:",
       error,
     );
     throw error;
   }
 }
 
-async function updateQuestContext(userId) {
-  console.log(
-    "[data.js/updateQuestContext] Starting updateQuestContext with the latest message and conversation history.",
-  );
-
-  await ensureUserDirectoryAndFiles(userId);
-  const userData = await getUserData(userId);
-
-  if (!Array.isArray(userData.quest)) {
-    userData.quest = [];
-  }
-
-  // Read story data directly from ReplDB
-  const dbClient = await getDbClient();
-  let storyData = (await dbClient.get(`${userId}_story`)) || {};
-
+function getQuestContextMessages(storyData, questData, conversationForGPT) {
   const storyDataJson = JSON.stringify(storyData, null, 2);
-  console.log("[data.js/updateQuestContext] Story Data JSON:", storyDataJson);
-
-  // Get the most recent 5 messages from the conversation history
-  const recentMessages = userData.conversationHistory && Array.isArray(userData.conversationHistory)
-  ? userData.conversationHistory.slice(-5)
-  : [];
-  
-  // Format the recent messages for GPT
-  const conversationForGPT = recentMessages
-    .map(
-      (message) =>
-        `User: ${message.userPrompt}\nAssistant: ${message.response}`,
-    )
-    .join("\n\n");
-
-  console.log("[data.js/updateQuestContext] conversationForGPT");
+  const questDataJson = JSON.stringify(questData, null, 2);
 
   const messages = [
     {
@@ -697,7 +893,7 @@ async function updateQuestContext(userId) {
     },
     {
       role: "system",
-      content: `Story data: Here is the story and user data: ${storyDataJson}. Current quest data: ${JSON.stringify(userData.quests)} and Message History:\n${conversationForGPT}`,
+      content: `Story data: Here is the story and user data: ${storyDataJson}. Current quest data: ${questDataJson} and Message History:\n${conversationForGPT}`,
     },
     {
       role: "user",
@@ -747,7 +943,7 @@ async function updateQuestContext(userId) {
                   quest_reward: {
                     type: "string",
                     description:
-                      "The reward for completing the quest, such as items, information or money. Be specific.",
+                      "The reward for completing the quest, such as items they can put into inventory or money. Be specific by giving them a tangible prize. Don't say things like the reward for this quest is unlocking more quests or information.",
                   },
                   quest_difficulty: {
                     type: "string",
@@ -785,92 +981,7 @@ async function updateQuestContext(userId) {
     },
   ];
 
-  try {
-    console.log("Calling OpenAI API with the prepared messages and tools.");
-    console.log(
-      "Data sent to GPT:",
-      JSON.stringify({ messages, tools }, null, 2),
-    );
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-0125-preview",
-      messages: messages,
-      tools: tools,
-      tool_choice: "auto",
-    });
-
-    const responseMessage = response.choices[0].message;
-    console.log(
-      "[data.js/updateQuestContext] Response Message:",
-      JSON.stringify(responseMessage, null, 2),
-    );
-
-    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      const toolCall = responseMessage.tool_calls[0];
-      console.log(
-        "[data.js/updateQuestContext] Function call:",
-        JSON.stringify(toolCall, null, 2),
-      );
-
-      if (toolCall.function.name === "update_quest_context") {
-        const functionArgs = JSON.parse(toolCall.function.arguments);
-        console.log(
-          "[data.js/updateQuestContext] Function arguments:",
-          JSON.stringify(functionArgs, null, 2),
-        );
-
-        const updatedQuests = functionArgs.quests;
-        console.log(
-          "[data.js/updateQuestContext] Updated quests:",
-          JSON.stringify(updatedQuests, null, 2),
-        );
-
-        // Read existing quests from ReplDB
-        const existingQuests = (await dbClient.get(`${userId}_quest`)) || [];
-
-        // Create a map of existing quests by quest_id for faster lookup
-        const existingQuestsMap = new Map(
-          existingQuests.map((quest) => [quest.quest_id, quest]),
-        );
-
-        // Iterate over the updated quests
-        updatedQuests.forEach((updatedQuest) => {
-          // Check if the quest already exists in the map
-          if (existingQuestsMap.has(updatedQuest.quest_id)) {
-            // If the quest exists, update its properties
-            const existingQuest = existingQuestsMap.get(updatedQuest.quest_id);
-            Object.assign(existingQuest, updatedQuest);
-          } else {
-            // If the quest doesn't exist, add it to the map
-            existingQuestsMap.set(updatedQuest.quest_id, updatedQuest);
-          }
-        });
-
-        // Convert the map values back to an array
-        const updatedQuestData = Array.from(existingQuestsMap.values());
-
-        // Save updated quests to ReplDB
-        await dbClient.set(`${userId}_quest`, updatedQuestData);
-        console.log(
-          `[data.js/updateQuestContext] Updated quest data saved in ReplDB for user ID: ${userId}`,
-        );
-      } else {
-        console.log(
-          "[data.js/updateQuestContext] Unexpected function call:",
-          toolCall.function.name,
-        );
-      }
-    } else {
-      console.log(
-        "[data.js/updateQuestContext] No function call detected in the model's response.",
-      );
-    }
-  } catch (error) {
-    console.error(
-      "[data.js/updateQuestContext] Failed to update quest context:",
-      error,
-    );
-    throw error;
-  }
+  return { messages, tools };
 }
 
 module.exports = {

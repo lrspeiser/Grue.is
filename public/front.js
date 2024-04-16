@@ -41,24 +41,18 @@ document.addEventListener("DOMContentLoaded", () => {
   let conversationHistory = [];
   let userId = localStorage.getItem("userId");
 
-  if (!userId) {
-    createNewUser(); // Automatically create a new user if no userId is found
-  } else {
-    initializeUserData(); // Proceed to initialize user data if userId exists
-  }
-
-  function initializeUserData() {
+  const initializeUserData = () => {
     console.log("[front.js/init] Attempting to load or create user data");
-    fetch("/api/users", {
+    const bodyContent = userId ? JSON.stringify({ userId }) : "{}";
+    const options = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ userId }), // Send the userId from local storage to the backend
-    })
+      body: bodyContent,
+    };
+    fetch("/api/users", options)
       .then((response) => {
         if (!response.ok) {
-          throw new Error(
-            `Failed to initialize user data: ${response.statusText}`,
-          );
+          throw new Error(`Failed to fetch user data: ${response.statusText}`);
         }
         return response.json();
       })
@@ -73,25 +67,23 @@ document.addEventListener("DOMContentLoaded", () => {
           console.log("[front.js/init] User data loaded or created", {
             userId,
           });
-
-          // Update the conversation history with the received recent messages
-          if (Array.isArray(data.recentMessages)) {
-            conversationHistory = data.recentMessages;
-            console.log("[front.js/init] Recent conversation history received");
-            displayConversationHistory(conversationHistory);
+          if (Array.isArray(data.conversation)) {
+            conversationHistory = data.conversation;
+            console.log("[front.js/init] Conversation history");
+            displayConversationHistory();
           } else {
             console.warn(
-              "[front.js/init] Recent messages not received or not an array, initializing as an empty array.",
+              "[front.js/init] Conversation history is not an array, initializing as an empty array.",
             );
             conversationHistory = [];
           }
-
-          // Check if it's the user's first time and the conversation history is empty
+          // Check if it's the user's first time
           if (conversationHistory.length === 0) {
-            console.log(
-              `[front.js/init] First time user detected for ID: ${userId}`,
-            );
-            sendFirstTimeUserMessage();
+            console.log(`[front.js/init] First time user detected for ID: ${userId}`);
+            const firstTimeUserMessage = "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
+            console.log(`[front.js/init] Sending first time user message: ${firstTimeUserMessage}`);
+            // Send the first-time user message using the callChatAPI function
+            callChatAPI(firstTimeUserMessage, userId);
           }
         } else {
           console.error("[front.js/init] Invalid userId received", data);
@@ -100,17 +92,29 @@ document.addEventListener("DOMContentLoaded", () => {
       })
       .catch((error) => {
         console.error("[front.js/init] Error initializing user data:", error);
-        displayErrorMessage("Initialization error: " + error.message);
+        userId = localStorage.getItem("userId") || null;
+        if (userId) {
+          console.log(
+            "[front.js/init] Using userId from local storage:",
+            userId,
+          );
+        } else {
+          console.log(
+            "[front.js/init] No userId found in local storage, creating new user",
+          );
+          createNewUser();
+        }
       });
-  }
+  };
 
-  function createNewUser() {
+  const createNewUser = () => {
     console.log("[front.js/init] Creating new user");
-    fetch("/api/users", {
+    const options = {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}), // No need to send userId for new user creation
-    })
+      body: JSON.stringify({}),
+    };
+    fetch("/api/users", options)
       .then((response) => {
         if (!response.ok) {
           throw new Error(`Failed to create new user: ${response.statusText}`);
@@ -125,18 +129,20 @@ document.addEventListener("DOMContentLoaded", () => {
         ) {
           userId = data.userId;
           localStorage.setItem("userId", userId);
-          console.log("[front.js/init] New user created", { userId });
-          conversationHistory = []; // Initialize an empty conversation history
-          sendFirstTimeUserMessage(); // Send the first-time user message after creating a new user
+          console.log("[front.js/init] New user created", {
+            userId,
+          });
+          conversationHistory = [];
         } else {
           console.error("[front.js/init] Failed to create new user", data);
         }
       })
       .catch((error) => {
         console.error("[front.js/init] Error creating new user:", error);
-        displayErrorMessage("Error creating new user: " + error.message);
       });
-  }
+  };
+
+  initializeUserData();
 
   async function callChatAPI(userPrompt, userId) {
     console.log("[front.js/callChatAPI] Calling /api/chat with", {
@@ -170,9 +176,7 @@ document.addEventListener("DOMContentLoaded", () => {
           "[front.js/callChatAPI] Failed to start chat session. Response status:",
           response.status,
         );
-        // Instead of throwing an error, display an error message and continue
-        displayErrorMessage("Failed to start chat session. Please try again.");
-        return;
+        throw new Error("Failed to start chat session");
       }
 
       const reader = response.body
@@ -195,7 +199,7 @@ document.addEventListener("DOMContentLoaded", () => {
           break;
         }
 
-        console.log("[front.js/callChatAPI] Received chunk:", value);
+        //console.log("[front.js/callChatAPI] Received chunk:", value);
         value.split("\n").forEach((line) => {
           console.log("[front.js/callChatAPI] Processing line:", line);
 
@@ -228,9 +232,6 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     } catch (error) {
       console.error("[front.js/callChatAPI] Error:", error);
-      displayErrorMessage(
-        "An error occurred while processing your request. Please try again later.",
-      );
     }
   }
 
@@ -255,30 +256,39 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  function displayConversationHistory(conversationHistory) {
+  function displayConversationHistory() {
     console.log(
       "[front.js/displayConversationHistory] Displaying last 5 messages from conversation history",
     );
 
     // Assuming 'messageContainer' is the DOM element where messages are to be displayed
-    const messageContainer = document.getElementById("messageContainer"); // Ensure you have this element in your HTML
-    const numberOfMessagesToDisplay = Math.min(5, conversationHistory.length);
-    for (let i = 0; i < numberOfMessagesToDisplay; i++) {
-      const messageIndex = conversationHistory.length - 1 - i;
-      const message = conversationHistory[messageIndex]; // Accessing the message from the end
+    for (let i = 1; i <= 5 && i <= conversationHistory.length; i++) {
+      const message = conversationHistory[conversationHistory.length - i]; // Direct access to the message
 
-      console.log(
-        `[front.js/displayConversationHistory] (#${message.messageId}) Displaying message:`,
-        message.content,
-      );
+      // Display assistant's response
+      if (message.response) {
+        console.log(
+          `[front.js/displayConversationHistory] (#${message.messageId}) Displaying response:`,
+          message.response,
+        );
 
-      // Create a div element for each message
-      const messageElement = document.createElement("div");
-      messageElement.classList.add(message.role + "-message"); // Add class based on the role to style accordingly
-      if (message.content) {
-        // Ensure there is content to display
-        messageElement.textContent = message.content; // Set the text content of the message
-        messageContainer.appendChild(messageElement); // Append the message element to the container
+        const assistantMessageElement = document.createElement("div");
+        assistantMessageElement.classList.add("assistant-message");
+        assistantMessageElement.textContent = `${message.response}`;
+        messageContainer.appendChild(assistantMessageElement); // Appending to the container
+      }
+
+      // Display user's prompt
+      if (message.userPrompt) {
+        console.log(
+          `[front.js/displayConversationHistory] (#${message.messageId}) Displaying user prompt:`,
+          message.userPrompt,
+        );
+
+        const userMessageElement = document.createElement("div");
+        userMessageElement.classList.add("user-message");
+        userMessageElement.textContent = `${message.userPrompt}`;
+        messageContainer.appendChild(userMessageElement); // Appending to the container
       }
     }
   }
@@ -294,6 +304,8 @@ document.addEventListener("DOMContentLoaded", () => {
     console.log("[front.js/displayUserMessage] User message displayed");
   }
 
+  // Helper function to find the last assistant message element if it exists
+  // Helper function to find the last assistant message element if it exists
   function getLastAssistantMessageElement() {
     const messages = Array.from(
       messageContainer.getElementsByClassName("response-message"),
@@ -350,35 +362,15 @@ document.addEventListener("DOMContentLoaded", () => {
       "[front.js/markLastAssistantMessageAsComplete] Last assistant message element reset to null",
     );
   }
-
-  function displayErrorMessage(message) {
-    console.log("[front.js/displayErrorMessage] Displaying error message", {
-      message,
-    });
-    const errorMessageElement = document.createElement("div");
-    errorMessageElement.classList.add("error-message");
-    errorMessageElement.textContent = message;
-    messageContainer.prepend(errorMessageElement);
-    console.log("[front.js/displayErrorMessage] Error message displayed");
-  }
-
-  function sendFirstTimeUserMessage() {
-    const firstTimeUserMessage =
-      "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
-    console.log(
-      "[front.js/init] Sending first time user message:",
-      firstTimeUserMessage,
-    );
-    callChatAPI(firstTimeUserMessage, userId);
-  }
-
-  function updateConversationHistory(messages) {
-    console.log(
-      "[front.js/updateConversationHistory] Updating conversation history",
-    );
-    conversationHistory = messages;
-    displayConversationHistory(conversationHistory);
-  }
-
-  initializeUserData();
 });
+
+function displayErrorMessage(message) {
+  console.log("[front.js/displayErrorMessage] Displaying error message", {
+    message,
+  });
+  const errorMessageElement = document.createElement("div");
+  errorMessageElement.classList.add("error-message");
+  errorMessageElement.textContent = message;
+  messageContainer.prepend(errorMessageElement);
+  console.log("[front.js/displayErrorMessage] Error message displayed");
+}

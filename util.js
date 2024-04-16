@@ -1,82 +1,105 @@
-// util.js - don't remove this line so you know what file it is. Don't remove content or logging when updating this file.
+const { initializeApp, getApps, getApp } = require("firebase/app");
+const { getDatabase, ref, set, get, update } = require("firebase/database");
 
-const { getDbClient } = require("./dbClient");
-const { ref, get, set, update } = require("firebase/database");
-const db = getDbClient();
+// Firebase configuration
+const firebaseConfig = {
+  apiKey: process.env["FIREBASE_API_KEY"],
+  authDomain: process.env["authDomain"],
+  databaseURL: process.env["databaseURL"],
+  projectId: process.env["projectId"],
+  storageBucket: process.env["storageBucket"],
+  messagingSenderId: process.env["messagingSenderId"],
+  appId: process.env["appId"],
+  measurementId: process.env["measurementId"],
+};
 
-async function useDbClient() {
-  console.log("[useDbClient] Fetching data for 'key' from Firebase");
-  const dbRef = ref(db, "key"); // Example key, change as per your data structure
-  try {
-    const snapshot = await get(dbRef);
-    const value = snapshot.exists() ? snapshot.val() : null;
-    console.log("[useDbClient] Value fetched from Firebase:", value);
-  } catch (error) {
-    console.error("[useDbClient] Failed to fetch data from Firebase:", error);
-  }
+// Initialize Firebase app
+let app;
+if (!getApps().length) {
+  app = initializeApp(firebaseConfig);
+  console.log("Firebase app initialized successfully.");
+} else {
+  app = getApp();
 }
 
-useDbClient();
+// Initialize Firebase Database Client
+const dbClient = getDatabase(app);
 
 async function ensureUserDirectoryAndFiles(userId) {
-  console.log("[ensureUserDirectoryAndFiles] Starting", userId);
-  const userRef = ref(db, `users/${userId}`);
-  const initData = {
-    conversations: [], // List of conversations
-    rooms: [], // List of rooms
-    players: [], // List of players
-    story: {
-      active_game: false, // Single object for the story
-    },
-    quests: [], // List of quests
-  };
-  console.log("[ensureUserDirectoryAndFiles] Setting initial data...");
-  await set(userRef, initData)
-    .then(() => {
-      console.log("[ensureUserDirectoryAndFiles] Data set for user", userId);
-    })
-    .catch((error) => {
-      console.error(
-        "[ensureUserDirectoryAndFiles] Error setting data for",
-        userId,
-        error,
-      );
-    });
-  console.log("[ensureUserDirectoryAndFiles] Completed for", userId);
+    const basePath = `data/users/${userId}`;
+    const dataPaths = {
+        conversation: `${basePath}/conversation`,
+        room: `${basePath}/room`,
+        player: `${basePath}/player`,
+        story: `${basePath}/story`,
+        quest: `${basePath}/quest`,
+    };
+
+    // Check for existing data or create initial structure
+    for (const [key, path] of Object.entries(dataPaths)) {
+        console.log(`[ensureUserDirectoryAndFiles] Checking or creating data for ${key} at ${path}`);
+        const existingData = await readJsonFromFirebase(path);
+        if (existingData === null) {
+            console.log(`[ensureUserDirectoryAndFiles] No existing ${key} data found, creating initial data.`);
+            const initialContent = (key === "conversation") ? [] : {};
+            await writeJsonToFirebase(path, initialContent);
+            console.log(`[ensureUserDirectoryAndFiles] Initial ${key} data created for user ${userId}.`);
+        } else {
+            console.log(`[ensureUserDirectoryAndFiles] Existing data found for ${key}, no need to create.`);
+        }
+    }
+
+    return dataPaths;
 }
 
-async function getUserData(userId) {
-  console.log(
-    "[getUserData] Fetching user data from Firebase for user ID:",
-    userId,
-  );
-  if (!userId) {
-    console.error("[getUserData] Error: User ID is undefined.");
-    return null; // Return null to indicate failure
-  }
-  const userRef = ref(db, `users/${userId}`);
-  console.log(`[getUserData] Fetching data for user ID: ${userId}`);
-  try {
-    const dataSnapshot = await get(userRef);
-    if (dataSnapshot.exists()) {
-      const userData = dataSnapshot.val();
-      console.log("[getUserData] Data fetched for user ID:", userId, userData);
-      return userData;
-    } else {
-      console.log(`[getUserData] No data found for user ID: ${userId}`);
-      return null; // Return null to handle this cleanly in your logic
+
+// Update Firebase reading and writing functions accordingly
+async function readJsonFromFirebase(path) {
+    try {
+        const snapshot = await get(ref(dbClient, path));
+        if (snapshot.exists()) {
+            const data = snapshot.val();
+            console.log(`[readJsonFromFirebase] Data found at path: ${path}`, JSON.stringify(data, null, 2)); // Log the data in a readable format
+            return data;
+        } else {
+            console.log(`[readJsonFromFirebase] No data found at path: ${path}`);
+            return null;
+        }
+    } catch (error) {
+        console.error(`[readJsonFromFirebase] Error reading data from Firebase at path ${path}:`, error);
+        throw error;
     }
-  } catch (error) {
-    console.error(
-      "[getUserData] Error fetching data for user ID:",
-      userId,
-      error,
-    );
-    return null; // Return null to handle errors cleanly
+}
+
+
+async function writeJsonToFirebase(path, data) {
+    try {
+        await set(ref(dbClient, path), data);
+        console.log(`[writeJsonToFirebase] Data successfully written to path: ${path}`);
+    } catch (error) {
+        console.error(`[writeJsonToFirebase] Error writing data to Firebase at path ${path}: ${error}`);
+        throw error;
+    }
+}
+
+
+async function getUserData(filePaths) {
+  console.log("[getUserData] Called with filePaths:", filePaths);
+
+  const data = {};
+  for (const [key, path] of Object.entries(filePaths)) {
+    data[key] = await readJsonFromFirebase(path) || {};
+    //console.log(`[getUserData] ${key} data fetched:`, data[key]);
   }
+
+  //console.log("[getUserData] Final fetched data:", data);
+
+  return data;
 }
 
 module.exports = {
   ensureUserDirectoryAndFiles,
   getUserData,
+  writeJsonToFirebase,
+  readJsonFromFirebase,
 };
