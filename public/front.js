@@ -70,20 +70,38 @@ document.addEventListener("DOMContentLoaded", () => {
           if (Array.isArray(data.conversation)) {
             conversationHistory = data.conversation;
             console.log("[front.js/init] Conversation history");
-            displayConversationHistory();
+
+            // Check if the conversation history is not empty
+            if (conversationHistory.length > 0) {
+              console.log(
+                `[front.js/init] Conversation history found for ID: ${userId}`,
+              );
+              // Display the last five messages
+              displayConversationHistory();
+            } else {
+              console.log(
+                `[front.js/init] No conversation history found for ID: ${userId}`,
+              );
+              const firstTimeUserMessage =
+                "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
+              console.log(
+                `[front.js/init] Sending first time user message: ${firstTimeUserMessage}`,
+              );
+              // Send the first-time user message using the callChatAPI function without storing it in the conversation history
+              callChatAPI(firstTimeUserMessage, userId, false);
+            }
           } else {
             console.warn(
               "[front.js/init] Conversation history is not an array, initializing as an empty array.",
             );
             conversationHistory = [];
-          }
-          // Check if it's the user's first time
-          if (conversationHistory.length === 0) {
-            console.log(`[front.js/init] First time user detected for ID: ${userId}`);
-            const firstTimeUserMessage = "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
-            console.log(`[front.js/init] Sending first time user message: ${firstTimeUserMessage}`);
-            // Send the first-time user message using the callChatAPI function
-            callChatAPI(firstTimeUserMessage, userId);
+            // Send the first-time user message if the conversation history is empty
+            const firstTimeUserMessage =
+              "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
+            console.log(
+              `[front.js/init] Sending first time user message: ${firstTimeUserMessage}`,
+            );
+            callChatAPI(firstTimeUserMessage, userId, false);
           }
         } else {
           console.error("[front.js/init] Invalid userId received", data);
@@ -144,17 +162,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   initializeUserData();
 
-  async function callChatAPI(userPrompt, userId) {
+  async function callChatAPI(userPrompt, userId, storeInHistory = true) {
     console.log("[front.js/callChatAPI] Calling /api/chat with", {
       userPrompt,
       userId,
     });
 
     // Creating a copy of the conversation history to include the new user prompt
-    const messagesToSend = [
-      ...conversationHistory,
-      { role: "user", content: userPrompt },
-    ];
+    const messagesToSend = storeInHistory
+      ? [...conversationHistory, { role: "user", content: userPrompt }]
+      : [...conversationHistory];
     console.log(
       "[front.js/callChatAPI] Sending messages to /api/chat",
       messagesToSend,
