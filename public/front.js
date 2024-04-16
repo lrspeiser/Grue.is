@@ -72,22 +72,18 @@ document.addEventListener("DOMContentLoaded", () => {
             console.log("[front.js/init] Conversation history loaded");
             // Display the conversation history
             displayConversationHistory();
-            // Check if the conversation history is empty
-            if (conversationHistory.length === 0) {
-              console.log(`[front.js/init] No conversation history found for ID: ${userId}`);
-              const firstTimeUserMessage = "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
-              console.log(`[front.js/init] Sending first time user message: ${firstTimeUserMessage}`);
-              // Send the first-time user message using the callChatAPI function without storing it in the conversation history
-              callChatAPI(firstTimeUserMessage, userId, false);
-            }
           } else {
             console.warn(
               "[front.js/init] Conversation history is not an array, initializing as an empty array.",
             );
             conversationHistory = [];
-            // Send the first-time user message if the conversation history is not an array
+          }
+          // Check if the conversation history is empty
+          if (conversationHistory.length === 0) {
+            console.log(`[front.js/init] No conversation history found for ID: ${userId}`);
             const firstTimeUserMessage = "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
             console.log(`[front.js/init] Sending first time user message: ${firstTimeUserMessage}`);
+            // Send the first-time user message using the callChatAPI function without storing it in the conversation history
             callChatAPI(firstTimeUserMessage, userId, false);
           }
         } else {
