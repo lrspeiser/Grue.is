@@ -65,25 +65,22 @@ app.post("/api/users", async (req, res) => {
   try {
     // Ensure user directory and files are set up in Firebase
     const filePaths = await ensureUserDirectoryAndFiles(userId);
+
     // Fetch user data from Firebase
     const userData = await getUserData(filePaths);
 
     // Ensure conversationHistory is an array
     if (!Array.isArray(userData.conversation)) {
-      // Adjusted to directly use conversation as an array
       console.warn(
         "[/api/users] Conversation history is not an array, initializing as an empty array.",
       );
-      userData.conversation = []; // Directly initialize conversation as an array
+      userData.conversation = [];
       // Update the Firebase database to reflect this initialization
-      await writeJsonToFirebase(
-        filePaths.conversation,
-        userData.conversation, // Directly pass the array
-      );
+      await writeJsonToFirebase(filePaths.conversation, userData.conversation);
     }
 
     const isDataPresent =
-      userData.conversation.length > 0 || // Adjusted to directly check the conversation array
+      userData.conversation.length > 0 ||
       Object.keys(userData.room).length > 0 ||
       Object.keys(userData.player).length > 0;
 
@@ -91,19 +88,21 @@ app.post("/api/users", async (req, res) => {
       console.log(`[/api/users] Initializing user data for ID: ${userId}`);
 
       // Initialize with defaults if undefined or not found. This ensures that each entry exists and has a baseline structure in Firebase.
-      await writeJsonToFirebase(filePaths.conversation, []);
-      await writeJsonToFirebase(filePaths.room, {});
-      await writeJsonToFirebase(filePaths.player, {});
-      await writeJsonToFirebase(filePaths.quest, {});
-      await writeJsonToFirebase(filePaths.story, {
-        language_spoken: "",
-        favorite_book: "",
-        favorite_movie: "",
-        game_description: "",
-        active_game: "false",
-        player_profile: "",
-        character_played_by_user: "",
-      });
+      await Promise.all([
+        writeJsonToFirebase(filePaths.conversation, []),
+        writeJsonToFirebase(filePaths.room, {}),
+        writeJsonToFirebase(filePaths.player, {}),
+        writeJsonToFirebase(filePaths.quest, {}),
+        writeJsonToFirebase(filePaths.story, {
+          language_spoken: "",
+          favorite_book: "",
+          favorite_movie: "",
+          game_description: "",
+          active_game: "false",
+          player_profile: "",
+          character_played_by_user: "",
+        }),
+      ]);
     }
 
     console.log(`[/api/users] User data processed for ID: ${userId}`);
