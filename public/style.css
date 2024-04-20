@@ -9,6 +9,31 @@ body {
   height: 100vh;
 }
 
+.image-placeholder {
+  color: #008001;
+  font-style: italic;
+  margin-top: 10px;
+}
+
+
+#imageContainer {
+    max-width: 100%; /* Ensures the container does not exceed the width of its parent */
+    height: auto; /* Keeps the container height dynamic based on the content */
+    display: flex; /* Enables flexible box layout */
+    justify-content: center; /* Centers the image horizontally */
+    align-items: center; /* Centers the image vertically */
+    overflow: hidden; /* Hides parts of the image that exceed the container size */
+    margin-top: 20px; /* Adds space above the container */
+}
+
+#imageContainer img {
+    max-width: 100%; /* Limits image width to 100% of its container */
+    max-height: 400px; /* Limits image height, adjust as needed */
+    height: auto; /* Ensures the height scales proportionally */
+    object-fit: contain; /* Ensures the image is fully visible, preserved aspect ratio */
+}
+
+
 #interaction-container {
   display: grid;
   grid-template-rows: auto 1fr; /* Allocate space for input and then as much space as possible for messages */
@@ -27,14 +52,15 @@ body {
   font-family: 'AppleIIPro', monospace;
 }
 
-#userInput {
-  flex-grow: 1;
-  font-family: 'AppleIIPro', monospace;
-  color: green;
-  background-color: black;
-  border: none;
-  outline: none;
-  font-size: 16px; /* Adjust the font size as needed */
+.user-message {
+  text-align: right;
+  display: inline-block;
+  background-color: #008001;
+  color: black;
+  padding: 5px 10px;
+  border-radius: 5px;
+  margin-left: auto;
+  margin-top: 10px; /* Add margin-top to create space above the user message */
 }
 
 #messageContainer {
@@ -43,21 +69,48 @@ body {
   flex-direction: column; /* Ensure messages are added from top to bottom */
 }
 
+.user-message {
+  text-align: right;
+  display: inline-block;
+  background-color: #008001;
+  color: black; 
+  padding: 5px 10px;
+  border-radius: 5px;
+  margin-left: auto;
+}
+
+
+
+input[type="text"] {
+  background-color: transparent; /* For transparent input box */
+  /* background-color: black; */ /* Uncomment this line for a black input box */
+  color: green; /* Ensures the text color is green */
+  border: none; /* Removes the border */
+  padding: 10px; /* Adds padding */
+  font-family: 'AppleIIPro', monospace; /* Ensures font consistency */
+  width: 100%; /* Ensures it occupies the full width of its container */
+  outline: none; /* Removes the default focus outline */
+  font-size: 16px; /* Set the font size to match user and assistant messages */
+  /* Alternatively, change the outline to be more subtle */
+  /* outline: 1px solid #555; */ /* A subtle outline color */
+  box-shadow: 0 0 3px black; /* Adds a glow effect when the input is focused */
+}
+
 .user-message, .response-message {
+  font-size: 16px; /* Ensures text size is consistent across user and assistant messages */
   margin: 4px 0;
   padding: 4px;
   word-break: break-word;
   border-radius: 4px;
 }
 
-.user-message {
-  background-color: #008001; /* Green background for user messages */
-  color: black; /* Black text for contrast */
-  align-self: flex-end; /* Align to the right */
-}
-
 .response-message {
   background-color: black; /* Keeps the terminal look */
   color: #008001; /* Green text for responses */
   align-self: flex-start; /* Align to the left */
+}
+
+/* Optional: Add a focus effect using box-shadow instead of outline */
+input[type="text"]:focus {
+  box-shadow: 0 0 3px black; /* Adds a glow effect when the input is focused */
 }

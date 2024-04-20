@@ -2,6 +2,15 @@
 let lastAssistantMessageElement = null;
 let fullResponse = "";
 
+function displayStoryImage(imageUrl) {
+  const imgElement = document.createElement("img");
+  imgElement.src = imageUrl;
+  imgElement.alt = "Story Image";
+  imgElement.style.maxWidth = "100%";
+  imgElement.style.maxHeight = "400px";
+  messageContainer.prepend(imgElement);
+}
+
 (function () {
   const originalLog = console.log;
   const originalError = console.error;
@@ -33,7 +42,7 @@ let fullResponse = "";
   }
 })();
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
   console.log("[front.js/DOMContentLoaded] Page loaded");
   const userInput = document.getElementById("userInput");
   const messageContainer = document.getElementById("messageContainer");
@@ -41,7 +50,7 @@ document.addEventListener("DOMContentLoaded", () => {
   let conversationHistory = [];
   let userId = localStorage.getItem("userId");
 
-  const initializeUserData = () => {
+  const initializeUserData = async () => {
     console.log("[front.js/init] Attempting to load or create user data");
     const bodyContent = userId ? JSON.stringify({ userId }) : "{}";
     const options = {
@@ -56,7 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
         return response.json();
       })
-      .then((data) => {
+      .then(async (data) => {
         if (
           data.userId &&
           data.userId !== "undefined" &&
@@ -67,22 +76,40 @@ document.addEventListener("DOMContentLoaded", () => {
           console.log("[front.js/init] User data loaded or created", {
             userId,
           });
-          if (Array.isArray(data.conversation)) {
-            conversationHistory = data.conversation;
-            console.log("[front.js/init] Conversation history loaded");
-            // Display the conversation history
-            displayConversationHistory();
+
+          // Establish the socket connection with the userId
+          const socket = io({
+            query: {
+              userId: userId,
+            },
+          });
+
+          socket.on("latestImageUrl", (imageUrl) => {
+            if (imageUrl) {
+              displayStoryImage(imageUrl);
+            }
+          });
+
+          if (data.story && data.story.active_game === true) {
+            if (Array.isArray(data.conversation)) {
+              conversationHistory = data.conversation;
+              console.log("[front.js/init] Conversation history loaded");
+              displayConversationHistory();
+            } else {
+              console.warn(
+                "[front.js/init] Conversation history is not an array, initializing as an empty array.",
+              );
+              conversationHistory = [];
+            }
           } else {
-            console.warn(
-              "[front.js/init] Conversation history is not an array, initializing as an empty array.",
+            console.log(
+              `[front.js/init] No active game found for ID: ${userId}`,
             );
-            conversationHistory = [];
-          }
-          // Check if the conversation history is empty
-          if (conversationHistory.length === 0) {
-            console.log(`[front.js/init] No conversation history found for ID: ${userId}`);
-            const firstTimeUserMessage = "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
-            console.log(`[front.js/init] Sending first time user message: ${firstTimeUserMessage}`);
+            const firstTimeUserMessage =
+              "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
+            console.log(
+              `[front.js/init] Sending first time user message: ${firstTimeUserMessage}`,
+            );
             // Send the first-time user message using the callChatAPI function without storing it in the conversation history
             callChatAPI(firstTimeUserMessage, userId, false);
           }
@@ -151,7 +178,6 @@ document.addEventListener("DOMContentLoaded", () => {
       userId,
     });
 
-    // Creating a copy of the conversation history to include the new user prompt
     const messagesToSend = storeInHistory
       ? [...conversationHistory, { role: "user", content: userPrompt }]
       : [...conversationHistory];
@@ -160,137 +186,186 @@ document.addEventListener("DOMContentLoaded", () => {
       messagesToSend,
     );
 
-    try {
-      const response = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: messagesToSend,
-          userId,
-        }),
-      });
-      console.log("[front.js/callChatAPI] Fetch response:", response);
+    let retryCount = 0;
+    const maxRetries = 1;
 
-      if (!response.ok) {
-        console.error(
-          "[front.js/callChatAPI] Failed to start chat session. Response status:",
-          response.status,
-        );
-        throw new Error("Failed to start chat session");
-      }
+    async function fetchChatAPI() {
+      try {
+        const response = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: messagesToSend,
+            userId,
+          }),
+        });
+        console.log("[front.js/callChatAPI] Fetch response:", response);
 
-      const reader = response.body
-        .pipeThrough(new TextDecoderStream())
-        .getReader();
-      console.log("[front.js/callChatAPI] Reader created:", reader);
-
-      while (true) {
-        const { value, done } = await reader.read();
-        console.log(
-          "[front.js/callChatAPI] Read from reader. Value:",
-          value,
-          "Done:",
-          done,
-        );
-
-        if (done) {
-          console.log("[front.js/callChatAPI] Chat session ended");
-          markLastAssistantMessageAsComplete();
-          break;
+        if (!response.ok) {
+          console.error(
+            "[front.js/callChatAPI] Failed to start chat session. Response status:",
+            response.status,
+          );
+          throw new Error("Failed to start chat session");
         }
 
-        //console.log("[front.js/callChatAPI] Received chunk:", value);
-        value.split("\n").forEach((line) => {
-          console.log("[front.js/callChatAPI] Processing line:", line);
+        const reader = response.body
+          .pipeThrough(new TextDecoderStream())
+          .getReader();
+        console.log("[front.js/callChatAPI] Reader created:", reader);
 
-          try {
-            if (line.startsWith("data:")) {
-              const parsedLine = JSON.parse(line.substr(5));
+        while (true) {
+          const { value, done } = await reader.read();
+          console.log(
+            "[front.js/callChatAPI] Read from reader. Value:",
+            value,
+            "Done:",
+            done,
+          );
 
-              if (parsedLine.content !== undefined) {
-                const content = parsedLine.content;
-                console.log("[front.js/callChatAPI] Parsed content:", content);
-                console.log(
-                  "[front.js/callChatAPI] Displaying message:",
-                  content,
-                );
-                displayAssistantMessage(content);
-              }
-            } else if (line.trim() === "[DONE]") {
-              console.log("[front.js/callChatAPI] Message stream completed");
-              markLastAssistantMessageAsComplete();
-            }
-          } catch (error) {
-            if (line.trim() !== "[DONE]") {
-              console.error(
-                "[front.js/callChatAPI] Error parsing chunk:",
-                error,
-              );
-            }
+          if (done) {
+            console.log("[front.js/callChatAPI] Chat session ended");
+            markLastAssistantMessageAsComplete();
+            fetchAndDisplayImage(userId);
+            break;
           }
-        });
+
+          value.split("\n").forEach((line) => {
+            console.log("[front.js/callChatAPI] Processing line:", line);
+
+            try {
+              if (line.startsWith("data:")) {
+                const parsedLine = JSON.parse(line.substr(5));
+
+                if (parsedLine.content !== undefined) {
+                  const content = parsedLine.content;
+                  // ... (existing code)
+                  displayAssistantMessage(content);
+
+                  if (parsedLine.imageUrl !== undefined) {
+                    console.log(
+                      "[front.js/callChatAPI] Image URL received:",
+                      parsedLine.imageUrl,
+                    );
+                    lastAssistantMessageElement.setAttribute(
+                      "data-image-url",
+                      "true",
+                    );
+                    // Append the image placeholder
+                    const imgPlaceholder = document.createElement("div");
+                    imgPlaceholder.classList.add("image-placeholder");
+                    imgPlaceholder.textContent = "Image Generating...";
+                    messageContainer.prepend(imgPlaceholder);
+                  }
+                }
+              } else if (line.trim() === "[DONE]") {
+                console.log("[front.js/callChatAPI] Message stream completed");
+                markLastAssistantMessageAsComplete();
+                fetchStoryImage(userId); // Fetch the image when the message is complete
+              }
+            } catch (error) {
+              if (line.trim() !== "[DONE]") {
+                console.error(
+                  "[front.js/callChatAPI] Error parsing chunk:",
+                  error,
+                );
+              }
+            }
+          });
+        }
+      } catch (error) {
+        console.error("[front.js/callChatAPI] Error:", error);
+        removePartialMessage();
+        displayErrorMessage("Oops! Something went wrong. Retrying...");
+
+        if (retryCount < maxRetries) {
+          retryCount++;
+          await fetchChatAPI();
+        } else {
+          displayErrorMessage(
+            "Oops! Something went wrong. Please try again.",
+            true,
+          );
+        }
       }
-    } catch (error) {
-      console.error("[front.js/callChatAPI] Error:", error);
     }
+
+    await fetchChatAPI();
   }
 
   userInput.addEventListener("keydown", async (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
+      // Prevents multiple intervals from being set
+      clearInterval(checkImageInterval);
+      const imageLoadingElement = document.querySelector(".image-loading");
+      if (imageLoadingElement) {
+        imageLoadingElement.remove(); // Remove any existing "Image Loading..." message
+      }
       const userPrompt = userInput.value.trim();
       if (userPrompt !== "") {
         console.log("[front.js/userInput] User prompt entered", { userPrompt });
         displayUserMessage(userPrompt);
         userInput.value = "";
-
         if (!Array.isArray(conversationHistory)) {
           console.warn(
-            "[front.js/userInput] Conversation history is not an array, initializing as an empty array.",
+            "[front.js/userInput] Initializing empty conversation history.",
           );
           conversationHistory = [];
         }
         conversationHistory.push({ role: "user", content: userPrompt });
         callChatAPI(userPrompt, userId);
+        const newImageLoadingElement = document.createElement("div");
+        newImageLoadingElement.classList.add("image-loading");
+        messageContainer.prepend(newImageLoadingElement);
       }
     }
   });
+
+  let checkImageInterval;
 
   function displayConversationHistory() {
     console.log(
       "[front.js/displayConversationHistory] Displaying last 5 messages from conversation history",
     );
 
-    // Assuming 'messageContainer' is the DOM element where messages are to be displayed
-    for (let i = 1; i <= 5 && i <= conversationHistory.length; i++) {
-      const message = conversationHistory[conversationHistory.length - i]; // Direct access to the message
+    const lastFiveMessages = conversationHistory.slice(-5);
 
-      // Display assistant's response
+    lastFiveMessages.reverse().forEach((message, index) => {
+      const messageGroup = document.createElement("div");
+      messageGroup.classList.add("message-group");
+
+      if (message.imageUrl) {
+        const imgElement = document.createElement("img");
+        imgElement.src = message.imageUrl;
+        imgElement.alt = "Story Image";
+        imgElement.style.maxWidth = "100%";
+        imgElement.style.maxHeight = "400px";
+        messageGroup.appendChild(imgElement);
+      }
+
       if (message.response) {
-        console.log(
-          `[front.js/displayConversationHistory] (#${message.messageId}) Displaying response:`,
-          message.response,
-        );
-
         const assistantMessageElement = document.createElement("div");
         assistantMessageElement.classList.add("assistant-message");
-        assistantMessageElement.textContent = `${message.response}`;
-        messageContainer.appendChild(assistantMessageElement); // Appending to the container
+        assistantMessageElement.innerHTML = message.response.replace(
+          /\n/g,
+          "<br>",
+        );
+        messageGroup.appendChild(assistantMessageElement);
       }
 
-      // Display user's prompt
       if (message.userPrompt) {
-        console.log(
-          `[front.js/displayConversationHistory] (#${message.messageId}) Displaying user prompt:`,
-          message.userPrompt,
-        );
-
         const userMessageElement = document.createElement("div");
         userMessageElement.classList.add("user-message");
-        userMessageElement.textContent = `${message.userPrompt}`;
-        messageContainer.appendChild(userMessageElement); // Appending to the container
+        userMessageElement.textContent = message.userPrompt;
+        messageGroup.appendChild(userMessageElement);
       }
-    }
+
+      messageGroup.appendChild(document.createElement("br"));
+      messageGroup.appendChild(document.createElement("br"));
+
+      messageContainer.appendChild(messageGroup);
+    });
   }
 
   function displayUserMessage(message) {
@@ -356,21 +431,131 @@ document.addEventListener("DOMContentLoaded", () => {
         lastAssistantMessageElement,
       );
       lastAssistantMessageElement.setAttribute("data-complete", "true");
+
+      // Check if imageUrl is provided and display the placeholder
+      const imageUrl =
+        lastAssistantMessageElement.getAttribute("data-image-url");
+      if (imageUrl === "true") {
+        console.log(
+          "[front.js/markLastAssistantMessageAsComplete] Image URL expected, displaying placeholder.",
+        );
+        const imgPlaceholder = document.createElement("div");
+        imgPlaceholder.classList.add("image-placeholder");
+        imgPlaceholder.textContent = "Image Generating...";
+        messageContainer.prepend(imgPlaceholder);
+        console.log(
+          "[front.js/markLastAssistantMessageAsComplete] Image placeholder appended to message container.",
+        );
+
+        // Check for the image URL
+        fetchStoryImage(userId, conversationHistory)
+          .then((img) => {
+            if (img) {
+              imgPlaceholder.remove();
+              const imgElement = document.createElement("img");
+              imgElement.src = img;
+              imgElement.alt = "Story Image";
+              imgElement.style.maxWidth = "100%";
+              imgElement.style.maxHeight = "400px";
+              messageContainer.prepend(imgElement);
+              console.log(
+                "[front.js/markLastAssistantMessageAsComplete] Image appended to message container.",
+              );
+            }
+          })
+          .catch((error) => {
+            console.error(
+              "[front.js/markLastAssistantMessageAsComplete] Error fetching story image:",
+              error,
+            );
+          });
+      }
     }
     lastAssistantMessageElement = null;
     console.log(
       "[front.js/markLastAssistantMessageAsComplete] Last assistant message element reset to null",
     );
   }
-});
 
-function displayErrorMessage(message) {
-  console.log("[front.js/displayErrorMessage] Displaying error message", {
-    message,
-  });
-  const errorMessageElement = document.createElement("div");
-  errorMessageElement.classList.add("error-message");
-  errorMessageElement.textContent = message;
-  messageContainer.prepend(errorMessageElement);
-  console.log("[front.js/displayErrorMessage] Error message displayed");
-}
+  function displayErrorMessage(message, showRetryButton = false) {
+    console.log("[front.js/displayErrorMessage] Displaying error message", {
+      message,
+    });
+    const errorMessageElement = document.createElement("div");
+    errorMessageElement.classList.add("error-message");
+    errorMessageElement.textContent = message;
+    messageContainer.prepend(errorMessageElement);
+
+    if (showRetryButton) {
+      const retryButton = document.createElement("button");
+      retryButton.textContent = "Retry";
+      retryButton.addEventListener("click", () => {
+        errorMessageElement.remove();
+        callChatAPI(userInput.value.trim(), userId);
+      });
+      errorMessageElement.appendChild(retryButton);
+    }
+
+    console.log("[front.js/displayErrorMessage] Error message displayed");
+  }
+
+  function removePartialMessage() {
+    const lastMessage = messageContainer.lastElementChild;
+    if (lastMessage && !lastMessage.hasAttribute("data-complete")) {
+      lastMessage.remove();
+    }
+  }
+
+  async function fetchStoryImage(userId) {
+    console.log("[fetchStoryImage] Fetching story image for user:", userId);
+    const eventSource = new EventSource(
+      `${window.API_BASE_URL}/api/story-image/${userId}`,
+    );
+
+    return new Promise((resolve, reject) => {
+      eventSource.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        console.log("[fetchStoryImage] Image URL received:", data.url);
+
+        // Find the image placeholder element
+        const imagePlaceholder = document.querySelector(".image-placeholder");
+        if (imagePlaceholder) {
+          // Replace the placeholder with the actual image
+          const imgElement = document.createElement("img");
+          imgElement.src = data.url;
+          imgElement.alt = "Story Image";
+          imgElement.style.maxWidth = "100%";
+          imgElement.style.maxHeight = "400px";
+          imagePlaceholder.parentNode.replaceChild(
+            imgElement,
+            imagePlaceholder,
+          );
+        }
+
+        eventSource.close();
+        resolve(data.url);
+      };
+
+      eventSource.onerror = (error) => {
+        console.error("[fetchStoryImage] Error fetching story image:", error);
+        eventSource.close();
+        reject(error);
+      };
+    });
+  }
+  async function fetchAndDisplayImage(userId) {
+    console.log(
+      "[fetchAndDisplayImage] Initiating fetch and display image process.",
+    );
+    const imageUrl = await fetchStoryImage(userId);
+    if (imageUrl) {
+      console.log(
+        "[fetchAndDisplayImage] Image URL fetched successfully:",
+        imageUrl,
+      );
+      displayStoryImage(imageUrl);
+    } else {
+      console.error("[fetchAndDisplayImage] Failed to fetch image URL.");
+    }
+  }
+});

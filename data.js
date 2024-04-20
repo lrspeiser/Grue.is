@@ -19,13 +19,13 @@ async function updateStoryContext(userId) {
   console.log("[data.js/updateStoryContext] File paths:", filePaths);
 
   const userData = await getUserData(filePaths);
-  console.log("[data.js/updateStoryContext] User data:", userData);
+  console.log("[data.js/updateStoryContext] User data");
 
   // Initialize storyData and retrieve from Firebase
   let storyData = {};
   try {
     storyData = (await readJsonFromFirebase(filePaths.story)) || {};
-    console.log("[data.js/updateStoryContext] Retrieved story data", storyData);
+    console.log("[data.js/updateStoryContext] Retrieved story data");
   } catch (error) {
     console.error(
       "[data.js/updateStoryContext] Error reading story data:",
@@ -47,7 +47,6 @@ async function updateStoryContext(userId) {
   }
   console.log(
     "[data.js/updateStoryContext] Formatted Conversation History for GPT:",
-    formattedHistory,
   );
 
   const { messages, tools } = getStoryContextMessages(
@@ -72,10 +71,7 @@ async function updateStoryContext(userId) {
     });
 
     const responseMessage = response.choices[0].message;
-    console.log(
-      "[data.js/updateStoryContext] Response Message:",
-      responseMessage,
-    );
+    console.log("[data.js/updateStoryContext] Response Message");
 
     // Check if there are tool calls and handle them
     if (
@@ -90,8 +86,7 @@ async function updateStoryContext(userId) {
 
         if (updatedStoryData) {
           console.log(
-            "[data.js/updateStoryContext] Updated Story Data from tool call:",
-            updatedStoryData,
+            "[data.js/updateStoryContext] Updated Story Data from tool call",
           );
 
           // Check if active_game changed from true to false
@@ -179,9 +174,10 @@ function getStoryContextMessages(storyData, formattedHistory) {
                   description:
                     "The language the user prefers to use in the story.",
                 },
-                favorite_author: {
+                narrator_style: {
                   type: "string",
-                  description: "The user's favorite author.",
+                  description:
+                    "This should be the voice of the narrator of this story. This will likely be an author that best represents the story telling we want. For instance if this were old england we might say 'Narrate this story in the style of William Shakespeare' or if this were Star Wars say 'Write the story and dialogue as though you are George Lucas.'",
                 },
                 favorite_story: {
                   type: "string",
@@ -191,32 +187,61 @@ function getStoryContextMessages(storyData, formattedHistory) {
                 active_game: {
                   type: "boolean",
                   description:
-                    "This should only be set to true when you have enough information to officially start the game. If you are still asking the user questions to figure out what they want, keep as false. As soon as you have enough information to populate the game_description and character_played_by_user, set this to true. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false again.",
+                    "The response from GPT in the conversation thread should indicate that the game will officially start and describe what the world will be. This is when you set this to true. This should only be set to true when you have enough information to officially start the game. If you are still asking the user questions to figure out what they want, keep as false. As soon as you have enough information to populate the game_description and character_played_by_user, set this to true. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false again.",
                 },
                 character_played_by_user: {
                   type: "string",
                   description:
-                    "This will be the character played by the user in the story.",
+                    "This will be the character played by the user in the story. If there is no name given for their player, create one that makes the most sense, usually the hero in the story.",
+                },
+                player_level: {
+                  type: "string",
+                  description:
+                    "The player starts at level 1. Every time they solve a quest increment them up 1 level. Represent this as: 'You are now level X/100. You went up one more level by solving the <name of quest> quest.'",
+                },
+                player_health: {
+                  type: "string",
+                  description:
+                    "This will start at 100. This is based on how well the player takes care of themselves. If they get hurt in a battle or exhaust themselves or don't eat, this would change. For example: You are getting hungry. or You have a bag cut across your head and will die if you do not get help. Health is 20/100.",
+                },
+                player_attitude: {
+                  type: "string",
+                  description:
+                    "This is how the character behaves in the world. If they are nice to other characters or mean. If they do bad things or good things. For example: You are hated by the people of this world because you are always killing people. Or You are well loved by the people for all the good you do.",
+                },
+                player_special_abilities: {
+                  type: "string",
+                  description:
+                    "These are the special abilities your character has in this world. For instance if you were a spy you might speak many languages and be an excellent shot. Or if you were a Wizard you might have an affinity to water magic. These can change as you train up within the world.",
                 },
                 game_description: {
                   type: "string",
                   description:
-                    "The description of the game the user is playing. Some details of the world and what they might need to overcome.",
+                    "The description of the game the user is playing. Some details of the world and what they might need to overcome. List five challenges here that the player might need to overcome while playing. Also, list out the main areas of the world they will travel through.",
                 },
                 player_profile: {
                   type: "string",
                   description:
                     "Every time the user types something, you should be able to get information about them to fill in this area. Even when they start you can use what they told you to describe the kind of person they might be. Anytime the user expresses a preference to the AI, like to stop doing something or to do something different, record it in this field. As the user plays the game, collect more information about their style based on what they submit and how they react to the game. Are they sarcastic or serious? How serious of a gamer are they? Do they like to talk to characters or take actions? Are they kind or mean? Are they young or old? Naive or mature? Build a full profile of the user. Limit this to 100 words, if it goes longer then rewrite it. This is very important for the game play.",
                 },
+                image_description: {
+                  type: "string",
+                  description: "Using the latest details, provide a prompt for DALL-E to generate an image that shows where the user is in the story. For instance: This is a dark cellar with a fireplace. There is a table with a key on it. There is a door that is locked. Our hero is wearing a trenchcoat and using a flashlight to expose a secret keyhole in the wall."
+                }
               },
               required: [
                 "language_spoken",
-                "favorite_author",
+                "narrator_style",
                 "favorite_story",
                 "active_game",
                 "game_description",
+                "player_level",
+                "player_health",
+                "player_attitude",
+                "player_special_abilities",
                 "character_played_by_user",
                 "player_profile",
+                "image_description",
               ],
             },
           },
@@ -247,7 +272,6 @@ async function updateRoomContext(userId) {
     roomData = (await readJsonFromFirebase(filePaths.room)) || {};
     console.log(
       "[data.js/updateRoomContext] Retrieved Room Data from Firebase:",
-      JSON.stringify(roomData, null, 2),
     );
   } catch (error) {
     console.error(
@@ -277,10 +301,7 @@ async function updateRoomContext(userId) {
 
   try {
     console.log("Calling OpenAI API with the prepared messages and tools.");
-    console.log(
-      "Data sent to GPT:",
-      JSON.stringify({ messages, tools }, null, 2),
-    );
+    console.log("Data sent to GPT");
 
     const response = await openai.chat.completions.create({
       model: "gpt-4-0125-preview",
@@ -290,30 +311,18 @@ async function updateRoomContext(userId) {
     });
 
     const responseMessage = response.choices[0].message;
-    console.log(
-      "[data.js/updateRoomContext] Response Message:",
-      JSON.stringify(responseMessage, null, 2),
-    );
+    console.log("[data.js/updateRoomContext] Response Message");
 
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       const toolCall = responseMessage.tool_calls[0];
-      console.log(
-        "[data.js/updateRoomContext] Function call:",
-        JSON.stringify(toolCall, null, 2),
-      );
+      console.log("[data.js/updateRoomContext] Function call");
 
       if (toolCall.function.name === "update_room_context") {
         const functionArgs = JSON.parse(toolCall.function.arguments);
-        console.log(
-          "[data.js/updateRoomContext] Function arguments:",
-          JSON.stringify(functionArgs, null, 2),
-        );
+        console.log("[data.js/updateRoomContext] Function arguments");
 
         const updatedRooms = functionArgs.rooms;
-        console.log(
-          "[data.js/updateRoomContext] Updated rooms:",
-          JSON.stringify(updatedRooms, null, 2),
-        );
+        console.log("[data.js/updateRoomContext] Updated rooms");
 
         // Read existing room data from Firebase
         const existingRoomData =
@@ -481,8 +490,7 @@ async function updatePlayerContext(userId) {
     conversationHistory =
       (await readJsonFromFirebase(filePaths.conversation)) || [];
     console.log(
-      "[data.js/updatePlayerContext] Retrieved Conversation History from Firebase:",
-      JSON.stringify(conversationHistory, null, 2),
+      "[data.js/updatePlayerContext] Retrieved Conversation History from Firebase",
     );
   } catch (error) {
     console.error(
@@ -496,8 +504,7 @@ async function updatePlayerContext(userId) {
   try {
     playerData = (await readJsonFromFirebase(filePaths.player)) || {};
     console.log(
-      "[data.js/updatePlayerContext] Retrieved Player Data from Firebase:",
-      JSON.stringify(playerData, null, 2),
+      "[data.js/updatePlayerContext] Retrieved Player Data from Firebase",
     );
   } catch (error) {
     console.error(
@@ -511,8 +518,7 @@ async function updatePlayerContext(userId) {
   try {
     storyData = (await readJsonFromFirebase(filePaths.story)) || {};
     console.log(
-      "[data.js/updatePlayerContext] Retrieved Story Data from Firebase:",
-      JSON.stringify(storyData, null, 2),
+      "[data.js/updatePlayerContext] Retrieved Story Data from Firebase",
     );
   } catch (error) {
     console.error(
@@ -531,8 +537,7 @@ async function updatePlayerContext(userId) {
     .join("\n\n");
 
   console.log(
-    "[data.js/updatePlayerContext] Formatted Conversation History for GPT:",
-    formattedHistory,
+    "[data.js/updatePlayerContext] Formatted Conversation History for GPT",
   );
 
   const { messages, tools } = getPlayerContextMessages(
@@ -543,10 +548,7 @@ async function updatePlayerContext(userId) {
 
   try {
     console.log("Calling OpenAI API with the prepared messages and tools.");
-    console.log(
-      "Data sent to GPT:",
-      JSON.stringify({ messages, tools }, null, 2),
-    );
+    console.log("Data sent to GPT");
 
     const response = await openai.chat.completions.create({
       model: "gpt-4-0125-preview",
@@ -555,35 +557,23 @@ async function updatePlayerContext(userId) {
       tool_choice: "auto",
     });
 
-    console.log(
-      "[data.js/updatePlayerContext] Raw OpenAI API response:",
-      JSON.stringify(response, null, 2),
-    );
+    console.log("[data.js/updatePlayerContext] Raw OpenAI API response");
 
     const responseMessage = response.choices[0].message;
-    console.log("Response Message:", JSON.stringify(responseMessage, null, 2));
+    console.log("[data.js/updatePlayerContext] Response Message");
 
     // Check if the model wanted to call a function
     console.log("[data.js/updatePlayerContext] Checking for function calls...");
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       const functionCall = responseMessage.tool_calls[0];
-      console.log(
-        "[data.js/updatePlayerContext] Function call:",
-        JSON.stringify(functionCall, null, 2),
-      );
+      console.log("[data.js/updatePlayerContext] Function call");
 
       if (functionCall.function.name === "update_player_context") {
         const functionArgs = JSON.parse(functionCall.function.arguments);
-        console.log(
-          "[data.js/updatePlayerContext] Function arguments:",
-          JSON.stringify(functionArgs, null, 2),
-        );
+        console.log("[data.js/updatePlayerContext] Function arguments");
 
         const updatedPlayers = functionArgs.players;
-        console.log(
-          "[data.js/updatePlayerContext] Updated players:",
-          JSON.stringify(updatedPlayers, null, 2),
-        );
+        console.log("[data.js/updatePlayerContext] Updated players");
 
         // Read the existing player data from Firebase
         const existingPlayerData =
@@ -738,8 +728,7 @@ async function updateQuestContext(userId) {
   try {
     storyData = (await readJsonFromFirebase(filePaths.story)) || {};
     console.log(
-      "[data.js/updateQuestContext] Retrieved Story Data from Firebase:",
-      JSON.stringify(storyData, null, 2),
+      "[data.js/updateQuestContext] Retrieved Story Data from Firebase",
     );
   } catch (error) {
     console.error(
@@ -753,8 +742,7 @@ async function updateQuestContext(userId) {
   try {
     questData = (await readJsonFromFirebase(filePaths.quest)) || [];
     console.log(
-      "[data.js/updateQuestContext] Retrieved Quest Data from Firebase:",
-      JSON.stringify(questData, null, 2),
+      "[data.js/updateQuestContext] Retrieved Quest Data from Firebase",
     );
   } catch (error) {
     console.error(
@@ -774,10 +762,7 @@ async function updateQuestContext(userId) {
     )
     .join("\n\n");
 
-  console.log(
-    "[data.js/updateQuestContext] Formatted Conversation for GPT:",
-    conversationForGPT,
-  );
+  console.log("[data.js/updateQuestContext] Formatted Conversation for GPT");
 
   const { messages, tools } = getQuestContextMessages(
     storyData,
@@ -787,10 +772,7 @@ async function updateQuestContext(userId) {
 
   try {
     console.log("Calling OpenAI API with the prepared messages and tools.");
-    console.log(
-      "Data sent to GPT:",
-      JSON.stringify({ messages, tools }, null, 2),
-    );
+    console.log("Data sent to GPT");
 
     const response = await openai.chat.completions.create({
       model: "gpt-4-0125-preview",
@@ -799,36 +781,21 @@ async function updateQuestContext(userId) {
       tool_choice: "auto",
     });
 
-    console.log(
-      "[data.js/updateQuestContext] Raw OpenAI API response:",
-      JSON.stringify(response, null, 2),
-    );
+    console.log("[data.js/updateQuestContext] Raw OpenAI API response");
 
     const responseMessage = response.choices[0].message;
-    console.log(
-      "[data.js/updateQuestContext] Response Message:",
-      JSON.stringify(responseMessage, null, 2),
-    );
+    console.log("[data.js/updateQuestContext] Response Message");
 
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
       const toolCall = responseMessage.tool_calls[0];
-      console.log(
-        "[data.js/updateQuestContext] Function call:",
-        JSON.stringify(toolCall, null, 2),
-      );
+      console.log("[data.js/updateQuestContext] Function call");
 
       if (toolCall.function.name === "update_quest_context") {
         const functionArgs = JSON.parse(toolCall.function.arguments);
-        console.log(
-          "[data.js/updateQuestContext] Function arguments:",
-          JSON.stringify(functionArgs, null, 2),
-        );
+        console.log("[data.js/updateQuestContext] Function arguments");
 
         const updatedQuests = functionArgs.quests;
-        console.log(
-          "[data.js/updateQuestContext] Updated quests:",
-          JSON.stringify(updatedQuests, null, 2),
-        );
+        console.log("[data.js/updateQuestContext] Updated quests");
 
         // Read existing quest data from Firebase
         const existingQuestData =
@@ -943,17 +910,12 @@ function getQuestContextMessages(storyData, questData, conversationForGPT) {
                   quest_reward: {
                     type: "string",
                     description:
-                      "The reward for completing the quest, such as items they can put into inventory or money. Be specific by giving them a tangible prize. Don't say things like the reward for this quest is unlocking more quests or information.",
+                      "The reward for completing the quest, such as items they can put into inventory or money. Be specific by giving them a tangible prize. Don't say things like the reward for this quest is unlocking more quests or information. For instance: Reward is 200 gold coins. Or Reward is A golden dagger.",
                   },
-                  quest_difficulty: {
+                  quest_steps: {
                     type: "string",
                     description:
-                      "The difficulty level of the quest (e.g., very easy, easy, medium, hard, so hard). Generally the first quests should be very easy. Easy means it only takes a couple of turns to win it. As it gets harder they should have to do more to win the quest and that will take more thinking, risk and turns. Give the risks to the user for taking on the quest including their chance of getting killed trying to take it on.",
-                  },
-                  quest_type: {
-                    type: "string",
-                    description:
-                      "The type of quest (e.g., puzzle, defeat enemy, obtain item, obtain information, find a person). Be specific on what they have to do to solve the quest.",
+                      "This should be the number of tasks the user must complete to finish the quest and the details of each task. Describe each task the user needs to complete. For instance, if the quest was to return a diamond to the princess the tasks might be: '1) Find the thrown room, 2) defeat the evil guards, 3) solve the puzzle on the door, 4) pick the lock of the chest, 5) return the diamond back to me.'",
                   },
                   quest_completed_percentage: {
                     type: "integer",
@@ -968,8 +930,7 @@ function getQuestContextMessages(storyData, questData, conversationForGPT) {
                   "quest_goal",
                   "quest_characters",
                   "quest_reward",
-                  "quest_difficulty",
-                  "quest_type",
+                  "quest_steps",
                   "quest_completed_percentage",
                 ],
               },
@@ -984,9 +945,54 @@ function getQuestContextMessages(storyData, questData, conversationForGPT) {
   return { messages, tools };
 }
 
+async function generateStoryImage(userId) {
+  console.log("[generateStoryImage] Starting generateStoryImage");
+
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+  console.log("[generateStoryImage] File paths:", filePaths);
+
+  const userData = await getUserData(filePaths);
+  console.log("[generateStoryImage] User data");
+
+  // Assuming image_description is at the top level of user data
+  const promptText = userData.story.image_description
+  console.log("[generateStoryImage] Prompt text:", promptText);
+
+  const storySummary = userData.story.game_description || "";
+
+  const prompt = `This is for a text based adventure game in the style of Oregon Trail or Zork, so create an image in an old pixel game style. DO NOT PUT ANY TEXT OR WORDS IN THE IMAGE. Generate an image based on the following summary of the scene: ${promptText}`;
+
+  console.log("[generateStoryImage] Full prompt:", prompt);
+
+
+  try {
+    const response = await openai.images.generate({
+      model: "dall-e-3",
+      prompt: prompt,
+      n: 1,
+      size: "1024x1024",
+      quality: "standard",
+      response_format: "url",
+    });
+
+    const imageUrl = response.data[0].url;
+    console.log("[generateStoryImage] Generated image URL:", imageUrl);
+
+    return imageUrl;
+  } catch (error) {
+    console.error(
+      "[generateStoryImage] Failed to generate story image:",
+      error
+    );
+    throw error;
+  }
+}
+
+
 module.exports = {
   updateRoomContext,
   updatePlayerContext,
   updateStoryContext,
   updateQuestContext,
+  generateStoryImage,
 };

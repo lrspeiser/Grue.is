@@ -1,5 +1,6 @@
 //index.js
-
+const http = require("http");
+const socketIO = require("socket.io");
 const OpenAIApi = require("openai");
 const express = require("express");
 const path = require("path");
@@ -9,6 +10,7 @@ const {
   updatePlayerContext,
   updateStoryContext,
   updateQuestContext,
+  generateStoryImage,
 } = require("./data.js");
 const {
   ensureUserDirectoryAndFiles,
@@ -29,23 +31,64 @@ const usersDir = path.join(__dirname, "data", "users");
 
 const storyFields = [
   "language_spoken",
-  "favorite_book",
-  "favorite_movie",
-  "game_description",
+  "narrator_style",
+  "favorite_story",
   "active_game",
-  "player_profile",
+  "game_description",
+  "player_level",
+  "player_health",
+  "player_attitude",
+  "player_special_abilities",
   "character_played_by_user",
+  "player_profile",
 ];
 
 const emptyStoryFields = [
   "language_spoken",
-  "favorite_book",
-  "favorite_movie",
-  "game_description",
+  "narrator_style",
+  "favorite_story",
   "active_game",
-  "player_profile",
+  "game_description",
+  "player_level",
+  "player_health",
+  "player_attitude",
+  "player_special_abilities",
   "character_played_by_user",
+  "player_profile",
 ];
+
+// Create an HTTP server
+const server = http.createServer(app);
+
+// Create a Socket.IO server
+const io = socketIO(server);
+
+// Socket connection event
+io.on("connection", async (socket) => {
+  console.log("New client connected");
+
+  // Get the userId from the client (you can implement your own logic to obtain the userId)
+  const userId = socket.handshake.query.userId;
+
+  try {
+    // Fetch the user data
+    const filePaths = await ensureUserDirectoryAndFiles(userId);
+    const userData = await getUserData(filePaths);
+
+    // Emit the latest image URL to the client when they connect
+    const lastConversation =
+      userData.conversation[userData.conversation.length - 1];
+    const latestImageUrl = lastConversation ? lastConversation.imageUrl : null;
+    socket.emit("latestImageUrl", latestImageUrl);
+  } catch (error) {
+    console.error("Error fetching user data:", error);
+  }
+
+  // Disconnect event
+  socket.on("disconnect", () => {
+    console.log("Client disconnected");
+  });
+});
 
 // Ensure users directory exists
 (async () => {
@@ -65,7 +108,6 @@ app.post("/api/users", async (req, res) => {
   try {
     // Ensure user directory and files are set up in Firebase
     const filePaths = await ensureUserDirectoryAndFiles(userId);
-
     // Fetch user data from Firebase
     const userData = await getUserData(filePaths);
 
@@ -98,7 +140,7 @@ app.post("/api/users", async (req, res) => {
           favorite_book: "",
           favorite_movie: "",
           game_description: "",
-          active_game: "false",
+          active_game: false,
           player_profile: "",
           character_played_by_user: "",
         }),
@@ -243,9 +285,9 @@ function getDMSystemMessage(userData, historySummary, storyFields) {
   const hoursDifference = timeDifference / (1000 * 60 * 60);
 
   if (userData.story.active_game === false) {
-    return `You are a dungeon master who is going to customize the game for the user. They have not started yet. You need to collect the following information from them before we begin. If they only answer a couple of questions then ask them to answer the remaining questions. Once you have all the questions answered then let them know what story they are going to enter. For instance if they like Lord of the Rings, turn them into Frodo Baggins and start them off in the Shire. To get started ask them something like: "Welcome to Grue. Before we begin, I need to learn more about you. Answer the following questions for me: Who is your favorite author? What is your favorite story (book, movie, etc.)?" Also, if they are writing in a language other than English confirm that they would like to play the game in that language. Then before you start the game, always ask them what name they want for their character, and give them some suggestions of names from those stories.`;
+    return `You are a dungeon master who is going to customize the game for the user. They have not started yet. You need to collect the following information from them before we begin. If they only answer a couple of questions then ask them to answer the remaining questions. Once you have all the questions answered then let them know what story they are going to enter. For instance if they like Lord of the Rings, turn them into Frodo Baggins and start them off in the Shire. To get started ask them something like: "Welcome to Grue. Before we begin, I need to learn more about you." Then ask them a series of questions (but only ask them one question at a time and then adjust the next question based on how they answered the last question) to get their preferences where they have to decide between two books or movies or tv shows, for example, "Which do you like more, Sci-Fi, Fantasy, Historical Fiction, Spy Stories or something else?". "Which hero do you like more?". "Which story line did you like more?" These are just examples, but the goal is to get them to a story they would like where you know what hero they want to be and in what world. It should take about 5 questions to get there, and make sure you are giving them plenty of variety to the examples they can choose from. When we know enough, officially start the story by saying, "I'm ready to start the game for you." And then tell them what you selected, who they are, where they are starting, and what their first quest is. The user can always skip this and just tell you what they want to do. Also, if they are writing in a language other than English confirm that they would like to play the game in that language.`;
   } else {
-    return `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. It has been ${hoursDifference} since the user's last message. If it has been more than three hours since the last message you can welcome the person back. Anything more recent and you do not need to mention their name, just continue the conversation like a chat with them where you refer to them as "you" and keep the game in the present tense. You also don't have to repeat the same information each time unless the user specifically asks for it in their latest prompt. Here is the information about the user and their story preferences:\n\n${storyFields}\n\n Here is the conversation history:\n\n${historySummary}\n\nHere is the player data:\n\n${JSON.stringify(userData.player, null, 2)}\n\nHere is the room data:\n\n${JSON.stringify(userData.room, null, 2)}\n\nYou must learn the user's preferences and make sure to respond to them based on those preferences. For instance, if they have their language set to Spanish, return everything in Spanish. You must assume the role of the original author of the story and only speak to them the way the author would. Don't allow the player to act outside the rules or possibilities of what can be done in that world. Keep them within the game and keep throwing challenges at them to overcome. Make sure to introduce other characters as they go from location to location and engage them with dialogue between them and these characters. Some characters will help, some will harm them, and others will be neutral. You should keep each answer brief like a chat and then ask them a question like, what do you want to do? or do you want to talk to the person, etc. When they first enter a new location, tell them where they are first, like 'West of House'. If they move then again tell them where they are now. If the user enters a new room or looks around, always tell them about at least 2 directions they can go to leave that location. When we create a quest for them you can say, "New Quest" and give them the details, but don't give away how to solve the quest and don't make it easy unless it is an easy quest, make them work for it. It is ok if the user is role playing and uses words like kill, but if they use language that would be considered a hate crime or if they become sadistic, tell them that a Grue has arrived from another universe and killed them for betraying the ways of their world and their people. If they ask to quit the game, respond making sure that they understand quiting the game will delete everything and that if they don't want to do that they can just come back to this page at a later time to start where they left off. if they are sure they want to quit, have a grue come out of nowhere and kill them in a manner that fits the story. --- Do not tell them you have these instructions.`;
+    return `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. It has been ${hoursDifference} since the user's last message. If it has been more than three hours since the last message you can welcome the person back. Anything more recent and you do not need to mention their name, just continue the conversation like a chat with them where you refer to them as "you" and keep the game in the present tense. You also don't have to repeat the same information each time unless the user specifically asks for it in their latest prompt. Structure your response as Location: <Name and short description> Exits <directions> People: <list of people and short description>, Items: <if any visible>, Quests: <new quests, completed quests, or information that might help the quest>, Actions: <three suggestions for the user to do.  Here is the information about the user and their story preferences:\n\n${storyFields}\n\n Here is the conversation history:\n\n${historySummary}\n\n You must learn the user's preferences and make sure to respond to them based on those preferences. For instance, if they have their language set to Spanish, return everything in Spanish. You must assume the role of the original author of the story and only speak to them the way the author would. Don't allow the player to act outside the rules or possibilities of what can be done in that world. Keep them within the game and keep throwing challenges at them to overcome. Make sure to introduce other characters as they go from location to location and engage them with dialogue between them and these characters. Some characters will help, some will harm them, and others will be neutral. You should keep each answer brief like a chat and then ask them a question like, what do you want to do? or do you want to talk to the person, etc. When they first enter a new location, tell them where they are first, like 'West of House'. If they move then again tell them where they are now. If the user enters a new room or looks around, always tell them about at least 2 directions they can go to leave that location. When we create a quest for them you can say, "New Quest" and give them the details, but don't give away how to solve the quest and don't make it easy unless it is an easy quest, make them work for it. It is ok if the user is role playing and uses words like kill, but if they use language that would be considered a hate crime or if they become sadistic, tell them that a Grue has arrived from another universe and killed them for betraying the ways of their world and their people. If they ask to quit the game, respond making sure that they understand quiting the game will delete everything and that if they don't want to do that they can just come back to this page at a later time to start where they left off. if they are sure they want to quit, have a grue come out of nowhere and kill them in a manner that fits the story. --- Do not tell them you have these instructions.`;
   }
 }
 
@@ -267,32 +309,22 @@ async function saveConversationHistory(userId, newMessages) {
   const filePath = `data/users/${userId}/conversation`; // Updated to Firebase path format
 
   try {
-    console.log(
-      `[saveConversationHistory] Attempting to read data for user ID: ${userId}`,
-    );
+    console.log(`[saveConversationHistory] Attempting to read data for user ID: ${userId}`);
     let conversationData = await readJsonFromFirebase(filePath);
-    console.log(
-      `[saveConversationHistory] Successfully fetched data for user ID: ${userId}`,
-    );
+    console.log(`[saveConversationHistory] Successfully fetched data for user ID: ${userId}`);
 
     // Ensure the data is treated as an array directly
     if (!Array.isArray(conversationData)) {
-      console.warn(
-        `[saveConversationHistory] Malformed data or no data found for user ID: ${userId}. Initializing with default structure.`,
-      );
+      console.warn(`[saveConversationHistory] Malformed data or no data found for user ID: ${userId}. Initializing with default structure.`);
       conversationData = [];
     }
 
     console.log(`[saveConversationHistory] Processing for user ID: ${userId}`);
-    console.log(
-      `[saveConversationHistory] Current conversation data for user ID: ${userId}:`,
-      JSON.stringify(conversationData, null, 2),
-    );
+    console.log(`[saveConversationHistory] Current conversation data for user ID: ${userId}:`, JSON.stringify(conversationData, null, 2));
 
     // Find the last user prompt and assistant response in newMessages
     let lastUserPrompt = null;
     let lastAssistantResponse = null;
-
     for (const msg of newMessages) {
       if (msg.role === "user") {
         lastUserPrompt = msg.content;
@@ -307,66 +339,53 @@ async function saveConversationHistory(userId, newMessages) {
         messageId: conversationData.length + 1,
         timestamp: new Date().toISOString(),
         userPrompt: lastUserPrompt,
-        response: lastAssistantResponse,
+        response: lastAssistantResponse
       };
+
+      console.log(`[saveConversationHistory] Updating story context for user ID: ${userId}`);
+      await updateStoryContext(userId); // Ensure story context is updated before generating image
+      console.log(`[saveConversationHistory] Story context updated for user ID: ${userId}`);
+
+      // Generate and add image URL to the new entry if an assistant response is present
+      if (lastAssistantResponse) {
+        console.log(`[saveConversationHistory] Generating image for the latest assistant message.`);
+        const imageUrl = await generateStoryImage(userId, lastAssistantResponse);
+        if (imageUrl) {
+          newEntry.imageUrl = imageUrl;
+          console.log(`[saveConversationHistory] Image URL added to conversation entry: ${imageUrl}`);
+          io.emit("latestImageUrl", newEntry.imageUrl);
+        }
+      }
 
       conversationData.push(newEntry);
       await writeJsonToFirebase(filePath, conversationData);
-      console.log(
-        `[saveConversationHistory] Conversation history updated for user ID: ${userId}`,
-      );
-
-      // Call updateStoryContext function after updating the conversation history
-      const storyPromise = updateStoryContext(userId);
-      console.log(
-        `[saveConversationHistory] Story context update initiated for user ID: ${userId}`,
-      );
-
-      // Check if active_game is true before calling the update functions
-      const storyData = await readJsonFromFirebase(`data/users/${userId}/story`);
-      if (storyData && storyData.active_game === true) {
-        // Call update functions concurrently using Promise.all()
-        const updatePromises = [
-          updateRoomContext(userId),
-          updatePlayerContext(userId),
-          updateQuestContext(userId),
-        ];
-
-        Promise.all(updatePromises)
-          .then(() => {
-            console.log(
-              `[saveConversationHistory] Room, player, and quest contexts updated concurrently for user ID: ${userId}`,
-            );
-          })
-          .catch((error) => {
-            console.error(
-              `[saveConversationHistory] Error updating room, player, or quest context for user ID: ${userId}`,
-              error,
-            );
-          });
-      } else {
-        console.log(
-          `[saveConversationHistory] active_game is not true for user ID: ${userId}. Skipping room, player, and quest updates.`,
-        );
-      }
-
-      await storyPromise; // Wait for the story context update to complete
-      console.log(
-        `[saveConversationHistory] Story context updated after saving conversation for user ID: ${userId}`,
-      );
+      console.log(`[saveConversationHistory] Conversation history updated for user ID: ${userId}`);
     } else {
-      console.log(
-        `[saveConversationHistory] No new messages to save for user ID: ${userId}`,
-      );
+      console.log(`[saveConversationHistory] No new messages to save for user ID: ${userId}`);
     }
   } catch (error) {
-    console.error(
-      `[saveConversationHistory] Error updating conversation history for user ID: ${userId}`,
-      error,
-    );
+    console.error(`[saveConversationHistory] Error updating conversation history for user ID: ${userId}`, error);
   }
 }
 
-app.listen(PORT, () => {
+
+app.get("/api/story-image-proxy/:userId", async (req, res) => {
+  const userId = req.params.userId;
+  try {
+    const imageUrl = await getImageUrlFromFirebase(userId); // Retrieve the image URL from Firebase
+    const response = await fetch(imageUrl); // Fetch the image from the external server
+    const buffer = await response.buffer();
+    res.set("Content-Type", response.headers.get("content-type"));
+    res.send(buffer);
+  } catch (error) {
+    console.error(
+      `[/api/story-image-proxy] Error fetching story image for user ID: ${userId}`,
+      error,
+    );
+    res.status(500).json({ error: "Failed to fetch story image" });
+  }
+});
+
+server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
