@@ -16,30 +16,40 @@ body {
 }
 
 
-#imageContainer {
-    max-width: 100%; /* Ensures the container does not exceed the width of its parent */
-    height: auto; /* Keeps the container height dynamic based on the content */
-    display: flex; /* Enables flexible box layout */
-    justify-content: center; /* Centers the image horizontally */
-    align-items: center; /* Centers the image vertically */
-    overflow: hidden; /* Hides parts of the image that exceed the container size */
-    margin-top: 20px; /* Adds space above the container */
+#imageContainer img {
+    width: 100%; /* Ensures the image scales with the container width */
+    max-width: min(800px, 100vw); /* Ensures image width does not exceed the lesser of 800px or 100% of the viewport width */
+    max-height: 100vh; /* Ensures image does not exceed the viewport height */
+    height: auto; /* Ensures the height scales proportionally */
+    object-fit: contain; /* Ensures the image is fully visible, preserving aspect ratio without stretching */
 }
 
+
 #imageContainer img {
-    max-width: 100%; /* Limits image width to 100% of its container */
-    max-height: 400px; /* Limits image height, adjust as needed */
+    max-width: 100%;  /* Ensures image does not exceed the width of its container */
+    max-height: 100vh; /* Ensures image does not exceed the viewport height */
     height: auto; /* Ensures the height scales proportionally */
     object-fit: contain; /* Ensures the image is fully visible, preserved aspect ratio */
 }
 
-
-#interaction-container {
-  display: grid;
-  grid-template-rows: auto 1fr; /* Allocate space for input and then as much space as possible for messages */
-  height: calc(100% - 20px); /* Adjust height based on padding */
-  gap: 10px; /* Optional: Adds some space between your input and messages */
+#main-container {
+    max-width: 800px; /* Set the maximum width of the content */
+    margin: 0 auto; /* Center the content horizontally */
+    width: 100%; /* Ensure it takes full width if less than 800px */
+    height: 100vh; /* Optional: Makes sure the container takes full viewport height */
+    display: flex;
+    flex-direction: column;
+    align-items: center; /* Aligns children elements to the center horizontally */
 }
+
+#imageContainer img {
+  max-width: min(800px, 100vw); /* Ensures image width does not exceed the lesser of 800px or 100% of the viewport width */
+    max-height: 100vh; /* Ensures image does not exceed the viewport height */
+    height: auto; /* Ensures the height scales proportionally */
+    object-fit: contain; /* Ensures the image is fully visible, preserved aspect ratio */
+    width: 100%; /* Ensures the image takes full width of its container up to 800px */
+}
+
 
 #input-container {
   display: flex;
@@ -71,7 +81,7 @@ body {
 
 .user-message {
   text-align: right;
-  display: inline-block;
+  di asplay: inline-block;
   background-color: #008001;
   color: black; 
   padding: 5px 10px;
@@ -113,4 +123,15 @@ input[type="text"] {
 /* Optional: Add a focus effect using box-shadow instead of outline */
 input[type="text"]:focus {
   box-shadow: 0 0 3px black; /* Adds a glow effect when the input is focused */
+}
+
+/* Media Queries for adjusting layout on smaller screens */
+@media (max-width: 600px) {
+  .user-message, .response-message {
+    font-size: 16px; /* Slightly smaller text on smaller devices */
+  }
+
+  body {
+    padding: 5px; /* Less padding on smaller screens */
+  }
 }

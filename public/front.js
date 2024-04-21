@@ -1,14 +1,24 @@
 //public/front.js
 let lastAssistantMessageElement = null;
+let lastDisplayedImageUrl = null;
 let fullResponse = "";
 
 function displayStoryImage(imageUrl) {
+  // Check if the same image URL is about to be displayed again
+  if (imageUrl === lastDisplayedImageUrl) {
+    console.log(
+      "[front.js/displayStoryImage] Attempt to display the same image twice blocked.",
+    );
+    return;
+  }
+
   const imgElement = document.createElement("img");
   imgElement.src = imageUrl;
   imgElement.alt = "Story Image";
-  imgElement.style.maxWidth = "100%";
-  imgElement.style.maxHeight = "400px";
   messageContainer.prepend(imgElement);
+
+  lastDisplayedImageUrl = imageUrl; // Update the last displayed image URL
+  console.log("[front.js/displayStoryImage] Image displayed:", imageUrl);
 }
 
 (function () {
@@ -42,10 +52,28 @@ function displayStoryImage(imageUrl) {
   }
 })();
 
+// Function to adjust image max width based on the window size
+function adjustImageMaxWidth() {
+  const maxWidth = window.innerWidth;
+  const maxImageWidth = Math.min(maxWidth, 800);
+  const imageContainer = document.getElementById('imageContainer');
+
+  if (imageContainer) {
+    const images = imageContainer.getElementsByTagName('img');
+    for (const img of images) {
+      img.style.maxWidth = maxImageWidth + 'px';
+    }
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("[front.js/DOMContentLoaded] Page loaded");
   const userInput = document.getElementById("userInput");
   const messageContainer = document.getElementById("messageContainer");
+
+  // Adjust image max width on load and resize
+  window.addEventListener('resize', adjustImageMaxWidth);
+  window.addEventListener('load', adjustImageMaxWidth);
 
   let conversationHistory = [];
   let userId = localStorage.getItem("userId");
@@ -226,7 +254,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (done) {
             console.log("[front.js/callChatAPI] Chat session ended");
             markLastAssistantMessageAsComplete();
-            fetchAndDisplayImage(userId);
+            displayStoryImage(userId);
             break;
           }
 
@@ -300,7 +328,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       clearInterval(checkImageInterval);
       const imageLoadingElement = document.querySelector(".image-loading");
       if (imageLoadingElement) {
-        imageLoadingElement.remove(); // Remove any existing "Image Loading..." message
+        imageLoadingElement.remove();
       }
       const userPrompt = userInput.value.trim();
       if (userPrompt !== "") {
@@ -335,12 +363,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const messageGroup = document.createElement("div");
       messageGroup.classList.add("message-group");
 
-      if (message.imageUrl) {
+      // Append the image element only if index is greater than 0
+      if (message.imageUrl && index > 0) {
         const imgElement = document.createElement("img");
         imgElement.src = message.imageUrl;
         imgElement.alt = "Story Image";
-        imgElement.style.maxWidth = "100%";
-        imgElement.style.maxHeight = "400px";
         messageGroup.appendChild(imgElement);
       }
 
@@ -455,8 +482,6 @@ document.addEventListener("DOMContentLoaded", async () => {
               const imgElement = document.createElement("img");
               imgElement.src = img;
               imgElement.alt = "Story Image";
-              imgElement.style.maxWidth = "100%";
-              imgElement.style.maxHeight = "400px";
               messageContainer.prepend(imgElement);
               console.log(
                 "[front.js/markLastAssistantMessageAsComplete] Image appended to message container.",
@@ -524,8 +549,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           const imgElement = document.createElement("img");
           imgElement.src = data.url;
           imgElement.alt = "Story Image";
-          imgElement.style.maxWidth = "100%";
-          imgElement.style.maxHeight = "400px";
           imagePlaceholder.parentNode.replaceChild(
             imgElement,
             imagePlaceholder,
@@ -553,7 +576,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         "[fetchAndDisplayImage] Image URL fetched successfully:",
         imageUrl,
       );
-      displayStoryImage(imageUrl);
+      fetchAndDisplayImage(imageUrl);
     } else {
       console.error("[fetchAndDisplayImage] Failed to fetch image URL.");
     }

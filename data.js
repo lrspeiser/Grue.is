@@ -1,4 +1,7 @@
 //data.js
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getStorage } = require('firebase-admin/storage');
+const { Storage } = require("@google-cloud/storage");
 
 const fs = require("fs").promises;
 const path = require("path");
@@ -8,6 +11,10 @@ const {
   writeJsonToFirebase,
   readJsonFromFirebase,
 } = require("./util");
+
+const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+initializeApp({ credential: cert(serviceAccount) });
+const bucket = getStorage().bucket(process.env.file_storage);
 
 const OpenAIApi = require("openai"); //never change this
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
@@ -64,7 +71,7 @@ async function updateStoryContext(userId) {
     );
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4-0125-preview",
+      model: "gpt-3.5-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -226,8 +233,9 @@ function getStoryContextMessages(storyData, formattedHistory) {
                 },
                 image_description: {
                   type: "string",
-                  description: "Using the latest details, provide a prompt for DALL-E to generate an image that shows where the user is in the story. For instance: This is a dark cellar with a fireplace. There is a table with a key on it. There is a door that is locked. Our hero is wearing a trenchcoat and using a flashlight to expose a secret keyhole in the wall."
-                }
+                  description:
+                    "Using the latest details, provide a prompt for DALL-E to generate an image that shows where the user is in the story. For instance: This is a dark cellar with a fireplace. There is a table with a key on it. There is a door that is locked. Our hero is wearing a trenchcoat and using a flashlight to expose a secret keyhole in the wall.",
+                },
               },
               required: [
                 "language_spoken",
@@ -955,7 +963,9 @@ async function generateStoryImage(userId) {
   console.log("[generateStoryImage] User data");
 
   // Assuming image_description is at the top level of user data
-  const promptText = userData.story.image_description
+  const promptText =
+    userData.story.image_description ||
+    "A library filled with doors that look to go to different genres like sci-fi, spy stories, histories, etc.";
   console.log("[generateStoryImage] Prompt text:", promptText);
 
   const storySummary = userData.story.game_description || "";
@@ -963,7 +973,6 @@ async function generateStoryImage(userId) {
   const prompt = `This is for a text based adventure game in the style of Oregon Trail or Zork, so create an image in an old pixel game style. DO NOT PUT ANY TEXT OR WORDS IN THE IMAGE. Generate an image based on the following summary of the scene: ${promptText}`;
 
   console.log("[generateStoryImage] Full prompt:", prompt);
-
 
   try {
     const response = await openai.images.generate({
@@ -978,16 +987,60 @@ async function generateStoryImage(userId) {
     const imageUrl = response.data[0].url;
     console.log("[generateStoryImage] Generated image URL:", imageUrl);
 
-    return imageUrl;
+    // Upload the image to Firebase Storage
+    const firebaseUrl = await uploadImageToFirebase(imageUrl);
+    console.log("[generateStoryImage] Firebase image URL:", firebaseUrl);
+
+    return firebaseUrl;
   } catch (error) {
     console.error(
       "[generateStoryImage] Failed to generate story image:",
-      error
+      error,
     );
     throw error;
   }
 }
 
+async function uploadImageToFirebase(imageUrl) {
+  console.log("[uploadImageToFirebase] Starting image upload");
+
+  const { default: fetch } = await import("node-fetch");
+  const mimeType = "image/png"; // Dynamically set this based on the image file type if necessary
+
+  // Generate a filename for storage
+  const fileName = `images/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.png`;
+  const file = bucket.file(fileName);
+
+  try {
+    // Fetch the image from the URL
+    const response = await fetch(imageUrl);
+    if (!response.ok)
+      throw new Error(
+        `Failed to fetch the image from URL: ${response.statusText}`,
+      );
+
+    // Get the buffer from the response
+    const buffer = await response.buffer();
+
+    // Upload the buffer to Firebase
+    await file.save(buffer, {
+      metadata: { contentType: mimeType },
+    });
+
+    console.log(
+      `[uploadImageToFirebase] Image uploaded successfully: ${fileName}`,
+    );
+    // Optionally get a download URL
+    const downloadURL = await file.getSignedUrl({
+      action: "read",
+      expires: "03-09-2491",
+    });
+    return downloadURL[0];
+  } catch (error) {
+    console.error("[uploadImageToFirebase] Error uploading image:", error);
+    throw error;
+  }
+}
 
 module.exports = {
   updateRoomContext,
@@ -995,4 +1048,5 @@ module.exports = {
   updateStoryContext,
   updateQuestContext,
   generateStoryImage,
+  uploadImageToFirebase,
 };

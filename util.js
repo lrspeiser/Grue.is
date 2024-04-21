@@ -116,6 +116,7 @@ async function getUserData(filePaths) {
   return data;
 }
 
+
 module.exports = {
   ensureUserDirectoryAndFiles,
   getUserData,

@@ -1,4 +1,7 @@
 //index.js
+const { initializeApp, cert, getApps } = require("firebase-admin/app");
+const { getStorage } = require("firebase-admin/storage");
+
 const http = require("http");
 const socketIO = require("socket.io");
 const OpenAIApi = require("openai");
@@ -11,6 +14,7 @@ const {
   updateStoryContext,
   updateQuestContext,
   generateStoryImage,
+  uploadImageToFirebase
 } = require("./data.js");
 const {
   ensureUserDirectoryAndFiles,
@@ -62,6 +66,25 @@ const server = http.createServer(app);
 
 // Create a Socket.IO server
 const io = socketIO(server);
+
+let serviceAccount;
+try {
+  const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT;
+  serviceAccount = JSON.parse(serviceAccountJson);
+} catch (error) {
+  console.error("Failed to parse service account JSON", error);
+  process.exit(1); // Exit if there is a parsing error
+}
+
+// Initialize Firebase Admin SDK only if it hasn't been initialized
+if (!getApps().length) {
+  initializeApp({
+    credential: cert(serviceAccount),
+    storageBucket: process.env.storageBucket,
+  });
+}
+
+const bucket = getStorage().bucket(process.env.file_storage);
 
 // Socket connection event
 io.on("connection", async (socket) => {
@@ -136,13 +159,20 @@ app.post("/api/users", async (req, res) => {
         writeJsonToFirebase(filePaths.player, {}),
         writeJsonToFirebase(filePaths.quest, {}),
         writeJsonToFirebase(filePaths.story, {
-          language_spoken: "",
-          favorite_book: "",
-          favorite_movie: "",
-          game_description: "",
+          language_spoken: "English",
+          game_description:
+            "We don't have enough information from the user yet",
           active_game: false,
-          player_profile: "",
+          image_description:
+            "A library filled with doors that look to go to different genres like sci-fi, spy stories, histories, etc.",
+          narrator_style: "",
+          favorite_story: "",
+          player_level: "",
+          player_health: "",
+          player_attitude: "",
+          player_special_abilities: "",
           character_played_by_user: "",
+          player_profile: "",
         }),
       ]);
     }
@@ -306,66 +336,69 @@ function formatMessagesForAPI(conversation) {
 }
 
 async function saveConversationHistory(userId, newMessages) {
-  const filePath = `data/users/${userId}/conversation`; // Updated to Firebase path format
+    const filePath = `data/users/${userId}/conversation`;
 
-  try {
-    console.log(`[saveConversationHistory] Attempting to read data for user ID: ${userId}`);
-    let conversationData = await readJsonFromFirebase(filePath);
-    console.log(`[saveConversationHistory] Successfully fetched data for user ID: ${userId}`);
+    try {
+        console.log(`[saveConversationHistory] Attempting to read data for user ID: ${userId}`);
+        let conversationData = await readJsonFromFirebase(filePath);
 
-    // Ensure the data is treated as an array directly
-    if (!Array.isArray(conversationData)) {
-      console.warn(`[saveConversationHistory] Malformed data or no data found for user ID: ${userId}. Initializing with default structure.`);
-      conversationData = [];
-    }
-
-    console.log(`[saveConversationHistory] Processing for user ID: ${userId}`);
-    console.log(`[saveConversationHistory] Current conversation data for user ID: ${userId}:`, JSON.stringify(conversationData, null, 2));
-
-    // Find the last user prompt and assistant response in newMessages
-    let lastUserPrompt = null;
-    let lastAssistantResponse = null;
-    for (const msg of newMessages) {
-      if (msg.role === "user") {
-        lastUserPrompt = msg.content;
-      } else if (msg.role === "assistant") {
-        lastAssistantResponse = msg.content;
-      }
-    }
-
-    // Add new entry to the conversation if both user prompt and assistant response are present
-    if (lastUserPrompt && lastAssistantResponse) {
-      const newEntry = {
-        messageId: conversationData.length + 1,
-        timestamp: new Date().toISOString(),
-        userPrompt: lastUserPrompt,
-        response: lastAssistantResponse
-      };
-
-      console.log(`[saveConversationHistory] Updating story context for user ID: ${userId}`);
-      await updateStoryContext(userId); // Ensure story context is updated before generating image
-      console.log(`[saveConversationHistory] Story context updated for user ID: ${userId}`);
-
-      // Generate and add image URL to the new entry if an assistant response is present
-      if (lastAssistantResponse) {
-        console.log(`[saveConversationHistory] Generating image for the latest assistant message.`);
-        const imageUrl = await generateStoryImage(userId, lastAssistantResponse);
-        if (imageUrl) {
-          newEntry.imageUrl = imageUrl;
-          console.log(`[saveConversationHistory] Image URL added to conversation entry: ${imageUrl}`);
-          io.emit("latestImageUrl", newEntry.imageUrl);
+        if (!Array.isArray(conversationData)) {
+            console.warn(`[saveConversationHistory] Malformed data or no data found for user ID: ${userId}. Initializing with default structure.`);
+            conversationData = [];
         }
-      }
 
-      conversationData.push(newEntry);
-      await writeJsonToFirebase(filePath, conversationData);
-      console.log(`[saveConversationHistory] Conversation history updated for user ID: ${userId}`);
-    } else {
-      console.log(`[saveConversationHistory] No new messages to save for user ID: ${userId}`);
+        console.log(`[saveConversationHistory] Processing for user ID: ${userId}`);
+
+        let lastUserPrompt = null;
+        let lastAssistantResponse = null;
+        for (const msg of newMessages) {
+            if (msg.role === "user") {
+                lastUserPrompt = msg.content;
+            } else if (msg.role === "assistant") {
+                lastAssistantResponse = msg.content;
+            }
+        }
+
+        if (lastUserPrompt && lastAssistantResponse) {
+            const newEntry = {
+                messageId: conversationData.length + 1,
+                timestamp: new Date().toISOString(),
+                userPrompt: lastUserPrompt,
+                response: lastAssistantResponse,
+            };
+
+            conversationData.push(newEntry);
+            await writeJsonToFirebase(filePath, conversationData);
+            console.log(`[saveConversationHistory] Conversation history updated for user ID: ${userId}`);
+
+            const imageUrl = await generateStoryImage(userId);
+            if (imageUrl) {
+                newEntry.imageUrl = imageUrl;
+                await writeJsonToFirebase(filePath, conversationData);
+                console.log(`[saveConversationHistory] Conversation entry updated with image URL for user ID: ${userId}`);
+                io.emit("latestImageUrl", imageUrl);
+            }
+
+            // Concurrently update story, room, player, and quest contexts if the game is active
+            const storyData = await readJsonFromFirebase(`data/users/${userId}/story`);
+            if (storyData && storyData.active_game === true) {
+                console.log(`[saveConversationHistory] Game is active. Updating contexts for user ID: ${userId}`);
+                await Promise.all([
+                    updateStoryContext(userId),
+                    updateRoomContext(userId),
+                    updatePlayerContext(userId),
+                    updateQuestContext(userId)
+                ]);
+                console.log(`[saveConversationHistory] All contexts updated for user ID: ${userId}`);
+            } else {
+                console.log(`[saveConversationHistory] No active game for user ID: ${userId}. Skipping context updates.`);
+            }
+        } else {
+            console.log(`[saveConversationHistory] No new messages to save for user ID: ${userId}`);
+        }
+    } catch (error) {
+        console.error(`[saveConversationHistory] Error updating conversation history for user ID: ${userId}`, error);
     }
-  } catch (error) {
-    console.error(`[saveConversationHistory] Error updating conversation history for user ID: ${userId}`, error);
-  }
 }
 
 
@@ -389,3 +422,7 @@ app.get("/api/story-image-proxy/:userId", async (req, res) => {
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
 });
+
+module.exports = {
+  uploadImageToFirebase,
+};

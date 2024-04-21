@@ -10,6 +10,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@google-cloud/storage": "^7.10.0",
     "@replit/database": "^3.0.0",
     "@types/node": "^18.0.6",
     "axios": "^1.6.8",
@@ -17,10 +18,13 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "firebase": "^10.11.0",
+    "firebase-admin": "^12.1.0",
     "googleapis": "^134.0.0",
     "mongodb": "^6.5.0",
     "mongoose": "^8.3.1",
+    "node-fetch": "^2.7.0",
     "openai": "^4.31.0",
+    "sharp": "^0.33.3",
     "socket.io": "^4.7.5",
     "uuid": "^9.0.1"
   }

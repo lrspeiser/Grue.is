@@ -1,35 +1,27 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
+<head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grue</title>
     <link rel="stylesheet" href="style.css" />
-    <script>
-      // Set the base URL dynamically based on the environment
-      window.API_BASE_URL = window.location.origin;
-    </script>
     <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"></script>
-    <script
-      src="https://kit.fontawesome.com/cd48de0b54.js"
-      crossorigin="anonymous"
-    ></script>
+    <script src="https://kit.fontawesome.com/cd48de0b54.js" crossorigin="anonymous"></script>
     <script type="module" src="front.js" defer></script>
-  </head>
-  <body>
+</head>
+<body>
+  <div id="main-container">
     <div id="interaction-container">
       <div id="input-container">
         <span id="prompt">> </span>
         <input type="text" id="userInput" autofocus />
       </div>
       <div id="messageContainer">
-        <!-- Messages will be added here -->
       </div>
-
       <div id="imageContainer">
-        <!-- Story image will be added here -->
       </div>
     </div>
-  </body>
+  </div>
+</body>
 </html>
