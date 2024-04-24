@@ -4,21 +4,19 @@ let lastDisplayedImageUrl = null;
 let fullResponse = "";
 
 function displayStoryImage(imageUrl) {
-  // Check if the same image URL is about to be displayed again
-  if (imageUrl === lastDisplayedImageUrl) {
-    console.log(
-      "[front.js/displayStoryImage] Attempt to display the same image twice blocked.",
-    );
-    return;
+  console.log("[displayStoryImage] Displaying image with URL:", imageUrl); // Ensure this function is called
+  const imageContainer = document.getElementById("imageContainer");
+  imageContainer.innerHTML = ""; // Clear previous image
+
+  if (imageUrl) {
+    const imgElement = document.createElement("img");
+    imgElement.src = imageUrl;
+    imgElement.alt = "Story Image";
+    imageContainer.appendChild(imgElement);
+    console.log("[displayStoryImage] Image element added to the container."); // Confirm image is added to DOM
+  } else {
+    console.log("[displayStoryImage] No URL provided to display."); // Handle null or undefined URL
   }
-
-  const imgElement = document.createElement("img");
-  imgElement.src = imageUrl;
-  imgElement.alt = "Story Image";
-  messageContainer.prepend(imgElement);
-
-  lastDisplayedImageUrl = imageUrl; // Update the last displayed image URL
-  console.log("[front.js/displayStoryImage] Image displayed:", imageUrl);
 }
 
 (function () {
@@ -56,12 +54,12 @@ function displayStoryImage(imageUrl) {
 function adjustImageMaxWidth() {
   const maxWidth = window.innerWidth;
   const maxImageWidth = Math.min(maxWidth, 800);
-  const imageContainer = document.getElementById('imageContainer');
+  const imageContainer = document.getElementById("imageContainer");
 
   if (imageContainer) {
-    const images = imageContainer.getElementsByTagName('img');
+    const images = imageContainer.getElementsByTagName("img");
     for (const img of images) {
-      img.style.maxWidth = maxImageWidth + 'px';
+      img.style.maxWidth = maxImageWidth + "px";
     }
   }
 }
@@ -72,8 +70,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   const messageContainer = document.getElementById("messageContainer");
 
   // Adjust image max width on load and resize
-  window.addEventListener('resize', adjustImageMaxWidth);
-  window.addEventListener('load', adjustImageMaxWidth);
+  window.addEventListener("resize", adjustImageMaxWidth);
+  window.addEventListener("load", adjustImageMaxWidth);
 
   let conversationHistory = [];
   let userId = localStorage.getItem("userId");
@@ -113,12 +111,23 @@ document.addEventListener("DOMContentLoaded", async () => {
           });
 
           socket.on("latestImageUrl", (imageUrl) => {
-            if (imageUrl) {
+            console.log("[Socket] Received new image URL:", imageUrl);
+            if (imageUrl && lastDisplayedImageUrl !== imageUrl) {
+              console.log("[Socket] Image URL has changed, updating display.");
               displayStoryImage(imageUrl);
+              lastDisplayedImageUrl = imageUrl;  // Update the last displayed image URL for comparison
             }
           });
 
+
           if (data.story && data.story.active_game === true) {
+            if (data.latestImageUrl) {
+              console.log(
+                "[front.js/init] Displaying initial image URL for active game:",
+                data.latestImageUrl,
+              );
+              displayStoryImage(data.latestImageUrl);
+            }
             if (Array.isArray(data.conversation)) {
               conversationHistory = data.conversation;
               console.log("[front.js/init] Conversation history loaded");
@@ -254,7 +263,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           if (done) {
             console.log("[front.js/callChatAPI] Chat session ended");
             markLastAssistantMessageAsComplete();
-            displayStoryImage(userId);
             break;
           }
 
@@ -289,7 +297,6 @@ document.addEventListener("DOMContentLoaded", async () => {
               } else if (line.trim() === "[DONE]") {
                 console.log("[front.js/callChatAPI] Message stream completed");
                 markLastAssistantMessageAsComplete();
-                fetchStoryImage(userId); // Fetch the image when the message is complete
               }
             } catch (error) {
               if (line.trim() !== "[DONE]") {
@@ -408,14 +415,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Helper function to find the last assistant message element if it exists
   // Helper function to find the last assistant message element if it exists
-  function getLastAssistantMessageElement() {
-    const messages = Array.from(
-      messageContainer.getElementsByClassName("response-message"),
-    );
-    if (messages.length > 0) {
-      return messages[messages.length - 1]; // Get the last message element
-    }
-    return null; // No assistant message element found
+
+  function formatContent(content) {
+    // Replace newlines with HTML line breaks
+    content = content.replace(/\n/g, "<br>");
+
+    // Add space before numbers if not already spaced properly. Ensure no extra space is added after the number.
+    content = content.replace(/([^ ])(\d+)/g, "$1 $2");
+    content = content.replace(/(\d) /g, "$1");
+
+    return content;
   }
 
   function displayAssistantMessage(content) {
@@ -424,7 +433,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       content,
     );
 
-    // Directly check for null or instantiate a new message element if needed
     if (
       lastAssistantMessageElement === null ||
       lastAssistantMessageElement.getAttribute("data-complete") === "true"
@@ -432,18 +440,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       lastAssistantMessageElement = document.createElement("div");
       lastAssistantMessageElement.classList.add("response-message");
       lastAssistantMessageElement.setAttribute("data-complete", "false");
-      messageContainer.prepend(lastAssistantMessageElement); // Prepend to make it appear at the top
+      messageContainer.prepend(lastAssistantMessageElement);
       console.log(
         "[front.js/displayAssistantMessage] New message element created:",
         lastAssistantMessageElement,
       );
     }
 
-    // Use innerText to append the content, respecting existing text formatting
-    lastAssistantMessageElement.innerText += content;
+    // Format content to handle spacing and line breaks
+    content = formatContent(content);
+
+    // Use innerHTML to append the formatted content
+    lastAssistantMessageElement.innerHTML += content;
     console.log(
-      "[front.js/displayAssistantMessage] Message content appended:",
-      lastAssistantMessageElement.innerText,
+      "[front.js/displayAssistantMessage] Message content appended with line breaks and numbers:",
+      lastAssistantMessageElement.innerHTML,
     );
 
     console.log(
@@ -533,28 +544,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function fetchStoryImage(userId) {
     console.log("[fetchStoryImage] Fetching story image for user:", userId);
-    const eventSource = new EventSource(
-      `${window.API_BASE_URL}/api/story-image/${userId}`,
-    );
+    const eventSource = new EventSource(`/api/story-image-proxy/${userId}`);
 
     return new Promise((resolve, reject) => {
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         console.log("[fetchStoryImage] Image URL received:", data.url);
-
-        // Find the image placeholder element
-        const imagePlaceholder = document.querySelector(".image-placeholder");
-        if (imagePlaceholder) {
-          // Replace the placeholder with the actual image
-          const imgElement = document.createElement("img");
-          imgElement.src = data.url;
-          imgElement.alt = "Story Image";
-          imagePlaceholder.parentNode.replaceChild(
-            imgElement,
-            imagePlaceholder,
-          );
-        }
-
+        displayStoryImage(data.url); // Display the image immediately
         eventSource.close();
         resolve(data.url);
       };
@@ -565,20 +561,5 @@ document.addEventListener("DOMContentLoaded", async () => {
         reject(error);
       };
     });
-  }
-  async function fetchAndDisplayImage(userId) {
-    console.log(
-      "[fetchAndDisplayImage] Initiating fetch and display image process.",
-    );
-    const imageUrl = await fetchStoryImage(userId);
-    if (imageUrl) {
-      console.log(
-        "[fetchAndDisplayImage] Image URL fetched successfully:",
-        imageUrl,
-      );
-      fetchAndDisplayImage(imageUrl);
-    } else {
-      console.error("[fetchAndDisplayImage] Failed to fetch image URL.");
-    }
   }
 });

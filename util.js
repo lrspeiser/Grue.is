@@ -61,13 +61,12 @@ async function ensureUserDirectoryAndFiles(userId) {
   return dataPaths;
 }
 
-// Update Firebase reading and writing functions accordingly
 async function readJsonFromFirebase(path) {
   try {
     const snapshot = await get(ref(dbClient, path));
     if (snapshot.exists()) {
       const data = snapshot.val();
-      console.log(`[readJsonFromFirebase] Data found at path: ${path}`); // Log the data in a readable format
+      // console.log(`[readJsonFromFirebase] Data found at path: ${path}`, data);
       return data;
     } else {
       console.log(`[readJsonFromFirebase] No data found at path: ${path}`);
@@ -87,6 +86,7 @@ async function writeJsonToFirebase(path, data) {
     await set(ref(dbClient, path), data);
     console.log(
       `[writeJsonToFirebase] Data successfully written to path: ${path}`,
+      data,
     );
   } catch (error) {
     console.error(
@@ -99,22 +99,50 @@ async function writeJsonToFirebase(path, data) {
 async function getUserData(filePaths) {
   console.log("[getUserData] Called with filePaths:", filePaths);
 
-  const data = {};
-  for (const [key, path] of Object.entries(filePaths)) {
-    data[key] = (await readJsonFromFirebase(path)) || {};
+  const data = {
+    conversation: (await readJsonFromFirebase(filePaths.conversation)) || [],
+    room: (await readJsonFromFirebase(filePaths.room)) || [],
+    player: (await readJsonFromFirebase(filePaths.player)) || {},
+    story: (await readJsonFromFirebase(filePaths.story)) || {},
+    quest: (await readJsonFromFirebase(filePaths.quest)) || {},
+    storyImage: (await readJsonFromFirebase(filePaths.storyImage)) || {},
+  };
+
+  // console.log("[getUserData] Fetched data:", data);
+
+  // Retrieve the current room location from the story data
+  if (data.story && data.story.room_location_user !== undefined) {
+    const currentRoomLocation = data.story.room_location_user;
+    console.log(`[getUserData] Current room location from story: ${currentRoomLocation}`);
+    // console.log("[getUserData] Entire room data:", data.room); // Log entire room data to verify structure
+
+    // Verify the room data structure and retrieve current room data
+    if (currentRoomLocation >= 0 && currentRoomLocation < data.room.length) {
+      const currentRoom = data.room[currentRoomLocation];
+      console.log(`[getUserData] Current room data:`, currentRoom);
+
+      // Extract the image URL from the current room
+      if (currentRoom && currentRoom.image_url) {
+        data.latestImageUrl = currentRoom.image_url;
+        console.log(`[getUserData] Latest image URL fetched from room data: ${data.latestImageUrl}`);
+      } else {
+        console.log("[getUserData] No image URL found in the current room data.");
+        data.latestImageUrl = null;
+      }
+    } else {
+      console.log(`[getUserData] No room found at index ${currentRoomLocation}. Check room data structure or room location index.`);
+      data.latestImageUrl = null;
+    }
+  } else {
+    console.log("[getUserData] No room_location_user found in the story data.");
+    data.latestImageUrl = null;
   }
 
-  // Assuming conversations are stored in an array and each conversation has an 'imageUrl'
-  if (data.conversation && data.conversation.length > 0) {
-    const lastConversation = data.conversation[data.conversation.length - 1];
-    data.latestImageUrl = lastConversation.imageUrl || null;
-    console.log(
-      `[getUserData] Latest image URL fetched: ${data.latestImageUrl}`,
-    );
-  }
-
+  // console.log("[getUserData] Returning data with potential image URL:", data);
   return data;
 }
+
+
 
 
 module.exports = {
