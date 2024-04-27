@@ -1,23 +1,8 @@
 //public/front.js
 let lastAssistantMessageElement = null;
 let lastDisplayedImageUrl = null;
+let lastDisplayedRoomId = null;
 let fullResponse = "";
-
-function displayStoryImage(imageUrl) {
-  console.log("[displayStoryImage] Displaying image with URL:", imageUrl); // Ensure this function is called
-  const imageContainer = document.getElementById("imageContainer");
-  imageContainer.innerHTML = ""; // Clear previous image
-
-  if (imageUrl) {
-    const imgElement = document.createElement("img");
-    imgElement.src = imageUrl;
-    imgElement.alt = "Story Image";
-    imageContainer.appendChild(imgElement);
-    console.log("[displayStoryImage] Image element added to the container."); // Confirm image is added to DOM
-  } else {
-    console.log("[displayStoryImage] No URL provided to display."); // Handle null or undefined URL
-  }
-}
 
 (function () {
   const originalLog = console.log;
@@ -53,7 +38,7 @@ function displayStoryImage(imageUrl) {
 // Function to adjust image max width based on the window size
 function adjustImageMaxWidth() {
   const maxWidth = window.innerWidth;
-  const maxImageWidth = Math.min(maxWidth, 800);
+  const maxImageWidth = Math.min(maxWidth, 512);
   const imageContainer = document.getElementById("imageContainer");
 
   if (imageContainer) {
@@ -62,6 +47,54 @@ function adjustImageMaxWidth() {
       img.style.maxWidth = maxImageWidth + "px";
     }
   }
+}
+
+let userId = localStorage.getItem("userId");
+
+function updateRoomDisplay(roomId, imageUrl) {
+  const roomDisplayElement = document.getElementById("room-display");
+  const roomImageElement = document.getElementById("room-image");
+
+  if (roomDisplayElement && roomId !== lastDisplayedRoomId) {
+    roomDisplayElement.textContent = `Room Number: ${roomId}`;
+    lastDisplayedRoomId = roomId;
+  }
+
+  if (roomImageElement && imageUrl !== lastDisplayedImageUrl) {
+    roomImageElement.src = imageUrl;
+    roomImageElement.alt = `Room ${roomId} Image`;
+    lastDisplayedImageUrl = imageUrl;
+    console.log(
+      "[updateRoomDisplay] Room and image updated:",
+      roomId,
+      imageUrl,
+    );
+  }
+}
+
+// Establish the socket connection with the userId only if it's present
+if (userId) {
+  const socket = io({ query: { userId } });
+
+  socket.on("connect", () => {
+    console.log(
+      "[Socket] Successfully connected to the server with userId:",
+      userId,
+    );
+  });
+
+  socket.on("roomData", (data) => {
+    console.log("[Socket] Room data received:", data);
+    if (data.room_id && data.image_url) {
+      updateRoomDisplay(data.room_id, data.image_url);
+    } else {
+      console.log("[Socket] Error: Room data missing room_id or image_url");
+    }
+  });
+
+  socket.on("connect_error", (error) => {
+    console.error("[Socket] Connection Error:", error);
+  });
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -74,7 +107,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   window.addEventListener("load", adjustImageMaxWidth);
 
   let conversationHistory = [];
-  let userId = localStorage.getItem("userId");
+  let lastDisplayedImageUrl = null;
+  let lastDisplayedRoomId = null;
+
+  if (!userId) {
+    userId = await createNewUser();
+    localStorage.setItem("userId", userId); // Store the userId in localStorage after creation
+  }
 
   const initializeUserData = async () => {
     console.log("[front.js/init] Attempting to load or create user data");
@@ -91,7 +130,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         return response.json();
       })
-      .then(async (data) => {
+      .then((data) => {
         if (
           data.userId &&
           data.userId !== "undefined" &&
@@ -103,23 +142,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             userId,
           });
 
-          // Establish the socket connection with the userId
-          const socket = io({
-            query: {
-              userId: userId,
-            },
-          });
-
-          socket.on("latestImageUrl", (imageUrl) => {
-            console.log("[Socket] Received new image URL:", imageUrl);
-            if (imageUrl && lastDisplayedImageUrl !== imageUrl) {
-              console.log("[Socket] Image URL has changed, updating display.");
-              displayStoryImage(imageUrl);
-              lastDisplayedImageUrl = imageUrl;  // Update the last displayed image URL for comparison
-            }
-          });
-
-
           if (data.story && data.story.active_game === true) {
             if (data.latestImageUrl) {
               console.log(
@@ -127,6 +149,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 data.latestImageUrl,
               );
               displayStoryImage(data.latestImageUrl);
+              lastDisplayedImageUrl = data.latestImageUrl; // Update the last displayed image URL for comparison
             }
             if (Array.isArray(data.conversation)) {
               conversationHistory = data.conversation;
@@ -142,11 +165,14 @@ document.addEventListener("DOMContentLoaded", async () => {
             console.log(
               `[front.js/init] No active game found for ID: ${userId}`,
             );
+
+            // Display a default placeholder image
+            displayStoryImage(
+              "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=8382dbec-03c7-4c51-821d-d037f8c9ed47",
+            );
             const firstTimeUserMessage =
               "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
-            console.log(
-              `[front.js/init] Sending first time user message: ${firstTimeUserMessage}`,
-            );
+            //console.log(`[front.js/init] Sending first time user message: ${firstTimeUserMessage}`);
             // Send the first-time user message using the callChatAPI function without storing it in the conversation history
             callChatAPI(firstTimeUserMessage, userId, false);
           }
@@ -157,6 +183,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       })
       .catch((error) => {
         console.error("[front.js/init] Error initializing user data:", error);
+        // Display a default placeholder image even on error
+        displayStoryImage(
+          "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=8382dbec-03c7-4c51-821d-d037f8c9ed47",
+        );
         userId = localStorage.getItem("userId") || null;
         if (userId) {
           console.log(
@@ -169,41 +199,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           );
           createNewUser();
         }
-      });
-  };
-
-  const createNewUser = () => {
-    console.log("[front.js/init] Creating new user");
-    const options = {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    };
-    fetch("/api/users", options)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to create new user: ${response.statusText}`);
-        }
-        return response.json();
-      })
-      .then((data) => {
-        if (
-          data.userId &&
-          data.userId !== "undefined" &&
-          data.userId.trim() !== ""
-        ) {
-          userId = data.userId;
-          localStorage.setItem("userId", userId);
-          console.log("[front.js/init] New user created", {
-            userId,
-          });
-          conversationHistory = [];
-        } else {
-          console.error("[front.js/init] Failed to create new user", data);
-        }
-      })
-      .catch((error) => {
-        console.error("[front.js/init] Error creating new user:", error);
       });
   };
 
@@ -236,7 +231,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             userId,
           }),
         });
-        console.log("[front.js/callChatAPI] Fetch response:", response);
+        //console.log("[front.js/callChatAPI] Fetch response:", response);
 
         if (!response.ok) {
           console.error(
@@ -267,7 +262,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           }
 
           value.split("\n").forEach((line) => {
-            console.log("[front.js/callChatAPI] Processing line:", line);
+            //console.log("[front.js/callChatAPI] Processing line:", line);
 
             try {
               if (line.startsWith("data:")) {
@@ -275,7 +270,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
                 if (parsedLine.content !== undefined) {
                   const content = parsedLine.content;
-                  // ... (existing code)
                   displayAssistantMessage(content);
 
                   if (parsedLine.imageUrl !== undefined) {
@@ -331,6 +325,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   userInput.addEventListener("keydown", async (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
+
       // Prevents multiple intervals from being set
       clearInterval(checkImageInterval);
       const imageLoadingElement = document.querySelector(".image-loading");
@@ -356,6 +351,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     }
   });
+
+  // Function to fetch room data and update the image display
+
+  function displayStoryImage(imageUrl) {
+    console.log("[displayStoryImage] Displaying image with URL:", imageUrl);
+    const roomImageElement = document.getElementById("room-image");
+
+    if (roomImageElement) {
+      roomImageElement.src = imageUrl;
+      roomImageElement.alt = "Story Image";
+      console.log(
+        "[displayStoryImage] Image updated in the room-image element.",
+      );
+    } else {
+      console.log("[displayStoryImage] room-image element not found.");
+    }
+  }
 
   let checkImageInterval;
 
@@ -428,10 +440,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function displayAssistantMessage(content) {
-    console.log(
-      "[front.js/displayAssistantMessage] Displaying assistant message:",
-      content,
-    );
+    //console.log("[front.js/displayAssistantMessage] Displaying assistant message:",content,);
 
     if (
       lastAssistantMessageElement === null ||
@@ -441,10 +450,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       lastAssistantMessageElement.classList.add("response-message");
       lastAssistantMessageElement.setAttribute("data-complete", "false");
       messageContainer.prepend(lastAssistantMessageElement);
-      console.log(
-        "[front.js/displayAssistantMessage] New message element created:",
-        lastAssistantMessageElement,
-      );
+      //console.log("[front.js/displayAssistantMessage] New message element created:",lastAssistantMessageElement,);
     }
 
     // Format content to handle spacing and line breaks
@@ -452,10 +458,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Use innerHTML to append the formatted content
     lastAssistantMessageElement.innerHTML += content;
-    console.log(
-      "[front.js/displayAssistantMessage] Message content appended with line breaks and numbers:",
-      lastAssistantMessageElement.innerHTML,
-    );
+    //console.log("[front.js/displayAssistantMessage] Message content appended with line breaks and numbers:",lastAssistantMessageElement.innerHTML,);
 
     console.log(
       "[front.js/displayAssistantMessage] Assistant message displayed",
@@ -464,10 +467,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function markLastAssistantMessageAsComplete() {
     if (lastAssistantMessageElement) {
-      console.log(
-        "[front.js/markLastAssistantMessageAsComplete] Marking last assistant message as complete:",
-        lastAssistantMessageElement,
-      );
+      //console.log("[front.js/markLastAssistantMessageAsComplete] Marking last assistant message as complete:", lastAssistantMessageElement,);
       lastAssistantMessageElement.setAttribute("data-complete", "true");
 
       // Check if imageUrl is provided and display the placeholder

@@ -1,5 +1,9 @@
+const express = require("express");
+
 const { initializeApp, getApps, getApp } = require("firebase/app");
 const { getDatabase, ref, set, get, update } = require("firebase/database");
+
+const app = express();
 
 // Firebase configuration
 const firebaseConfig = {
@@ -13,17 +17,32 @@ const firebaseConfig = {
   measurementId: process.env["measurementId"],
 };
 
-// Initialize Firebase app
-let app;
+let firebaseApp;
 if (!getApps().length) {
-  app = initializeApp(firebaseConfig);
+  firebaseApp = initializeApp(firebaseConfig);
   console.log("Firebase app initialized successfully.");
 } else {
-  app = getApp();
+  firebaseApp = getApp();
 }
 
-// Initialize Firebase Database Client
-const dbClient = getDatabase(app);
+const dbClient = getDatabase(firebaseApp);
+
+// Function to set up a listener on room data
+function setupRoomDataListener(userId) {
+  const roomRef = ref(dbClient, `data/users/${userId}/story/room_location_user`);
+  onValue(roomRef, (snapshot) => {
+    if (snapshot.exists()) {
+      const roomLocationUser = snapshot.val();
+      console.log(`[Firebase Listener] Room location updated for user ${userId}: ${roomLocationUser}`);
+      io.to(userId).emit('roomData', { room_id: roomLocationUser });
+    } else {
+      console.log(`[Firebase Listener] No room location data found for user ${userId}`);
+    }
+  }, (error) => {
+    console.error(`[Firebase Listener] Error listening to room location data for user ${userId}:`, error);
+  });
+}
+
 
 async function ensureUserDirectoryAndFiles(userId) {
   const basePath = `data/users/${userId}`;
@@ -33,7 +52,6 @@ async function ensureUserDirectoryAndFiles(userId) {
     player: `${basePath}/player`,
     story: `${basePath}/story`,
     quest: `${basePath}/quest`,
-    storyImage: `${basePath}/storyImage`,
   };
 
   // Check for existing data or create initial structure
@@ -61,12 +79,26 @@ async function ensureUserDirectoryAndFiles(userId) {
   return dataPaths;
 }
 
-async function readJsonFromFirebase(path) {
+async function writeJsonToFirebase(path, data) {
   try {
+    await set(ref(dbClient, path), data);
+    //console.log(`[writeJsonToFirebase] Data successfully written to path: ${path}`, data,);
+  } catch (error) {
+    console.error(
+      `[writeJsonToFirebase] Error writing data to Firebase at path ${path}: ${error}`,
+    );
+    throw error;
+  }
+}
+
+async function readJsonFromFirebase(path, caller) {
+  try {
+    console.log(`[readJsonFromFirebase] Called by: ${caller}`);
+
     const snapshot = await get(ref(dbClient, path));
     if (snapshot.exists()) {
       const data = snapshot.val();
-      // console.log(`[readJsonFromFirebase] Data found at path: ${path}`, data);
+      console.log(`[readJsonFromFirebase] Data found at path: ${path}`);
       return data;
     } else {
       console.log(`[readJsonFromFirebase] No data found at path: ${path}`);
@@ -81,73 +113,68 @@ async function readJsonFromFirebase(path) {
   }
 }
 
-async function writeJsonToFirebase(path, data) {
-  try {
-    await set(ref(dbClient, path), data);
-    console.log(
-      `[writeJsonToFirebase] Data successfully written to path: ${path}`,
-      data,
-    );
-  } catch (error) {
-    console.error(
-      `[writeJsonToFirebase] Error writing data to Firebase at path ${path}: ${error}`,
-    );
-    throw error;
-  }
-}
+async function getUserData(userId) {
+  console.log("[getUserData] Called for user:", userId);
 
-async function getUserData(filePaths) {
-  console.log("[getUserData] Called with filePaths:", filePaths);
-
-  const data = {
-    conversation: (await readJsonFromFirebase(filePaths.conversation)) || [],
-    room: (await readJsonFromFirebase(filePaths.room)) || [],
-    player: (await readJsonFromFirebase(filePaths.player)) || {},
-    story: (await readJsonFromFirebase(filePaths.story)) || {},
-    quest: (await readJsonFromFirebase(filePaths.quest)) || {},
-    storyImage: (await readJsonFromFirebase(filePaths.storyImage)) || {},
+  const basePath = `data/users/${userId}`;
+  const filePaths = {
+    conversation: `${basePath}/conversation`,
+    room: `${basePath}/room`,
+    player: `${basePath}/player`,
+    story: `${basePath}/story`,
+    quest: `${basePath}/quest`,
   };
 
-  // console.log("[getUserData] Fetched data:", data);
+  const data = {
+    conversation:
+      (await readJsonFromFirebase(
+        filePaths.conversation,
+        "getUserData - conversation",
+      )) || [],
+    room: {},
+    player:
+      (await readJsonFromFirebase(filePaths.player, "getUserData - player")) ||
+      {},
+    story:
+      (await readJsonFromFirebase(filePaths.story, "getUserData - story")) ||
+      {},
+    quest:
+      (await readJsonFromFirebase(filePaths.quest, "getUserData - quest")) ||
+      {},
+    latestImageUrl: null, // Initialize latestImageUrl as null
+  };
 
-  // Retrieve the current room location from the story data
-  if (data.story && data.story.room_location_user !== undefined) {
-    const currentRoomLocation = data.story.room_location_user;
-    console.log(`[getUserData] Current room location from story: ${currentRoomLocation}`);
-    // console.log("[getUserData] Entire room data:", data.room); // Log entire room data to verify structure
-
-    // Verify the room data structure and retrieve current room data
-    if (currentRoomLocation >= 0 && currentRoomLocation < data.room.length) {
-      const currentRoom = data.room[currentRoomLocation];
-      console.log(`[getUserData] Current room data:`, currentRoom);
-
-      // Extract the image URL from the current room
-      if (currentRoom && currentRoom.image_url) {
-        data.latestImageUrl = currentRoom.image_url;
-        console.log(`[getUserData] Latest image URL fetched from room data: ${data.latestImageUrl}`);
-      } else {
-        console.log("[getUserData] No image URL found in the current room data.");
-        data.latestImageUrl = null;
-      }
+  // Fetch the room data using the 'room_location_user' identifier from the story
+  if (data.story && data.story.room_location_user) {
+    console.log(
+      "[getUserData] Current room fetched:",
+      data.story.room_location_user,
+    );
+    const roomPath = `${basePath}/room/${data.story.room_location_user}`;
+    data.room = await readJsonFromFirebase(roomPath, "getUserData - room");
+    if (data.room) {
+      data.latestImageUrl = data.room.image_url || null;
+      console.log(
+        `[getUserData] Latest image URL fetched: ${data.latestImageUrl}`,
+      );
     } else {
-      console.log(`[getUserData] No room found at index ${currentRoomLocation}. Check room data structure or room location index.`);
-      data.latestImageUrl = null;
+      console.log(
+        "[getUserData] No valid room data found for the given room identifier.",
+      );
     }
   } else {
-    console.log("[getUserData] No room_location_user found in the story data.");
-    data.latestImageUrl = null;
+    console.log(
+      "[getUserData] 'room_location_user' is not defined in the story data.",
+    );
   }
 
-  // console.log("[getUserData] Returning data with potential image URL:", data);
   return data;
 }
-
-
-
 
 module.exports = {
   ensureUserDirectoryAndFiles,
   getUserData,
   writeJsonToFirebase,
   readJsonFromFirebase,
+  setupRoomDataListener,
 };

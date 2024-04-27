@@ -16,9 +16,30 @@ body {
 }
 
 
+#storyImageContainer {
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+#storyImage {
+  max-width: 100%;
+  height: auto;
+  margin-bottom: 20px;
+}
+
+#debugInfo {
+  margin-bottom: 20px;
+  padding: 10px;
+  background-color: #f0f0f0;
+  border: 1px solid #ccc;
+  font-family: monospace;
+}
+
 #imageContainer img {
     width: 100%; /* Ensures the image scales with the container width */
-    max-width: min(300px, 100vw); /* Ensures image width does not exceed the lesser of 800px or 100% of the viewport width */
+    max-width: min(896px, 100vw); /* Ensures image width does not exceed the lesser of 800px or 100% of the viewport width */
     max-height: 100vh; /* Ensures image does not exceed the viewport height */
     height: auto; /* Ensures the height scales proportionally */
     object-fit: contain; /* Ensures the image is fully visible, preserving aspect ratio without stretching */

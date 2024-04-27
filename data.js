@@ -26,101 +26,199 @@ async function updateStoryContext(userId, conversationData) {
   const filePaths = await ensureUserDirectoryAndFiles(userId);
   console.log("[data.js/updateStoryContext] File paths:", filePaths);
 
-  const userData = await getUserData(filePaths);
+  const userData = await getUserData(userId);
   console.log("[data.js/updateStoryContext] User data");
 
   let storyData = {};
-
-  // Read room, player, and quest data from the database
-  const roomData = (await readJsonFromFirebase(filePaths.room)) || {};
-  const playerData = (await readJsonFromFirebase(filePaths.player)) || {};
-  const questData = (await readJsonFromFirebase(filePaths.quest)) || {};
+  let roomData = {};
 
   try {
     storyData = (await readJsonFromFirebase(filePaths.story)) || {};
     console.log("[data.js/updateStoryContext] Retrieved story data");
+
+    roomData = (await readJsonFromFirebase(filePaths.room)) || {};
+    console.log("[data.js/updateStoryContext] Retrieved room data");
   } catch (error) {
-    console.error("[data.js/updateStoryContext] Error reading story data:", error);
-    storyData = {}; // Initialize with an empty object if no data is found or an error occurs
+    console.error(
+      "[data.js/updateStoryContext] Error reading story data:",
+      error,
+    );
+    storyData = {};
   }
 
-  // Check for room change and handle it
-  const currentRoomId = storyData.room_location_user;
-  const newRoomId = storyData.new_room_id; // Assume this new room ID comes from some game logic or user action
-  if (newRoomId && currentRoomId !== newRoomId) {
-    handleRoomChange(userId, newRoomId);
-    console.log(`[data.js/updateStoryContext] Room change handled: ${currentRoomId} to ${newRoomId}`);
-    storyData.room_location_user = newRoomId; // Update the story data with the new room ID
-  }
-
-  // Formatting and preparing data for OpenAI call
   let formattedHistory = "";
   if (conversationData && conversationData.length > 0) {
-    const lastFiveMessages = conversationData.slice(-5);
-    formattedHistory = lastFiveMessages
-      .map(msg => `#${msg.messageId} [${msg.timestamp}]:\nUser: ${msg.userPrompt}\nAssistant: ${msg.response}`)
+    formattedHistory = conversationData
+      .slice(-5)
+      .map(
+        (msg) =>
+          `#${msg.messageId} [${msg.timestamp}]:\nUser: ${msg.userPrompt}\nAssistant: ${msg.response}`,
+      )
       .join("\n\n");
   }
 
-  console.log("[data.js/updateStoryContext] Formatted Conversation History for GPT:");
+  console.log(
+    "[data.js/updateStoryContext] Formatted Conversation History for GPT:",
+  );
 
-  const { messages, tools } = getStoryContextMessages(storyData, roomData, playerData, questData, formattedHistory);
+  const { messages, tools } = getStoryContextMessages(
+    storyData,
+    roomData,
+    userData.player,
+    userData.quest,
+    formattedHistory,
+  );
 
-  try {
-    console.log("[data.js/updateStoryContext] Calling OpenAI API with the prepared messages and tools.", { messages, tools });
+  const response = await openai.chat.completions.create({
+    model: "gpt-4-turbo",
+    messages: messages,
+    tools: tools,
+    tool_choice: "auto",
+  });
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
-      messages: messages,
-      tools: tools,
-      tool_choice: "auto",
-    });
+  const responseMessage = response.choices[0].message;
+  console.log("[data.js/updateStoryContext] Response Message");
 
-    const responseMessage = response.choices[0].message;
-    console.log("[data.js/updateStoryContext] Response Message");
+  if (
+    responseMessage &&
+    responseMessage.tool_calls &&
+    responseMessage.tool_calls.length > 0
+  ) {
+    const toolCall = responseMessage.tool_calls[0];
+    if (toolCall && toolCall.function && toolCall.function.arguments) {
+      const functionArgs = JSON.parse(toolCall.function.arguments);
+      const updatedStoryData = functionArgs.story_details;
 
-    if (responseMessage && responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      const toolCall = responseMessage.tool_calls[0]; // Assume we only deal with one tool call for simplicity
-      if (toolCall && toolCall.function && toolCall.function.arguments) {
-        const functionArgs = JSON.parse(toolCall.function.arguments);
-        const updatedStoryData = functionArgs.story_details; // Directly using the nested story_details
+      if (updatedStoryData) {
+        console.log(
+          "[data.js/updateStoryContext] Updated Story Data from tool call",
+        );
+        await writeJsonToFirebase(filePaths.story, updatedStoryData);
+        console.log(
+          "[data.js/updateStoryContext] Story data updated in Firebase for user ID:",
+          userId,
+        );
 
-        if (updatedStoryData) {
-          console.log("[data.js/updateStoryContext] Updated Story Data from tool call");
+        const newRoomId = updatedStoryData.room_location_user;
+        if (newRoomId && storyData.room_location_user !== newRoomId) {
+          console.log(
+            `[data.js/updateStoryContext] Room change detected from ${storyData.room_location_user} to ${newRoomId}`,
+          );
 
-          // Write updated story data back to Firebase
-          await writeJsonToFirebase(filePaths.story, updatedStoryData);
-          console.log("[data.js/updateStoryContext] Story data updated in Firebase for user ID:", userId);
-        } else {
-          console.log("[data.js/updateStoryContext] No valid story data to update.");
+          try {
+            console.log("[data.js/updateStoryContext] Room data:", roomData);
+
+            const newRoom = roomData.find((room) => room.room_id === newRoomId);
+            console.log("[data.js/updateStoryContext] New room data:", newRoom);
+
+            if (newRoom && newRoom.image_url) {
+              const newImageUrl = newRoom.image_url;
+              console.log(
+                `[data.js/updateStoryContext] New room image URL: ${newImageUrl}`,
+              );
+
+              // Emit the latestImageUrl event to the specific user's socket
+              const socket = app.get("socket");
+              if (socket) {
+                console.log(
+                  `[data.js/updateStoryContext] Emitting latestImageUrl event to user ${userId} with imageUrl: ${newImageUrl} and roomId: ${newRoomId}`,
+                );
+                socket.emit("latestImageUrl", {
+                  imageUrl: newImageUrl,
+                  roomId: newRoomId,
+                });
+              } else {
+                console.log("[data.js/updateStoryContext] Socket not found.");
+              }
+            } else {
+              console.log(
+                `[data.js/updateStoryContext] No image URL found for room ${newRoomId}`,
+              );
+              console.log(
+                "[data.js/updateStoryContext] New room data:",
+                newRoom,
+              );
+            }
+          } catch (error) {
+            console.error(
+              `[data.js/updateStoryContext] Error fetching room data for user ${userId}:`,
+              error,
+            );
+          }
         }
+      } else {
+        console.log(
+          "[data.js/updateStoryContext] No valid story data to update.",
+        );
       }
-    } else if (responseMessage && responseMessage.content) {
-      // Handle direct content updates (fallback if needed)
-      const updatedStoryData = JSON.parse(responseMessage.content);
-      await writeJsonToFirebase(filePaths.story, updatedStoryData);
-      console.log("[data.js/updateStoryContext] Story data updated in Firebase for user ID:", userId);
-    } else {
-      console.log("[data.js/updateStoryContext] No update needed or provided by API.");
     }
-  } catch (error) {
-    console.error("[data.js/updateStoryContext] Failed to update story context:", error);
-    throw error;
+  } else if (responseMessage && responseMessage.content) {
+    const updatedStoryData = JSON.parse(responseMessage.content);
+    await writeJsonToFirebase(filePaths.story, updatedStoryData);
+    console.log(
+      "[data.js/updateStoryContext] Story data updated in Firebase for user ID:",
+      userId,
+    );
+  } else {
+    console.log(
+      "[data.js/updateStoryContext] No update needed or provided by API.",
+    );
   }
 }
 
+async function handleRoomChange(userId, newRoomId) {
+  console.log(
+    `[handleRoomChange] Handling room change for user ${userId} to room ${newRoomId}`,
+  );
 
-  function getStoryContextMessages(storyData, roomData, playerData, questData, formattedHistory) {
-    const storyDataJson = JSON.stringify(storyData, null, 2);
-    const roomDataJson = roomData ? JSON.stringify(roomData, null, 2) : "{}";
-    const playerDataJson = playerData ? JSON.stringify(playerData, null, 2) : "{}";
-    const questDataJson = questData ? JSON.stringify(questData, null, 2) : "{}";
+  try {
+    // Fetch new room details from Firebase
+    const filePaths = await ensureUserDirectoryAndFiles(userId);
+    const roomData = await readJsonFromFirebase(filePaths.room);
 
+    if (roomData && Array.isArray(roomData)) {
+      const newRoom = roomData.find((room) => room.room_id === newRoomId);
+
+      if (newRoom && newRoom.image_url) {
+        const newImageUrl = newRoom.image_url;
+        console.log(`[handleRoomChange] New room image URL: ${newImageUrl}`);
+
+        // Emit new image URL to the specific user's socket
+        io.to(userId).emit("latestImageUrl", newImageUrl);
+      } else {
+        console.log(
+          `[handleRoomChange] No image URL found for room ${newRoomId}`,
+        );
+      }
+    } else {
+      console.log(`[handleRoomChange] No room data found for user ${userId}`);
+    }
+  } catch (error) {
+    console.error(
+      `[handleRoomChange] Error fetching room data for user ${userId}:`,
+      error,
+    );
+  }
+}
+
+function getStoryContextMessages(
+  storyData,
+  roomData,
+  playerData,
+  questData,
+  formattedHistory,
+) {
+  const storyDataJson = JSON.stringify(storyData, null, 2);
+  const roomDataJson = roomData ? JSON.stringify(roomData, null, 2) : "{}";
+  const playerDataJson = playerData
+    ? JSON.stringify(playerData, null, 2)
+    : "{}";
+  const questDataJson = questData ? JSON.stringify(questData, null, 2) : "{}";
 
   const messages = [
     {
       role: "system",
-      content: `You are a world-class storyteller and you are crafting a personalized story for this user. Please use the following conversation history and the existing story data to update the story json file. Story data from the story.json file: ${storyDataJson}
+      content: `You are a world-class storyteller and you are crafting a personalized story for this user. Please use the following conversation history and the existing story data to update the story json file. MAKE SURE THE USER HAS SELECTED THE TIME PERIOD AND THE NAME OF THE CHARACTER THEY WANT TO BE BEFORE SETTING THE ACTIVE_GAME TO true. Story data from the story.json file: ${storyDataJson}
       
       Room data: ${roomDataJson}
       
@@ -128,7 +226,9 @@ async function updateStoryContext(userId, conversationData) {
       
       Quest data: ${questDataJson}
       
-      Last few messages: Message History:\n${formattedHistory} Take this data and update it with anything new based on the latest conversation update. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one.`,
+      Last few messages: Message History:\n${formattedHistory} 
+      
+      You must take this data and update the story json with anything new based on the latest conversation update. This includes updating the room number where the user is currently. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one.`,
     },
     {
       role: "user",
@@ -154,25 +254,10 @@ async function updateStoryContext(userId, conversationData) {
                   description:
                     "English by default, but if the user is typing in a different language make sure to indicate which language here.",
                 },
-                narrator_style: {
-                  type: "string",
-                  description:
-                    "List the author that most closely aligns with the user's favorite story teller. Leave blank until you can make the assessment.",
-                },
-                active_game: {
-                  type: "boolean",
-                  description:
-                    "The system will ask the user what time period they want to play in, what grade they are in, whether they want to play as a boy or girl, what they favorite author is, and what character they will play in this story. After we have collected all of these answers set this to true. Don't set this to true until we have all of these answers. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false again.",
-                },
                 character_played_by_user: {
                   type: "string",
                   description:
                     "This will be the character played by the user in the story. If there is no name given for their player, create one that makes the most sense, usually the hero in the story. Leave blank until you can make the assessment.",
-                },
-                player_level: {
-                  type: "string",
-                  description:
-                    "The player starts at level 1. Every time they solve a quest increment them up 1 level. Represent this as: 'You are now level X/100. You went up one more level by solving the <name of quest> quest.'",
                 },
                 player_health: {
                   type: "string",
@@ -184,10 +269,10 @@ async function updateStoryContext(userId, conversationData) {
                   description:
                     "This is how the character behaves in the world. As the user makes decisions in the game, update this. For example: You are hated by the people of this world because you are always killing people. Or You are well loved by the people for all the good you do. Leave blank until you can make the assessment.",
                 },
-                player_special_abilities: {
+                player_lives_in_real_life: {
                   type: "string",
                   description:
-                    "These are the special abilities your character has in this world. For instance if you were a spy you might speak many languages and be an excellent shot. Or if you are a general you might have charisma over others. These can change as you train up within the world.",
+                    "If the user tells you where they live, record it here. For instance if they say China, then record China here. If they say Los Altos, CA, then record Los Altos, CA, USA. If they give you a zip code, convert it to a proper name.",
                 },
                 game_description: {
                   type: "string",
@@ -204,25 +289,40 @@ async function updateStoryContext(userId, conversationData) {
                   description:
                     "The user's education level. For instance, if they are in a particular grade in school. If they want the game to be harder, make this higher. If easier, make this lower. They can also say things like they are an expert at something like WWII history and if they do give them a high level of education like Ph.D.",
                 },
+                previous_user_location: {
+                  type: "integer",
+                  description:
+                    "This can only be a room number from the rooms feed, do not make up a room number. If the user moves during this turn, like they say leave room or go north, we must take the previous number in the room_location_user field and populate it in this field. If the user does anything else in the room that does not move them, we also must populate the room_location_user room number in this field, but in that case the two numbers will match.",
+                },
                 room_location_user: {
                   type: "integer",
                   description:
-                    "This is the room location that the user is currently in. Review the last conversation output and make sure that the room_id from the room_name where the user is located is used here to indicate what room they are currently in.",
+                    "This can only be a room number from the rooms feed, do not make up a room number. This is the room location that the user is currently in. Review the last conversation output and make sure that the room_id from the room_name where the user is located is used here to indicate what room they are currently in. This should change to the new room anytime a user moves. In the room json feed this room_id must be set to user_in_room equal to true.",
+                },
+                current_room_name: {
+                  type: "string",
+                  description:
+                    "This is the name of the room that the user is currently in. This should appear at the top of the most recent conversation and should also match one of the rooms in the feed from our backend. This should change to the new room anytime a user moves. In the room json feed this room_id must be set to user_in_room equal to true.",
+                },
+                active_game: {
+                  type: "boolean",
+                  description:
+                    "DO NOT SET THIS TO TRUE until these fields are populated: character_played_by_user, education_level, game_description.  After we have collected all of these answers set this to true. Don't set this to true until we have all of these answers. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false again.",
                 },
               },
               required: [
                 "language_spoken",
-                "narrator_style",
-                "active_game",
                 "game_description",
-                "player_level",
                 "player_health",
                 "player_attitude",
-                "player_special_abilities",
+                "player_lives_in_real_life",
                 "character_played_by_user",
                 "player_profile",
                 "education_level",
+                "previous_user_location",
                 "room_location_user",
+                "current_room_name",
+                "active_game",
               ],
             },
           },
@@ -241,14 +341,15 @@ async function updateRoomContext(userId) {
   );
 
   const filePaths = await ensureUserDirectoryAndFiles(userId);
-  const userData = await getUserData(filePaths);
+
+  const userData = await getUserData(userId);
 
   if (!Array.isArray(userData.locations)) {
     userData.locations = [];
   }
 
-  // Read room data from Firebase
   let roomData = {};
+
   try {
     roomData = (await readJsonFromFirebase(filePaths.room)) || {};
     console.log(
@@ -261,10 +362,8 @@ async function updateRoomContext(userId) {
     );
   }
 
-  // Get the most recent 5 messages from the conversation history
   const recentMessages = userData.conversation.slice(-5);
 
-  // Format the recent messages for GPT
   const conversationForGPT = recentMessages
     .map(
       (message) =>
@@ -282,95 +381,118 @@ async function updateRoomContext(userId) {
 
   try {
     console.log("Calling OpenAI API with the prepared messages and tools.");
-    console.log("Data sent to GPT");
 
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
     });
 
-    const responseMessage = response.choices[0].message;
-    console.log("[data.js/updateRoomContext] Response Message");
+    console.log("[data.js/updateRoomContext] Response from OpenAI processed.");
 
-    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      const toolCall = responseMessage.tool_calls[0];
-      console.log("[data.js/updateRoomContext] Function call");
-
-      if (toolCall.function.name === "update_room_context") {
-        const functionArgs = JSON.parse(toolCall.function.arguments);
-        console.log("[data.js/updateRoomContext] Function arguments");
-
-        const updatedRooms = functionArgs.rooms;
-        console.log("[data.js/updateRoomContext] Updated rooms");
-
-        // Read existing room data from Firebase
-        const existingRoomData =
-          (await readJsonFromFirebase(filePaths.room)) || [];
-
-        // Iterate over the updated rooms
-        updatedRooms.forEach((updatedRoom) => {
-          // Check if the room already exists in existingRoomData
-          const existingRoomIndex = existingRoomData.findIndex(
-            (room) => room.room_id === updatedRoom.room_id,
-          );
-
-          if (existingRoomIndex !== -1) {
-            // If the room exists, update its properties
-            existingRoomData[existingRoomIndex] = {
-              ...existingRoomData[existingRoomIndex],
-              ...updatedRoom,
-            };
-          } else {
-            // If the room doesn't exist, add it to existingRoomData
-            existingRoomData.push(updatedRoom);
-          }
-        });
-
-        // Write updated room data to Firebase
-        await writeJsonToFirebase(filePaths.room, existingRoomData);
-        console.log(
-          `[data.js/updateRoomContext] Updated room data saved for ID: ${userId}`,
-        );
-
-        // Generate images for each room
-        for (const room of existingRoomData) {
-          if (room.room_description_for_dalle) {
-            const imageUrl = await generateStoryImage(
-              userId,
-              room.room_description_for_dalle,
-            );
-            room.image_url = imageUrl;
-          }
-        }
-
-        // Write updated room data with image URLs to Firebase
-        await writeJsonToFirebase(filePaths.room, existingRoomData);
-        console.log(
-          `[data.js/updateRoomContext] Room data with image URLs saved for ID: ${userId}`,
-        );
-
-        return JSON.stringify(existingRoomData);
-      } else {
-        console.log(
-          "[data.js/updateRoomContext] Unexpected function call:",
-          toolCall.function.name,
-        );
-        return null; // Handle unexpected function call
-      }
-    } else {
-      console.log(
-        "[data.js/updateRoomContext] No function call detected in the model's response.",
-      );
-      return responseMessage.content; // Handle no function call
-    }
+    processGPTResponse(response, filePaths, userId);
   } catch (error) {
     console.error(
       "[data.js/updateRoomContext] Failed to update room context:",
       error,
     );
-    throw error;
+  }
+}
+
+async function processGPTResponse(response, filePaths, userId) {
+  const responseMessage = response.choices[0].message;
+
+  console.log("[data.js/processGPTResponse] Processing response message");
+
+  if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
+    const toolCall = responseMessage.tool_calls[0];
+
+    if (toolCall.function.name === "update_room_context") {
+      const functionArgs = JSON.parse(toolCall.function.arguments);
+
+      await updateRoomData(functionArgs.rooms, filePaths.room, userId);
+
+      console.log("[data.js/processGPTResponse] Room data updated with images");
+    } else {
+      console.log(
+        "[data.js/processGPTResponse] Unexpected function call:",
+        toolCall.function.name,
+      );
+    }
+  } else {
+    console.log(
+      "[data.js/processGPTResponse] No function call detected in model's response.",
+    );
+  }
+}
+
+async function updateRoomData(updatedRooms, roomFilePath, userId) {
+  const existingRoomData = (await readJsonFromFirebase(roomFilePath)) || [];
+
+  for (const updatedRoom of updatedRooms) {
+    const index = existingRoomData.findIndex(
+      (room) => room.room_id === updatedRoom.room_id,
+    );
+
+    if (index !== -1) {
+      existingRoomData[index] = {
+        ...existingRoomData[index],
+        ...updatedRoom,
+        image_url:
+          existingRoomData[index].image_url || updatedRoom.image_url || null, // Preserve existing image_url or set it to null if not present
+      };
+    } else {
+      existingRoomData.push({
+        ...updatedRoom,
+        image_url: updatedRoom.image_url || null, // Set image_url to null if not present
+      });
+    }
+  }
+
+  await writeJsonToFirebase(roomFilePath, existingRoomData);
+  console.log(
+    `[data.js/updateRoomData] Updated room data saved for user ID: ${userId}`,
+  );
+
+  for (const room of existingRoomData) {
+    if (room.room_description_for_dalle && !room.image_url) {
+      const imageUrl = await generateStoryImage(
+        userId,
+        room.room_description_for_dalle,
+        room,
+      );
+      if (imageUrl !== null) {
+        await updateRoomImageUrl(userId, room.room_id, imageUrl);
+      }
+    }
+  }
+
+  console.log(
+    `[data.js/updateRoomData] Room images updated for user ID: ${userId}`,
+  );
+}
+
+async function updateRoomImageUrl(userId, roomId, imageUrl) {
+  const roomPath = `data/users/${userId}/room/${roomId}`;
+  try {
+    const roomData = await readJsonFromFirebase(roomPath);
+    if (roomData) {
+      roomData.image_url = imageUrl;
+      await writeJsonToFirebase(roomPath, roomData);
+      console.log(
+        `[data.js/updateRoomImageUrl] Image URL updated for room ${roomId} of user ${userId}`,
+      );
+    } else {
+      console.log(
+        `[data.js/updateRoomImageUrl] Room data not found for room ${roomId} of user ${userId}`,
+      );
+    }
+  } catch (error) {
+    console.error(
+      `[data.js/updateRoomImageUrl] Error updating image URL for room ${roomId} of user ${userId}:`,
+      error,
+    );
   }
 }
 
@@ -378,7 +500,7 @@ function getRoomContextMessages(locations, roomData, conversationForGPT) {
   const messages = [
     {
       role: "system",
-      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Oregon Trail. Analyze the following conversation and the latest interaction to update the game's context, feel free to fill in the blanks if the dialogue is missing anything. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the room into the fields. If any, here is the current location data where the player may be or has been in the past: ${JSON.stringify(locations)}. Take this data and update with anything new based on the latest conversation update. That means if we need to add anything, you must include the original data in the output or it will be deleted. If it is a new location, create it. Make sure that when the player moves to a new room or location, that you remove them from the previous room and add them to the new room. I character can only ever be in one room at a time and the last response message is the final decider if the character is moving between rooms.`,
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Oregon Trail. Analyze the following conversation and the latest interaction to update the room data. YOU MUST DESCRIBE THE ROOM THEY ARE IN AND EVERY ROOM OR LOCATION THEY CAN MOVE TO AND BE SPECIFIC ABOUT LOCATIONS, DO NOT CREATE GENERAL CONCEPTS LIKE "AFRICA". If any, here is the current location data where the player may be or has been in the past: ${JSON.stringify(locations)}. Take this data and update with anything new based on the latest conversation update. That means if we need to add anything, you must include the original data in the output or it will be deleted. If it is a new location, create it. THERE MUST ALWAYS BE AT LEAST TWO DIRECTIONS THE PLAY CAN GO FROM A LOCATION AND YOU MUST DESCRIBE THOSE LOCATIONS. Make sure that when the player moves to a new room or location, that you remove them from the previous room and add them to the new room. I character can only ever be in one room at a time and the last response message is the final decider if the character is moving between rooms.`,
     },
     {
       role: "system",
@@ -449,15 +571,10 @@ function getRoomContextMessages(locations, roomData, conversationForGPT) {
                     type: "string",
                     description: "Actions the user tried to take in the room.",
                   },
-                  players_conversation_ids_in_room: {
-                    type: "string",
-                    description:
-                      "Look at the conversation data we passed in the prompt and include the ids of any conversations that occurred in this room.",
-                  },
                   room_description_for_dalle: {
                     type: "string",
                     description:
-                      "Create a description that we can give to DALLE to generate an image for the room. Make sure you include in this description the time period and location. For example: I want a 2D image in the style of an 8bit video game like Oregon Trail that shows a fort from 1775 during the american revolution where you can see an old rifle on the ground along with a settler working at a food stand. The wall of the fort is made form large cut down trees and there is a flag of massachusetts flying over it. The people wear homemade outfits from the early massachusetts colony.",
+                      "Create a description that we can give to DALLE to generate an image for the room. Make sure you include in this description the time period and location. For example: I want a side view 2D image in the style of an 8bit video game like Oregon Trail that shows a fort from 1775 during the american revolution where you can see an old rifle on the ground along with a settler working at a food stand. The wall of the fort is made form large cut down trees and there is a flag of massachusetts flying over it. The people wear homemade outfits from the early massachusetts colony.",
                   },
                   user_in_room: {
                     type: "boolean",
@@ -475,7 +592,6 @@ function getRoomContextMessages(locations, roomData, conversationForGPT) {
                   "takeable_but_hidden_items",
                   "takeable_but_visible_items",
                   "actions_taken_in_room",
-                  "players_conversation_ids_in_room",
                   "room_description_for_dalle",
                   "user_in_room",
                 ],
@@ -565,7 +681,7 @@ async function updatePlayerContext(userId) {
     console.log("Data sent to GPT");
 
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -731,7 +847,7 @@ async function updateQuestContext(userId) {
   );
 
   const filePaths = await ensureUserDirectoryAndFiles(userId);
-  const userData = await getUserData(filePaths);
+  const userData = await getUserData(userId);
 
   if (!Array.isArray(userData.quest)) {
     userData.quest = [];
@@ -789,7 +905,7 @@ async function updateQuestContext(userId) {
     console.log("Data sent to GPT");
 
     const response = await openai.chat.completions.create({
-      model: "gpt-3.5-turbo",
+      model: "gpt-4-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -959,21 +1075,22 @@ function getQuestContextMessages(storyData, questData, conversationForGPT) {
   return { messages, tools };
 }
 
-function handleRoomChange(userId, newRoomId) {
-    const newRoomData = getRoomData(newRoomId);
-    const newImageUrl = newRoomData.image_url;
-    console.log(`[handleRoomChange] New room for user ${userId}: Room ID ${newRoomId}, Image URL: ${newImageUrl}`);
-    io.to(userId).emit('latestImageUrl', newImageUrl);  // Make sure to use correct socket or namespace
-}
-
-async function generateStoryImage(userId, roomDescription) {
+async function generateStoryImage(userId, roomDescription, room) {
   console.log("[generateStoryImage] Starting generateStoryImage");
 
   const filePaths = await ensureUserDirectoryAndFiles(userId);
   console.log("[generateStoryImage] File paths:", filePaths);
 
-  const userData = await getUserData(filePaths);
+  const userData = await getUserData(userId);
   console.log("[generateStoryImage] User data");
+
+  // Check if an image already exists for the room, avoid generating if it does
+  if (room.image_url) {
+    console.log(
+      "[generateStoryImage] Existing image URL found, not generating a new one.",
+    );
+    return room.image_url; // Return the existing URL instead of generating a new one
+  }
 
   // Assuming image_description is at the top level of user data
   const promptText =
@@ -981,9 +1098,7 @@ async function generateStoryImage(userId, roomDescription) {
     "A library filled with doors that look to go to different genres like sci-fi, spy stories, histories, etc.";
   console.log("[generateStoryImage] Prompt text:", promptText);
 
-  const storySummary = userData.story.game_description || "";
-
-  const prompt = `This is for a text based adventure game in the style of Oregon Trail or Zork, so create an image in an old pixel game style. DO NOT PUT ANY TEXT OR WORDS IN THE IMAGE. If there are any copywrite issues, generate an image that just shows the background and objects, no characters at all. Generate an image based on the following summary of the scene: ${roomDescription}`;
+  const prompt = `This is for a text based adventure game in the style of Oregon Trail or Zork, so create an image in an old pixel game style. DO NOT PUT ANY TEXT OR WORDS IN THE IMAGE. If there are any copyright issues, generate an image that just shows the background and objects, no characters at all. Generate an image based on the following summary of the scene: ${roomDescription}`;
 
   console.log("[generateStoryImage] Full prompt:", prompt);
 
@@ -992,35 +1107,40 @@ async function generateStoryImage(userId, roomDescription) {
       model: "dall-e-3",
       prompt: prompt,
       n: 1,
-      size: "1024x1792",
+      size: "1024x1024",
       quality: "standard",
       response_format: "url",
     });
 
-    const imageUrl = response.data[0].url;
+    const imageUrl = await uploadImageToFirebase(response.data[0].url, userId);
     console.log("[generateStoryImage] Generated image URL:", imageUrl);
 
-    // Upload the image to Firebase Storage
-    const firebaseUrl = await uploadImageToFirebase(imageUrl);
-    console.log("[generateStoryImage] Firebase image URL:", firebaseUrl);
-
-    return firebaseUrl;
+    if (imageUrl !== null) {
+      // Update only the image URL in Firebase
+      await updateRoomImageUrl(userId, room.room_id, imageUrl);
+      return imageUrl;
+    } else {
+      console.error("[generateStoryImage] Image upload failed.");
+      return null;
+    }
   } catch (error) {
     console.error(
       "[generateStoryImage] Failed to generate story image:",
       error,
     );
-    throw error;
+    // Return a default image URL or null if image generation fails
+    return null;
   }
 }
 
-async function uploadImageToFirebase(imageUrl) {
+async function uploadImageToFirebase(imageUrl, userId) {
   console.log("[uploadImageToFirebase] Starting image upload");
 
   const { default: fetch } = await import("node-fetch");
   const mimeType = "image/png"; // This can be dynamically set as needed
 
-  const fileName = `images/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.png`;
+  // Include the user ID in the file path
+  const fileName = `images/${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.png`;
   const file = bucket.file(fileName);
 
   try {
@@ -1033,10 +1153,7 @@ async function uploadImageToFirebase(imageUrl) {
     const buffer = await response.buffer();
 
     console.log("[uploadImageToFirebase] Resizing the image...");
-    const resizedBuffer = await sharp(buffer)
-      .resize(300, 300) // Resize the image to 300x300 pixels
-      .png()
-      .toBuffer();
+    const resizedBuffer = await sharp(buffer).resize(512, 512).png().toBuffer();
 
     await file.save(resizedBuffer, {
       metadata: { contentType: mimeType },
@@ -1048,7 +1165,7 @@ async function uploadImageToFirebase(imageUrl) {
 
     const downloadURL = await file.getSignedUrl({
       action: "read",
-      expires: "03-09-2491",
+      expires: "03-09-2491", // You might want to adjust this date to something more reasonable
     });
     return downloadURL[0];
   } catch (error) {
