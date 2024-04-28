@@ -1,6 +1,8 @@
 # Grue
 
-Grue is an homage to the old text-based adventure games like Zork. I wanted to see what would happen if we wired one of those up to a LLM AI dungeon master. The only issue was, I don't know how to program. I decided to see if I could direct the LLM to write it for me. I was very pleased with the outcome. Play it at [http://grue.is](http://grue.is). Then send me feedback! https://www.threads.net/@leonardspeiser
+Grue is an homage to the old text-based adventure games like Zork and Oregon Trail. I wanted to see what would happen if we wired one of those up to a LLM AI dungeon master. The only issue was, I don't know how to program. I decided to see if I could direct the LLM to write it for me. I was very pleased with the outcome. Play it at [http://grue.is](http://grue.is). 
+
+The game is focused on people interested in learning history by playing a game, much like Oregon Trail. You can pick any time period and you'll be engaged in a series of challenges to overcome. It should handle any language the user reads/writes. There are certainly improvements to be made, feedback welcome. https://www.threads.net/@leonardspeiser
 
 ## How to get the most out of an LLM as a non-programmer
 
