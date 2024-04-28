@@ -52,23 +52,15 @@ function adjustImageMaxWidth() {
 let userId = localStorage.getItem("userId");
 
 function updateRoomDisplay(roomId, imageUrl) {
-  const roomDisplayElement = document.getElementById("room-display");
   const roomImageElement = document.getElementById("room-image");
 
-  if (roomDisplayElement && roomId !== lastDisplayedRoomId) {
-    roomDisplayElement.textContent = `Room Number: ${roomId}`;
-    lastDisplayedRoomId = roomId;
-  }
-
-  if (roomImageElement && imageUrl !== lastDisplayedImageUrl) {
+  // Update the room image if the element exists
+  if (roomImageElement) {
     roomImageElement.src = imageUrl;
     roomImageElement.alt = `Room ${roomId} Image`;
-    lastDisplayedImageUrl = imageUrl;
-    console.log(
-      "[updateRoomDisplay] Room and image updated:",
-      roomId,
-      imageUrl,
-    );
+    console.log("[updateRoomDisplay] Room image updated:", roomId, imageUrl);
+  } else {
+    console.error("[updateRoomDisplay] Error: room-image element not found.");
   }
 }
 
@@ -168,7 +160,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             // Display a default placeholder image
             displayStoryImage(
-              "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=8382dbec-03c7-4c51-821d-d037f8c9ed47",
+              "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=36b1d99f-82ff-4acf-8766-c7f2ca757b9a",
             );
             const firstTimeUserMessage =
               "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
@@ -511,6 +503,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.log(
       "[front.js/markLastAssistantMessageAsComplete] Last assistant message element reset to null",
     );
+    setTimeout(() => {
+      fetchStoryImage(userId);
+    }, 5000); // 5000 milliseconds equals 5 seconds
   }
 
   function displayErrorMessage(message, showRetryButton = false) {

@@ -18,6 +18,7 @@ initializeApp({ credential: cert(serviceAccount) });
 const bucket = getStorage().bucket(process.env.file_storage);
 
 const OpenAIApi = require("openai"); //never change this
+const { coerceInteger } = require("openai/core");
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY); //never change this
 
 async function updateStoryContext(userId, conversationData) {
@@ -88,6 +89,11 @@ async function updateStoryContext(userId, conversationData) {
     if (toolCall && toolCall.function && toolCall.function.arguments) {
       const functionArgs = JSON.parse(toolCall.function.arguments);
       const updatedStoryData = functionArgs.story_details;
+
+      if (updatedStoryData.active_game === false) {
+        // Clear game-related data
+        await clearGameData(userId);
+      }
 
       if (updatedStoryData) {
         console.log(
@@ -224,7 +230,7 @@ function getStoryContextMessages(
       
       Player data: ${playerDataJson}
       
-      Quest data: ${questDataJson}
+      Crisis data: ${questDataJson}
       
       Last few messages: Message History:\n${formattedHistory} 
       
@@ -259,10 +265,15 @@ function getStoryContextMessages(
                   description:
                     "This will be the character played by the user in the story. If there is no name given for their player, create one that makes the most sense, usually the hero in the story. Leave blank until you can make the assessment.",
                 },
-                player_health: {
+                player_energy: {
                   type: "string",
                   description:
-                    "This will start at 100. This is based on how well the player takes care of themselves. If they get hurt in a battle or exhaust themselves or don't eat, this would change. For example: You are getting hungry. or You have a bad cut across your head and will die if you do not get help. Health is 20/100.",
+                    "This will start at 100. Drop this number by 5 time the user moves from one location to another, or fights with someone, or does hard work. Bring the number up when the user does something to bring it up, like eating. This is based on how well the player takes care of themselves. If they get hurt in a battle or exhaust themselves or don't eat, this would change. For example: You are getting hungry. or You have a bad cut across your head and will die if you do not get help. Health is 20/100.",
+                },
+                player_wealth: {
+                  type: "integer",
+                  description:
+                    "This will start at a number that makes sense for the time and the character. Every time the user does something that costs them money in the world, reduce this by the appropriate amount. They can increase this number by earning money.",
                 },
                 player_attitude: {
                   type: "string",
@@ -282,12 +293,22 @@ function getStoryContextMessages(
                 player_profile: {
                   type: "string",
                   description:
-                    "Every time the user types something, you should be able to get information about them to fill in this area. Even when they start you can use what they told you to describe the kind of person they might be. Anytime the user expresses a preference to the AI, like to stop doing something or to do something different, record it in this field. As the user plays the game, collect more information about their style based on what they submit and how they react to the game. Are they sarcastic or serious? How serious of a gamer are they? Do they like to talk to characters or take actions? Are they kind or mean? Are they young or old? Naive or mature? Build a full profile of the user. Limit this to 100 words, if it goes longer then rewrite it. This is very important for the game play.",
+                    "This should be information you learn about the player as they play. This should not be specific to the time period, rather it should be insights you learn about the player. For instance do they tend to fight, do they like to talk, etc. You can also include details about where they live, male/female, age, etc.",
                 },
                 education_level: {
                   type: "string",
                   description:
                     "The user's education level. For instance, if they are in a particular grade in school. If they want the game to be harder, make this higher. If easier, make this lower. They can also say things like they are an expert at something like WWII history and if they do give them a high level of education like Ph.D.",
+                },
+                time_period: {
+                  type: "string",
+                  description:
+                    "The time period the user is in. For instance, 1920-1930.",
+                },
+                story_location: {
+                  type: "string",
+                  description:
+                    "The location of the story. For instance it might be Ancient Egypt or WWII Europe.",
                 },
                 previous_user_location: {
                   type: "integer",
@@ -307,18 +328,21 @@ function getStoryContextMessages(
                 active_game: {
                   type: "boolean",
                   description:
-                    "DO NOT SET THIS TO TRUE until these fields are populated: character_played_by_user, education_level, game_description.  After we have collected all of these answers set this to true. Don't set this to true until we have all of these answers. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false again.",
+                    "DO NOT SET THIS TO TRUE until these fields are populated: character_played_by_user, education_level, game_description.  After we have collected all of these answers set this to true. Don't set this to true until we have all of these answers. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false again. YOU MUST SET THIS TO FALSE IF THE USER WANTS TO QUIT.",
                 },
               },
               required: [
                 "language_spoken",
                 "game_description",
-                "player_health",
+                "player_energy",
+                "player_wealth",
                 "player_attitude",
                 "player_lives_in_real_life",
                 "character_played_by_user",
                 "player_profile",
                 "education_level",
+                "time_period",
+                "story_location",
                 "previous_user_location",
                 "room_location_user",
                 "current_room_name",
@@ -383,7 +407,7 @@ async function updateRoomContext(userId) {
     console.log("Calling OpenAI API with the prepared messages and tools.");
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
+      model: "gpt-3.5-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -535,7 +559,7 @@ function getRoomContextMessages(locations, roomData, conversationForGPT) {
                   room_id: {
                     type: "string",
                     description:
-                      "A unique identifier for the room, such as a sequential number like 1, 2, 3...",
+                      "A unique identifier for the room, such as a sequential number like 1, 2, 3... This must be higher than the number 0.",
                   },
                   interesting_details: {
                     type: "string",
@@ -545,27 +569,12 @@ function getRoomContextMessages(locations, roomData, conversationForGPT) {
                   available_directions: {
                     type: "string",
                     description:
-                      "Directions the user can go, like North, South, Up, and what location is in that direction.",
+                      "Directions the user can go, like North, South, Up, and what location is in that direction. There must always be at least two directions to leave.",
                   },
                   characters_in_room: {
                     type: "string",
                     description:
                       "Computer generated characters in the room. Always use names for characters.",
-                  },
-                  unmovable_items_in_room: {
-                    type: "string",
-                    description:
-                      "Items in the room that the user cannot take along with descriptions.",
-                  },
-                  takeable_but_hidden_items: {
-                    type: "string",
-                    description:
-                      "Items the user can take but may be hidden along with descriptions.",
-                  },
-                  takeable_but_visible_items: {
-                    type: "string",
-                    description:
-                      "Visible items that the user can take along with descriptions.",
                   },
                   actions_taken_in_room: {
                     type: "string",
@@ -588,9 +597,6 @@ function getRoomContextMessages(locations, roomData, conversationForGPT) {
                   "interesting_details",
                   "available_directions",
                   "characters_in_room",
-                  "unmovable_items_in_room",
-                  "takeable_but_hidden_items",
-                  "takeable_but_visible_items",
                   "actions_taken_in_room",
                   "room_description_for_dalle",
                   "user_in_room",
@@ -681,7 +687,7 @@ async function updatePlayerContext(userId) {
     console.log("Data sent to GPT");
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
+      model: "gpt-3.5-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -793,26 +799,16 @@ function getPlayerContextMessages(storyData, playerData, formattedHistory) {
                   player_id: {
                     type: "integer",
                     description:
-                      "A unique identifier for the player, such as a sequential number like 1, 2, 3...",
-                  },
-                  player_type: {
-                    type: "string",
-                    description:
-                      "Most of the time this is a computer generated character then mark as 'computer_controlled: ally', 'computer_controlled: villian', 'computer_controlled: neutral'. If the user who is playing the game is this character, mark as 'user' ",
+                      "A unique identifier for the player, such as a sequential number like 1, 2, 3...This must be higher than the number 0.",
                   },
                   player_looks: {
                     type: "string",
                     description:
-                      "Describe what the character looks like and what they are wearing.",
+                      "Describe what the character looks like and what they are wearing. Give a little of their backstory as well.",
                   },
                   player_location: {
                     type: "string",
                     description: "Room or place the player is currently in.",
-                  },
-                  inventory: {
-                    type: "string",
-                    description:
-                      "These are the items the player already has in inventory or they take from another player or from the rooms.",
                   },
                   player_health: {
                     type: "string",
@@ -826,7 +822,6 @@ function getPlayerContextMessages(storyData, playerData, formattedHistory) {
                   "player_type",
                   "player_looks",
                   "player_location",
-                  "inventory",
                   "player_health",
                 ],
               },
@@ -905,7 +900,7 @@ async function updateQuestContext(userId) {
     console.log("Data sent to GPT");
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo",
+      model: "gpt-3.5-turbo",
       messages: messages,
       tools: tools,
       tool_choice: "auto",
@@ -986,15 +981,15 @@ function getQuestContextMessages(storyData, questData, conversationForGPT) {
   const messages = [
     {
       role: "system",
-      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Zork. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the quests into the fields. There should always be two active quests at all time. If a quest gets over 50% complete, you should create another quest. Make quests very specific and actionable, don't make their goals vague. Take this data and update with anything new based on the latest conversation update. Add more quests anytime the player interacts in the game and it seems like a good opportunity to introduce more quests.`,
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Oregon Trail. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the crisis into the fields. If a crisis gets over 50% complete, you should prepare the next crisis. The details of the crisis should be to educate people of the key elements of history at that time. Don't make the crisis goals vague. Take this data and update with anything new based on the latest conversation update.`,
     },
     {
       role: "system",
-      content: `Story data: Here is the story and user data: ${storyDataJson}. Current quest data: ${questDataJson} and Message History:\n${conversationForGPT}`,
+      content: `Story data: Here is the story and user data: ${storyDataJson}. Current crisis data: ${questDataJson} and Message History:\n${conversationForGPT}`,
     },
     {
       role: "user",
-      content: `You must continue to create quests based on the latest dialogue. If the quest already exists, update the quest context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each quests state.`,
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Oregon Trail. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the crisis into the fields. If a crisis gets over 50% complete, you should prepare the next crisis. The details of the crisis should be to educate people of the key elements of history at that time. Don't make the crisis goals vague. Take this data and update with anything new based on the latest conversation update.`,
     },
   ];
 
@@ -1004,7 +999,7 @@ function getQuestContextMessages(storyData, questData, conversationForGPT) {
       function: {
         name: "update_quest_context",
         description:
-          "User the conversation details to create quests that the story can use to give the user challenges. Make sure there are always several possible quests and make them very specific. Unless they are easy make sure to define the steps the user might have to complete to win the quest. If the quest already exists, update the quest context based on the latest conversation by including the original data and making the changes based on the latest details. The function should output an array of structured data regarding each quests state.",
+          "You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Oregon Trail. Analyze the following conversation and the latest interaction to update the game's context. Then extract the data about the crisis into the fields. If a crisis gets over 50% complete, you should prepare the next crisis. The details of the crisis should be to educate people of the key elements of history at that time. Don't make the crisis goals vague. Take this data and update with anything new based on the latest conversation update.",
         parameters: {
           type: "object",
           properties: {
@@ -1016,31 +1011,17 @@ function getQuestContextMessages(storyData, questData, conversationForGPT) {
                   quest_id: {
                     type: "string",
                     description:
-                      "A unique identifier for the quest, such as a sequential number like 1, 2, 3... Never replace an old quest with a new one, always generate a new number.",
+                      "A unique identifier for the crisis, such as a sequential number like 1, 2, 3... Never replace an old crisis with a new one, always generate a new number. This must be higher than the number 0.",
                   },
                   quest_name: {
                     type: "string",
-                    description: "The name of the quest.",
-                  },
-                  quest_giver: {
-                    type: "string",
                     description:
-                      "The NPC or character who gave the quest. This might be needed so the user can come back to complete the quest and get their prize from the giver of the quest.",
-                  },
-                  quest_goal: {
-                    type: "string",
-                    description:
-                      "The objective or goal of the quest. This must be very specific and actionable like get me an item, eliminate a foe, return a person to me, etc.",
+                      "The name of the crisis, like 'The Cuban Missle Crisis'.",
                   },
                   quest_characters: {
                     type: "string",
                     description:
-                      "The characters involved in the quest and why the user needs to interact with them to complete the quest. You might ask them to find someone specific or avoid certain people or defeat these people.",
-                  },
-                  quest_reward: {
-                    type: "string",
-                    description:
-                      "The reward for completing the quest, such as items they can put into inventory or money. Be specific by giving them a tangible prize. Don't say things like the reward for this quest is unlocking more quests or information. For instance: Reward is 200 gold coins. Or Reward is A golden dagger.",
+                      "The names of the characters the player will need to interact with to overcome the crisis.",
                   },
                   quest_steps: {
                     type: "string",
@@ -1056,10 +1037,7 @@ function getQuestContextMessages(storyData, questData, conversationForGPT) {
                 required: [
                   "quest_id",
                   "quest_name",
-                  "quest_giver",
-                  "quest_goal",
                   "quest_characters",
-                  "quest_reward",
                   "quest_steps",
                   "quest_completed_percentage",
                 ],
@@ -1084,6 +1062,16 @@ async function generateStoryImage(userId, roomDescription, room) {
   const userData = await getUserData(userId);
   console.log("[generateStoryImage] User data");
 
+  // Fetch story data including time period and location
+  const storyData = await readJsonFromFirebase(filePaths.story);
+  const timePeriod = storyData.time_period || "unknown time period";
+  const storyLocation = storyData.story_location || "unknown location";
+
+  console.log("[generateStoryImage] Story details:", {
+    timePeriod,
+    storyLocation,
+  });
+
   // Check if an image already exists for the room, avoid generating if it does
   if (room.image_url) {
     console.log(
@@ -1092,13 +1080,8 @@ async function generateStoryImage(userId, roomDescription, room) {
     return room.image_url; // Return the existing URL instead of generating a new one
   }
 
-  // Assuming image_description is at the top level of user data
-  const promptText =
-    userData.story.image_description ||
-    "A library filled with doors that look to go to different genres like sci-fi, spy stories, histories, etc.";
-  console.log("[generateStoryImage] Prompt text:", promptText);
-
-  const prompt = `This is for a text based adventure game in the style of Oregon Trail or Zork, so create an image in an old pixel game style. DO NOT PUT ANY TEXT OR WORDS IN THE IMAGE. If there are any copyright issues, generate an image that just shows the background and objects, no characters at all. Generate an image based on the following summary of the scene: ${roomDescription}`;
+  // Update the prompt with time period and location details
+  const prompt = `This is for a text based adventure game set in the ${timePeriod} at ${storyLocation}. The style is like Oregon Trail or Zork, so create an image in an old pixel game style. DO NOT PUT ANY TEXT OR WORDS IN THE IMAGE. If there are any copyright issues, generate an image that just shows the background and objects, no characters at all. Generate an image based on the following summary of the scene: ${roomDescription}`;
 
   console.log("[generateStoryImage] Full prompt:", prompt);
 
@@ -1177,6 +1160,37 @@ async function uploadImageToFirebase(imageUrl, userId) {
   }
 }
 
+async function clearGameData(userId) {
+  const filePaths = await ensureUserDirectoryAndFiles(userId);
+
+  // Clear rooms above 0
+  const roomData = await readJsonFromFirebase(filePaths.room);
+  const updatedRoomData = roomData.filter((room) => room.room_id === "0");
+  await writeJsonToFirebase(filePaths.room, updatedRoomData);
+
+  // Clear players above 0
+  const playerData = await readJsonFromFirebase(filePaths.player);
+  const updatedPlayerData = playerData.filter(
+    (player) => player.player_id === 0,
+  );
+  await writeJsonToFirebase(filePaths.player, updatedPlayerData);
+
+  // Clear quests above 0
+  const questData = await readJsonFromFirebase(filePaths.quest);
+  const updatedQuestData = questData.filter((quest) => quest.quest_id === "0");
+  await writeJsonToFirebase(filePaths.quest, updatedQuestData);
+
+  // Clear specific story fields
+  const storyData = await readJsonFromFirebase(filePaths.story);
+  storyData.character_played_by_user = "";
+  storyData.current_room_name = "";
+  storyData.game_description = "";
+  storyData.player_health = "";
+  storyData.previous_user_location = "";
+  storyData.room_location_user = "";
+  await writeJsonToFirebase(filePaths.story, storyData);
+}
+
 module.exports = {
   updateRoomContext,
   updatePlayerContext,
@@ -1184,4 +1198,5 @@ module.exports = {
   updateQuestContext,
   generateStoryImage,
   uploadImageToFirebase,
+  clearGameData,
 };
