@@ -265,15 +265,10 @@ function getStoryContextMessages(
                   description:
                     "This will be the character played by the user in the story. If there is no name given for their player, create one that makes the most sense, usually the hero in the story. Leave blank until you can make the assessment.",
                 },
-                player_energy: {
+                player_resources: {
                   type: "string",
                   description:
-                    "This will start at 100. Drop this number by 5 time the user moves from one location to another, or fights with someone, or does hard work. Bring the number up when the user does something to bring it up, like eating. This is based on how well the player takes care of themselves. If they get hurt in a battle or exhaust themselves or don't eat, this would change. For example: You are getting hungry. or You have a bad cut across your head and will die if you do not get help. Health is 20/100.",
-                },
-                player_wealth: {
-                  type: "integer",
-                  description:
-                    "This will start at a number that makes sense for the time and the character. Every time the user does something that costs them money in the world, reduce this by the appropriate amount. They can increase this number by earning money.",
+                    "These are the resources the player will posses at the beginning of the game. Examples are: Gold: 200, Lumber: 300, Soliders: 20,000, Land: 10,000 acres, etc. These numbers should go down as the user expends them to solve a crisis by taking actions with costs.",
                 },
                 player_attitude: {
                   type: "string",
@@ -330,12 +325,15 @@ function getStoryContextMessages(
                   description:
                     "DO NOT SET THIS TO TRUE until these fields are populated: character_played_by_user, education_level, game_description.  After we have collected all of these answers set this to true. Don't set this to true until we have all of these answers. If the user quits or are kicked out for bad behavior or they win/lose the game, set to false again. YOU MUST SET THIS TO FALSE IF THE USER WANTS TO QUIT.",
                 },
+                save_key: {
+                  type: "string",
+                  description: "After the game is active, we need to create a unique key for the user. Based on the user's background and choices, pick 3 words that will be used to create a save key for the user. Pick something very obscure from their story. For instance: californiagreekfreak or 1974franklinrookie."
+                }
               },
               required: [
                 "language_spoken",
                 "game_description",
-                "player_energy",
-                "player_wealth",
+                "player_resources",
                 "player_attitude",
                 "player_lives_in_real_life",
                 "character_played_by_user",
@@ -346,6 +344,7 @@ function getStoryContextMessages(
                 "previous_user_location",
                 "room_location_user",
                 "current_room_name",
+                "save_key",
                 "active_game",
               ],
             },

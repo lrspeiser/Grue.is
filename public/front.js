@@ -161,7 +161,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                 "[front.js/init] Displaying initial image URL for active game:",
                 data.latestImageUrl,
               );
-              displayStoryImage(data.latestImageUrl);
+              displayStoryImage(data.latestImageUrl, userId);
               lastDisplayedImageUrl = data.latestImageUrl; // Update the last displayed image URL for comparison
             }
             if (Array.isArray(data.conversation)) {
@@ -182,6 +182,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             // Display a default placeholder image
             displayStoryImage(
               "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=36b1d99f-82ff-4acf-8766-c7f2ca757b9a",
+              userId,
             );
             const firstTimeUserMessage =
               "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
@@ -199,6 +200,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         // Display a default placeholder image even on error
         displayStoryImage(
           "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=8382dbec-03c7-4c51-821d-d037f8c9ed47",
+          userId,
         );
         userId = localStorage.getItem("userId") || null;
         if (userId) {
@@ -247,7 +249,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             userId,
           }),
         });
-        //console.log("[front.js/callChatAPI] Fetch response:", response);
 
         if (!response.ok) {
           console.error(
@@ -278,8 +279,6 @@ document.addEventListener("DOMContentLoaded", async () => {
           }
 
           value.split("\n").forEach((line) => {
-            //console.log("[front.js/callChatAPI] Processing line:", line);
-
             try {
               if (line.startsWith("data:")) {
                 const parsedLine = JSON.parse(line.substr(5));
@@ -288,20 +287,12 @@ document.addEventListener("DOMContentLoaded", async () => {
                   const content = parsedLine.content;
                   displayAssistantMessage(content);
 
-                  if (parsedLine.imageUrl !== undefined) {
+                  if (parsedLine.imageUrl !== undefined && parsedLine.imageUrl) {
                     console.log(
                       "[front.js/callChatAPI] Image URL received:",
                       parsedLine.imageUrl,
                     );
-                    lastAssistantMessageElement.setAttribute(
-                      "data-image-url",
-                      "true",
-                    );
-                    // Append the image placeholder
-                    const imgPlaceholder = document.createElement("div");
-                    imgPlaceholder.classList.add("image-placeholder");
-                    imgPlaceholder.textContent = "Image Generating...";
-                    messageContainer.prepend(imgPlaceholder);
+                    displayStoryImage(parsedLine.imageUrl);
                   }
                 }
               } else if (line.trim() === "[DONE]") {
@@ -338,6 +329,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     await fetchChatAPI();
   }
 
+
   userInput.addEventListener("keydown", async (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -361,6 +353,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
         conversationHistory.push({ role: "user", content: userPrompt });
         callChatAPI(userPrompt, userId);
+        await fetchStoryImage(userId);
         const newImageLoadingElement = document.createElement("div");
         newImageLoadingElement.classList.add("image-loading");
         messageContainer.prepend(newImageLoadingElement);
@@ -370,18 +363,43 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Function to fetch room data and update the image display
 
-  function displayStoryImage(imageUrl) {
-    console.log("[displayStoryImage] Displaying image with URL:", imageUrl);
-    const roomImageElement = document.getElementById("room-image");
+  async function displayStoryImage(imageUrl, userId = null) {
+    if (!imageUrl && !userId) {
+      console.error(
+        "[displayStoryImage] No imageUrl or userId provided, unable to display image.",
+      );
+      return;
+    }
 
+    // If no imageUrl is provided and userId is not null, fetch the image using the userId
+    if (!imageUrl && userId) {
+      console.log("[displayStoryImage] Fetching image using userId:", userId);
+      try {
+        const response = await fetch(`/api/get-latest-image-url/${userId}`);
+        if (!response.ok) {
+          throw new Error(`Failed to fetch image URL: ${response.statusText}`);
+        }
+        const data = await response.json();
+        imageUrl = data.imageUrl; // Assuming the API returns an object with an imageUrl field
+        if (!imageUrl) {
+          console.error(
+            "[displayStoryImage] No image URL returned from the server.",
+          );
+          return;
+        }
+      } catch (error) {
+        console.error("[displayStoryImage] Error fetching image URL:", error);
+        return;
+      }
+    }
+
+    const roomImageElement = document.getElementById("room-image");
     if (roomImageElement) {
       roomImageElement.src = imageUrl;
       roomImageElement.alt = "Story Image";
-      console.log(
-        "[displayStoryImage] Image updated in the room-image element.",
-      );
+      console.log("[displayStoryImage] Image displayed:", imageUrl);
     } else {
-      console.log("[displayStoryImage] room-image element not found.");
+      console.error("[displayStoryImage] room-image element not found.");
     }
   }
 
@@ -569,7 +587,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       eventSource.onmessage = (event) => {
         const data = JSON.parse(event.data);
         console.log("[fetchStoryImage] Image URL received:", data.url);
-        displayStoryImage(data.url); // Display the image immediately
+        displayStoryImage(data.url, userId); // Display the image immediately
         eventSource.close();
         resolve(data.url);
       };
