@@ -1,4 +1,5 @@
 //public/front.js
+
 let lastAssistantMessageElement = null;
 let lastDisplayedImageUrl = null;
 let lastDisplayedRoomId = null;
