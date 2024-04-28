@@ -4,7 +4,8 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "sentry:sourcemaps": "sentry-cli sourcemaps inject --org mariana-rt --project node ./ && sentry-cli sourcemaps upload --org mariana-rt --project node ./"
   },
   "keywords": [],
   "author": "",
@@ -12,6 +13,7 @@
   "dependencies": {
     "@google-cloud/storage": "^7.10.0",
     "@replit/database": "^3.0.0",
+    "@sentry/cli": "^2.31.0",
     "@sentry/node": "^7.112.2",
     "@sentry/profiling-node": "^7.112.2",
     "@types/node": "^18.0.6",

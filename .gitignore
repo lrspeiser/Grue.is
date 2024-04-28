@@ -131,3 +131,6 @@ dist
 
 # Exclude the data directory from being ignored
 !data/
+
+# Sentry Config File
+.sentryclirc

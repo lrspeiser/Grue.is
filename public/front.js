@@ -50,6 +50,26 @@ function adjustImageMaxWidth() {
   }
 }
 
+async function createNewUser() {
+  console.log("[front.js/createNewUser] Creating new user");
+  const response = await fetch("/api/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to create new user: ${response.statusText}`);
+  }
+
+  const data = await response.json();
+  console.log(
+    "[front.js/createNewUser] New user created with ID:",
+    data.userId,
+  );
+  return data.userId;
+}
+
 let userId = localStorage.getItem("userId");
 
 function updateRoomDisplay(roomId, imageUrl) {
@@ -190,7 +210,10 @@ document.addEventListener("DOMContentLoaded", async () => {
           console.log(
             "[front.js/init] No userId found in local storage, creating new user",
           );
-          createNewUser();
+          createNewUser().then((newUserId) => {
+            userId = newUserId;
+            localStorage.setItem("userId", userId);
+          });
         }
       });
   };
