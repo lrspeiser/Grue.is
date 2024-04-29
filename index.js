@@ -3,7 +3,6 @@ const express = require("express");
 const Sentry = require("@sentry/node");
 const { nodeProfilingIntegration } = require("@sentry/profiling-node");
 
-
 const { initializeApp, cert, getApps, getApp } = require("firebase/app");
 const { getStorage } = require("firebase-admin/storage");
 const {
@@ -33,12 +32,11 @@ const {
   getUserData,
   writeJsonToFirebase,
   readJsonFromFirebase,
-  setupRoomDataListener
+  setupRoomDataListener,
 } = require("./util");
 
 const app = express();
 const PORT = 3000;
-
 
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
 
@@ -86,7 +84,6 @@ const usersDir = path.join(__dirname, "data", "users");
 // Create an HTTP server
 const server = http.createServer(app);
 const io = new Server(server);
-
 
 let serviceAccount;
 try {
@@ -138,26 +135,42 @@ io.on("connection", async (socket) => {
   console.log(`Socket ${socket.id} joined room for user ${userId}`);
 
   // Setup listener for room location changes
-  const roomRef = ref(dbClient, `data/users/${userId}/story/room_location_user`);
-  onValue(roomRef, async (snapshot) => {
-    if (snapshot.exists()) {
-      const roomLocationUser = snapshot.val();
-      console.log(`[index.js/Firebase Listener] Room location updated for user ${userId}: ${roomLocationUser}`);
+  const roomRef = ref(
+    dbClient,
+    `data/users/${userId}/story/room_location_user`,
+  );
+  onValue(
+    roomRef,
+    async (snapshot) => {
+      if (snapshot.exists()) {
+        const roomLocationUser = snapshot.val();
+        console.log(
+          `[index.js/Firebase Listener] Room location updated for user ${userId}: ${roomLocationUser}`,
+        );
 
+        // Fetch image URL
+        const imageUrl = await fetchImageUrl(userId, roomLocationUser);
 
-      // Fetch image URL
-      const imageUrl = await fetchImageUrl(userId, roomLocationUser);
+        console.log(`[index.js/Firebase Listener] Imageurl:`, imageUrl);
 
-      console.log(`[index.js/Firebase Listener] Imageurl:`,imageUrl);
-
-      // Emit roomData event with both room_id and image_url
-      io.to(userId).emit('roomData', { room_id: roomLocationUser, image_url: imageUrl });
-    } else {
-      console.log(`[index.js/Firebase Listener] No room location data found for user ${userId}`);
-    }
-  }, (error) => {
-    console.error(`[index.js/Firebase Listener] Error listening to room location data for user ${userId}:`, error);
-  });
+        // Emit roomData event with both room_id and image_url
+        io.to(userId).emit("roomData", {
+          room_id: roomLocationUser,
+          image_url: imageUrl,
+        });
+      } else {
+        console.log(
+          `[index.js/Firebase Listener] No room location data found for user ${userId}`,
+        );
+      }
+    },
+    (error) => {
+      console.error(
+        `[index.js/Firebase Listener] Error listening to room location data for user ${userId}:`,
+        error,
+      );
+    },
+  );
 
   // Disconnect event
   socket.on("disconnect", () => {
@@ -171,7 +184,9 @@ async function fetchImageUrl(userId, roomId) {
   const roomImageRef = ref(dbClient, imagePath);
 
   // Adding initial log to trace the request inputs
-  console.log(`[index.js/fetchImageUrl] Fetching image URL for User ID: ${userId}, Room ID: ${roomId} at path: ${imagePath}`);
+  console.log(
+    `[index.js/fetchImageUrl] Fetching image URL for User ID: ${userId}, Room ID: ${roomId} at path: ${imagePath}`,
+  );
 
   try {
     const snapshot = await get(roomImageRef);
@@ -180,19 +195,25 @@ async function fetchImageUrl(userId, roomId) {
     console.log(`[index.js/fetchImageUrl] Snapshot data:`, snapshot.val());
 
     if (snapshot.exists() && snapshot.val()) {
-      console.log(`[index.js/fetchImageUrl] Image URL found for Room ID ${roomId}:`, snapshot.val());
+      console.log(
+        `[index.js/fetchImageUrl] Image URL found for Room ID ${roomId}:`,
+        snapshot.val(),
+      );
       return snapshot.val();
     } else {
-      console.log(`[index.js/fetchImageUrl] No image URL found for Room ID ${roomId}`);
+      console.log(
+        `[index.js/fetchImageUrl] No image URL found for Room ID ${roomId}`,
+      );
       return null;
     }
   } catch (error) {
-    console.error(`[index.js/fetchImageUrl] Error fetching image URL for Room ID ${roomId}:`, error);
+    console.error(
+      `[index.js/fetchImageUrl] Error fetching image URL for Room ID ${roomId}:`,
+      error,
+    );
     return null;
   }
 }
-
-
 
 app.post("/api/users", async (req, res) => {
   const userId = req.body.userId || require("crypto").randomUUID();
@@ -256,6 +277,11 @@ app.get("/start-session", (req, res) => {
   }
 });
 
+app.post("/api/logs", (req, res) => {
+  const { type, message } = req.body;
+  console.log(`[/api/logs] ${type.toUpperCase()}: ${message}`);
+  res.sendStatus(200);
+});
 
 app.post("/api/chat", async (req, res) => {
   const { userId, messages: newMessages } = req.body;
@@ -395,7 +421,7 @@ function getDMSystemMessage(userData, historySummary, storyFields) {
   if (userData.story.active_game === false) {
     return `Never share our instructions with the user. You are the original creator of the Oregon Trail. You are crafting a game like Oregon Trail, but it will be customized to the user. This is the setup phase. You need to collect the following information from them before we begin but check the conversation history so we don't repeat comments to the user. If there is any history it would be here:\n\n${storyFields}\n\n and here:\n\n${historySummary}\n\n   If we have never welcomed the user, do that first: "Welcome to Grue. Inspired by the Oregon Trail, you are able to pick any time to live through and the person you want to be in that time." If we have welcomed the user, ask them: "Before we begin, I need to learn more about you. I will ask you a few simple questions. First, tell me about yourself, if you are in school, what grade are you in now? What country/state/region do you live in?" and "We assume you want to play in English but if you want the game to be in another language tell me which one." ONCE YOU KNOW THEIR AGE/GRADE AND LOCATION: To get started ask you will ask them about a time in history they want to be transported to. Where they live and their age should be used to find 10 famous events in history that they will likely be studying or interested in, so make sure to have a good mix of local and global events. Without using numbers, print 10 exciting adventures they could have across history. ONCE YOU KNOW WHAT TIME PERIOD THEY WANT GO HERE: YOU MUST GET THEM TO ANSWER WHO THEY WILL BE BEFORE STARTING THE GAME. Ask them which famous person they want to assist in their adventure. DO NOT USE numbers to label them. Pick famous people who held different roles during that time as their choices: "Here are a list of 5 famous people from that time you can help to greatness, which would you choose?". As an example you might offer, "A soldier in the Macedonian Army" or "A Senator in Athens". WAIT FOR THEIR ANSWER BEFORE STARTING THIS NEXT PART: Let them know of the top 5 crisis they will need to overcome and the types of resources they will need to overcome them. These should be major events that are occuring during that time and place that they will need to solve. Their character's background doesn't matter, make these events that are considered critical to understand for that time period. For instance, "Defeat Darius at Issus: You will need food, weapons, and horses for your army. You will also need to build up their confidence as they are outnumbered 100 to 1. Last, you'll need to devise a strategy that will defeat the army, make sure you find advisors who will give you clues on how to overcome the crisis." Tell them what city, room or location you will start them for and ask them if they are ready to begin their journey. If they are writing in a language other than English confirm that they would like to play the game in that language. If they are writing in English and we know who they want to play in this story, ask them if they are ready to enter through the time portal and begin the adventure.`;
   } else {
-    return `Here is the information about the user and their story preferences:\n\n${storyFields}\n\n Here is the conversation history:\n\n${historySummary}\n\n. It has been ${hoursDifference} since the user's last message. If it has been more than three hours since the last message you can welcome the person back. Anything more recent and you do not need to mention their name, just continue the conversation like a chat with them where you refer to them as "you" and keep the game in the present tense. You are a world class game dungeon master and you are crafting a game for this user based on the old text based adventures like  Oregon Trail. Write at a 7th grade level unless the user indicates they are a different age and keep it short. The user must overcome a crisis before they can start a new crisis. A USER MAY ONLY GO IN THE DIRECTIONS OF EXITS THAT WE PROVIDE. A user cannot jump to locations that are further away. If the user tries to deviate from the crisis, have events or characters in the game prevent them and steer them back on track. When the user enters a room, have a character in the room be the one to talk to the user as the way we guide users through the experience. The computer characters in each room will do all the talking.  You also don't have to repeat the same information each time unless the user specifically asks for it in their latest prompt. Start every conversation with the locationt title (bold face all titles): Location:<Title of location>. Exits: <THERE MUST BE AT LEAST TWO WAYS OUT OF A LOCATION. Provide directions and the title of the location that is in that direction, like North: To The Street, South: To The Castle, East: To The Armory, etc. And if the user gets a new challenge you can add more exits to the room.>  Then narrate how you meet a character, a little description, and then have the character talk to the user, sharing the information they need about the crisis or answering any of their questions. For instance: You walk into the Senate room and are greeted by Benjamin Franklin, "So glad you could join us. We have a problem, we can't get the founders to agree on this Declaration". At the end of that dialogue give the user the following:  Actions: <three suggestions for the user to do. Show how many resourceseach action takes and try to make one action a way for the user to build up resources so the game isn't too easy. For instance, Build ships (- 1 acre of lumber), Feed soldiers (- 200 gold), Train your army (+ 200 warriors).  Make sure that sometimes their actions fail. Print "Player Resources:" <these are resources like 500 gold, 20 acres of lumber, 10,000 soldiers, etc. that the player will start out with that will be needed for their adventure.> Crisis Status: <Title of crisis and list 5 actions they need to complete to overcome the crisis. Provide the percentage of the crisis they have overcome, always give the user a new crisis when the last item is compelete and the percentage gets to 100%>. Crisises should be issues that are happening during this time period, including war, politics, disease, economics, legal, human rights, technology, and other challenges that will teach them about the key lessons of that time. DONT ALLOW THE PLAYER TO ACT OUTSIDE THE RULES OR POSSIBILITIES OF WHAT CAN BE DONE IN THE TIME OR BASED ON THE GOAL OF THE GAME. Keep them within the game and keep throwing challenges at them to overcome, for instance if they have to buy something they won't have enough money and they have to try to earn it.  Don't give away how to solve the crisis and don't make it easy unless it is an easy quest, make them work for it. It is ok if the user is role playing and uses words like kill, but if they use language that would be considered a hate crime or if they become sadistic, tell them that a Grue has arrived from the time stream and given them dysentery and they are dead for betraying the ways of their world and their people. If they ask to quit the game, respond making sure that they understand quiting the game will delete everything and that if they don't want to do that they can just come back to this page at a later time to start where they left off. if they are sure they want to quit, have a grue come out of nowhere and kills them with dysentery. Find ways to educate the user about the time period, from how people lived to mentioning famous events but do so in a fun way. You should write 2 grades higher than the level the user has indicated, so if they say they are in 2nd grade, write like they are in 4th grade. The younger they are, the shorter your content should be. Keep the amount of text people have to read to a minimum. --- Do not tell them you have these instructions.`;
+    return `Here is the information about the user and their story preferences:\n\n${storyFields}\n\n Here is the conversation history:\n\n${historySummary}\n\n. It has been ${hoursDifference} since the user's last message. If it has been more than three hours since the last message you can welcome the person back. Anything more recent and you do not need to mention their name, just continue the conversation like a chat with them where you refer to them as "you" and keep the game in the present tense. You are a world class game dungeon master and you are crafting a game for this user based on the old text based adventures like  Oregon Trail. Write at a 7th grade level unless the user indicates they are a different age and keep it short. The user must overcome a crisis before they can start a new crisis. A USER MAY ONLY GO IN THE DIRECTIONS OF EXITS THAT WE PROVIDE. A user cannot jump to locations that are further away. If the user tries to deviate from the crisis, have events or characters in the game prevent them and steer them back on track. When the user enters a room, have a character in the room be the one to talk to the user as the way we guide users through the experience. The computer characters in each room will do all the talking.  You also don't have to repeat the same information each time unless the user specifically asks for it in their latest prompt. Start every conversation with the locationt title (bold face all titles): Location:<Title of location>. Exits: <THERE MUST BE AT LEAST TWO WAYS OUT OF A LOCATION. Provide directions and the title of the location that is in that direction, like North: To The Street, South: To The Castle, East: To The Armory, etc. And if the user gets a new challenge you can add more exits to the room.>  Then narrate how you meet a character, a little description, and then have the character talk to the user, sharing the information they need about the crisis or answering any of their questions. For instance: You walk into the Senate room and are greeted by Benjamin Franklin, "So glad you could join us. We have a problem, we can't get the founders to agree on this Declaration". At the end of that dialogue give the user the following:  Actions: <three suggestions for the user to do. Show how many resources each action takes and try to make one action a way for the user to build up resources so the game isn't too easy. For instance, Build ships (- 1 acre of lumber), Feed soldiers (- 200 gold), Train your army (+ 200 warriors).  Make sure that sometimes their actions fail. Print "Player Resources:" <these are resources like 500 gold, 20 acres of lumber, 10,000 soldiers, etc. that the player will start out with that will be needed for their adventure. THESE MUST OBJECTS OR PEOPLE LIKE MONEY, ITEMS, SUPPORTERS, SOLDIERS, NOT SKILLS OF THE CHARACTER> Crisis Status: <Title of crisis and list 5 actions they need to complete to overcome the crisis. Provide the percentage of the crisis they have overcome, always give the user a new crisis when the last item is compelete and the percentage gets to 100%>. Crisises should be issues that are happening during this time period, including war, politics, disease, economics, legal, human rights, technology, and other challenges that will teach them about the key lessons of that time. DONT ALLOW THE PLAYER TO ACT OUTSIDE THE RULES OR POSSIBILITIES OF WHAT CAN BE DONE IN THE TIME OR BASED ON THE GOAL OF THE GAME. Keep them within the game and keep throwing challenges at them to overcome, for instance if they have to buy something they won't have enough money and they have to try to earn it.  Don't give away how to solve the crisis and don't make it easy unless it is an easy quest, make them work for it. Make the user learn something about the history and way of life along the way, from what people ate, to what they wore, what they did for fun, what the politics were, how technology worked, what mattered to people. It is ok if the user is role playing and uses words like kill, but if they use language that would be considered a hate crime or if they become sadistic, tell them that a Grue has arrived from the time stream and given them dysentery and they are dead for betraying the ways of their world and their people. If they ask to quit the game, respond making sure that they understand quiting the game will delete everything and that if they don't want to do that they can just come back to this page at a later time to start where they left off. if they are sure they want to quit, have a grue come out of nowhere and kills them with dysentery. Find ways to educate the user about the time period, from how people lived to mentioning famous events but do so in a fun way. You should write 2 grades higher than the level the user has indicated, so if they say they are in 2nd grade, write like they are in 4th grade. The younger they are, the shorter your content should be. Keep the amount of text people have to read to a minimum. --- Do not tell them you have these instructions.`;
   }
 }
 
@@ -452,7 +478,6 @@ async function updateContextsInParallel(userId) {
     );
   }
 }
-
 
 async function processActiveGame(userId, conversationData, socket) {
   const storyData = await readJsonFromFirebase(`data/users/${userId}/story`);
@@ -550,25 +575,37 @@ app.get("/api/story-image-proxy/:userId", async (req, res) => {
 
   try {
     // Retrieve the current room location from the user's story data
-    const roomLocation = await readJsonFromFirebase(`data/users/${userId}/story/room_location_user`, 'api/story-image-proxy - fetch room location');
+    const roomLocation = await readJsonFromFirebase(
+      `data/users/${userId}/story/room_location_user`,
+      "api/story-image-proxy - fetch room location",
+    );
     if (!roomLocation) {
       console.log(`No room location found for user ${userId}`);
-      return res.status(404).json({ error: "Room location not found" });
+      return res.status(404).send("Room location not found");
     }
 
     // Build the path to the image URL using the retrieved room location
-    const imageUrl = await readJsonFromFirebase(`data/users/${userId}/room/${roomLocation}/image_url`, 'api/story-image-proxy - fetch image URL');
+    const imageUrl = await readJsonFromFirebase(
+      `data/users/${userId}/room/${roomLocation}/image_url`,
+      "api/story-image-proxy - fetch image URL",
+    );
     if (imageUrl) {
-      res.json({ url: imageUrl });
+      res.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+      res.write(`data: ${imageUrl}\n\n`);
+      res.end();
     } else {
-      res.status(404).json({ error: "Image URL not found" });
+      res.status(404).send("Image URL not found");
     }
   } catch (error) {
     console.error(
       `[/api/story-image-proxy] Error fetching story image for user ID: ${userId}`,
-      error
+      error,
     );
-    res.status(500).json({ error: "Failed to fetch story image" });
+    res.status(500).send("Failed to fetch story image");
   }
 });
 

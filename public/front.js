@@ -287,7 +287,10 @@ document.addEventListener("DOMContentLoaded", async () => {
                   const content = parsedLine.content;
                   displayAssistantMessage(content);
 
-                  if (parsedLine.imageUrl !== undefined && parsedLine.imageUrl) {
+                  if (
+                    parsedLine.imageUrl !== undefined &&
+                    parsedLine.imageUrl
+                  ) {
                     console.log(
                       "[front.js/callChatAPI] Image URL received:",
                       parsedLine.imageUrl,
@@ -300,12 +303,10 @@ document.addEventListener("DOMContentLoaded", async () => {
                 markLastAssistantMessageAsComplete();
               }
             } catch (error) {
-              if (line.trim() !== "[DONE]") {
-                console.error(
-                  "[front.js/callChatAPI] Error parsing chunk:",
-                  error,
-                );
-              }
+              console.error(
+                "[front.js/callChatAPI] Error parsing chunk:",
+                error,
+              );
             }
           });
         }
@@ -328,7 +329,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     await fetchChatAPI();
   }
-
 
   userInput.addEventListener("keydown", async (event) => {
     if (event.key === "Enter") {
@@ -518,27 +518,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.log(
           "[front.js/markLastAssistantMessageAsComplete] Image placeholder appended to message container.",
         );
-
-        // Check for the image URL
-        fetchStoryImage(userId, conversationHistory)
-          .then((img) => {
-            if (img) {
-              imgPlaceholder.remove();
-              const imgElement = document.createElement("img");
-              imgElement.src = img;
-              imgElement.alt = "Story Image";
-              messageContainer.prepend(imgElement);
-              console.log(
-                "[front.js/markLastAssistantMessageAsComplete] Image appended to message container.",
-              );
-            }
-          })
-          .catch((error) => {
-            console.error(
-              "[front.js/markLastAssistantMessageAsComplete] Error fetching story image:",
-              error,
-            );
-          });
       }
     }
     lastAssistantMessageElement = null;
@@ -585,11 +564,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     return new Promise((resolve, reject) => {
       eventSource.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        console.log("[fetchStoryImage] Image URL received:", data.url);
-        displayStoryImage(data.url, userId); // Display the image immediately
+        const imageUrl = event.data;
+        console.log("[fetchStoryImage] Image URL received:", imageUrl);
+        displayStoryImage(imageUrl, userId);
         eventSource.close();
-        resolve(data.url);
+        resolve(imageUrl);
       };
 
       eventSource.onerror = (error) => {

@@ -90,20 +90,24 @@ async function updateStoryContext(userId, conversationData) {
       const functionArgs = JSON.parse(toolCall.function.arguments);
       const updatedStoryData = functionArgs.story_details;
 
-      if (updatedStoryData.active_game === false) {
-        // Clear game-related data
-        await clearGameData(userId);
-      }
-
       if (updatedStoryData) {
         console.log(
           "[data.js/updateStoryContext] Updated Story Data from tool call",
         );
+
+        const previousActiveGame = storyData.active_game;
+        const currentActiveGame = updatedStoryData.active_game;
+
         await writeJsonToFirebase(filePaths.story, updatedStoryData);
         console.log(
           "[data.js/updateStoryContext] Story data updated in Firebase for user ID:",
           userId,
         );
+
+        if (previousActiveGame === true && currentActiveGame === false) {
+          // Clear game-related data when active_game goes from true to false
+          await clearGameData(userId);
+        }
 
         const newRoomId = updatedStoryData.room_location_user;
         if (newRoomId && storyData.room_location_user !== newRoomId) {
@@ -268,7 +272,7 @@ function getStoryContextMessages(
                 player_resources: {
                   type: "string",
                   description:
-                    "These are the resources the player will posses at the beginning of the game. Examples are: Gold: 200, Lumber: 300, Soliders: 20,000, Land: 10,000 acres, etc. These numbers should go down as the user expends them to solve a crisis by taking actions with costs.",
+                    "These are the resources the player will posses at the beginning of the game. Examples are: Gold: 200, Lumber: 300, Soliders: 20,000, Land: 10,000 acres, etc. These numbers should go down as the user expends them to solve a crisis by taking actions with costs. THESE MUST OBJECTS OR PEOPLE LIKE MONEY, ITEMS, SUPPORTERS, SOLDIERS, NOT SKILLS OF THE CHARACTER.",
                 },
                 player_attitude: {
                   type: "string",
@@ -327,8 +331,9 @@ function getStoryContextMessages(
                 },
                 save_key: {
                   type: "string",
-                  description: "After the game is active, we need to create a unique key for the user. Based on the user's background and choices, pick 3 words that will be used to create a save key for the user. Pick something very obscure from their story. For instance: californiagreekfreak or 1974franklinrookie."
-                }
+                  description:
+                    "After the active_game is set to true, create a unique key for the user. It must be random and start with a proper name, then a verb and finally an object. For instance: jimmyeatsshoes",
+                },
               },
               required: [
                 "language_spoken",
@@ -1162,31 +1167,27 @@ async function uploadImageToFirebase(imageUrl, userId) {
 async function clearGameData(userId) {
   const filePaths = await ensureUserDirectoryAndFiles(userId);
 
-  // Clear rooms above 0
-  const roomData = await readJsonFromFirebase(filePaths.room);
-  const updatedRoomData = roomData.filter((room) => room.room_id === "0");
-  await writeJsonToFirebase(filePaths.room, updatedRoomData);
+  // Clear conversation data
+  await writeJsonToFirebase(filePaths.conversation, []);
 
-  // Clear players above 0
-  const playerData = await readJsonFromFirebase(filePaths.player);
-  const updatedPlayerData = playerData.filter(
-    (player) => player.player_id === 0,
-  );
-  await writeJsonToFirebase(filePaths.player, updatedPlayerData);
-
-  // Clear quests above 0
-  const questData = await readJsonFromFirebase(filePaths.quest);
-  const updatedQuestData = questData.filter((quest) => quest.quest_id === "0");
-  await writeJsonToFirebase(filePaths.quest, updatedQuestData);
+  // Reinitialize room, player, and quest data
+  await Promise.all([
+    writeJsonToFirebase(filePaths.room, [{ initialized: "true" }]),
+    writeJsonToFirebase(filePaths.player, [{ initialized: "true" }]),
+    writeJsonToFirebase(filePaths.quest, [{ initialized: "true" }]),
+  ]);
 
   // Clear specific story fields
   const storyData = await readJsonFromFirebase(filePaths.story);
   storyData.character_played_by_user = "";
   storyData.current_room_name = "";
   storyData.game_description = "";
-  storyData.player_health = "";
   storyData.previous_user_location = "";
   storyData.room_location_user = "";
+  storyData.player_resources = "";
+  storyData.story_location = "";
+  storyData.time_period = "";
+  storyData.active_game = false;
   await writeJsonToFirebase(filePaths.story, storyData);
 }
 

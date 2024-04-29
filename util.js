@@ -29,20 +29,33 @@ const dbClient = getDatabase(firebaseApp);
 
 // Function to set up a listener on room data
 function setupRoomDataListener(userId) {
-  const roomRef = ref(dbClient, `data/users/${userId}/story/room_location_user`);
-  onValue(roomRef, (snapshot) => {
-    if (snapshot.exists()) {
-      const roomLocationUser = snapshot.val();
-      console.log(`[Firebase Listener] Room location updated for user ${userId}: ${roomLocationUser}`);
-      io.to(userId).emit('roomData', { room_id: roomLocationUser });
-    } else {
-      console.log(`[Firebase Listener] No room location data found for user ${userId}`);
-    }
-  }, (error) => {
-    console.error(`[Firebase Listener] Error listening to room location data for user ${userId}:`, error);
-  });
+  const roomRef = ref(
+    dbClient,
+    `data/users/${userId}/story/room_location_user`,
+  );
+  onValue(
+    roomRef,
+    (snapshot) => {
+      if (snapshot.exists()) {
+        const roomLocationUser = snapshot.val();
+        console.log(
+          `[Firebase Listener] Room location updated for user ${userId}: ${roomLocationUser}`,
+        );
+        io.to(userId).emit("roomData", { room_id: roomLocationUser });
+      } else {
+        console.log(
+          `[Firebase Listener] No room location data found for user ${userId}`,
+        );
+      }
+    },
+    (error) => {
+      console.error(
+        `[Firebase Listener] Error listening to room location data for user ${userId}:`,
+        error,
+      );
+    },
+  );
 }
-
 
 async function ensureUserDirectoryAndFiles(userId) {
   const basePath = `data/users/${userId}`;
@@ -132,17 +145,41 @@ async function getUserData(userId) {
         "getUserData - conversation",
       )) || [],
     room: {},
-    player:
-      (await readJsonFromFirebase(filePaths.player, "getUserData - player")) ||
-      {},
+    player: {},
     story:
       (await readJsonFromFirebase(filePaths.story, "getUserData - story")) ||
       {},
-    quest:
-      (await readJsonFromFirebase(filePaths.quest, "getUserData - quest")) ||
-      {},
+    quest: {},
     latestImageUrl: null, // Initialize latestImageUrl as null
   };
+
+  // Fetch player data excluding the "0" category
+  const playerData = await readJsonFromFirebase(
+    filePaths.player,
+    "getUserData - player",
+  );
+  if (playerData) {
+    data.player = Object.entries(playerData)
+      .filter(([key]) => key !== "0")
+      .reduce((obj, [key, value]) => {
+        obj[key] = value;
+        return obj;
+      }, {});
+  }
+
+  // Fetch quest data excluding the "0" category
+  const questData = await readJsonFromFirebase(
+    filePaths.quest,
+    "getUserData - quest",
+  );
+  if (questData) {
+    data.quest = Object.entries(questData)
+      .filter(([key]) => key !== "0")
+      .reduce((obj, [key, value]) => {
+        obj[key] = value;
+        return obj;
+      }, {});
+  }
 
   // Fetch the room data using the 'room_location_user' identifier from the story
   if (data.story && data.story.room_location_user) {
@@ -177,4 +214,5 @@ module.exports = {
   writeJsonToFirebase,
   readJsonFromFirebase,
   setupRoomDataListener,
+  dbClient,
 };
