@@ -228,7 +228,7 @@ function getStoryContextMessages(
   const messages = [
     {
       role: "system",
-      content: `You are a world-class storyteller and you are crafting a personalized story for this user. Please use the following conversation history and the existing story data to update the story json file. MAKE SURE THE USER HAS SELECTED THE TIME PERIOD AND THE NAME OF THE CHARACTER THEY WANT TO BE BEFORE SETTING THE ACTIVE_GAME TO true. Story data from the story.json file: ${storyDataJson}
+      content: `You are a world-class storyteller and you are crafting a personalized story for this user. Please use the following conversation history and the existing story data to update the story json file. MAKE SURE THE USER HAS SELECTED THE TIME PERIOD AND THE CHARACTER THEY WANT TO BE AND THEN SET THE ACTIVE_GAME TO true. Don't make the conversation drag on when we have this information already. Here is the last version of this story data: ${storyDataJson}
       
       Room data: ${roomDataJson}
       
@@ -238,7 +238,7 @@ function getStoryContextMessages(
       
       Last few messages: Message History:\n${formattedHistory} 
       
-      You must take this data and update the story json with anything new based on the latest conversation update. This includes updating the room number where the user is currently. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one.`,
+      You must take this data and update the story json with anything new based on the latest conversation update. This includes updating the room number where the user is currently. You must include the original data as well if you are adding new data to it because we will overwrite the old entry with the new one. If the user quits or are kicked out for bad behavior or they win/lose the game, set the active_game to false.`,
     },
     {
       role: "user",
@@ -272,12 +272,12 @@ function getStoryContextMessages(
                 player_resources: {
                   type: "string",
                   description:
-                    "These are the resources the player will posses at the beginning of the game. Examples are: Gold: 200, Lumber: 300, Soliders: 20,000, Land: 10,000 acres, etc. These numbers should go down as the user expends them to solve a crisis by taking actions with costs. THESE MUST OBJECTS OR PEOPLE LIKE MONEY, ITEMS, SUPPORTERS, SOLDIERS, NOT SKILLS OF THE CHARACTER.",
+                    "This should be stored in name/value pair. These are the resources the player will posses at the beginning of the game. Examples are: Gold: 200, Lumber: 300, Soliders: 20,000, Land: 10,000 acres, etc. These numbers should go down as the user expends them to solve a crisis by taking actions with costs. THESE MUST OBJECTS OR PEOPLE LIKE MONEY, ITEMS, SUPPORTERS, SOLDIERS, NOT SKILLS OF THE CHARACTER. QUANTITIES ARE NUMBERS.",
                 },
                 player_attitude: {
                   type: "string",
                   description:
-                    "This is how the character behaves in the world. As the user makes decisions in the game, update this. For example: You are hated by the people of this world because you are always killing people. Or You are well loved by the people for all the good you do. Leave blank until you can make the assessment.",
+                    "This is how the character behaves in the world. As the user makes decisions in the game, update this. For example: You are hated by the people of this world because you are always killing people. Or You are well loved by the people for all the good you do. Begin to build a profile like Myers Briggs or other popular measurement.",
                 },
                 player_lives_in_real_life: {
                   type: "string",
@@ -287,7 +287,7 @@ function getStoryContextMessages(
                 game_description: {
                   type: "string",
                   description:
-                    "List out all of the important events or areas of education that the user should learn about this time period.",
+                    "List out all of the important events or areas of education that the user should learn about this time period. For instance, 'The game emphasizes learning advanced rocket science, effective resource management, and strategic diplomacy to outmaneuver your opponent and achieve celestial milestones first. At each step the opponent will threaten your succeess.'",
                 },
                 player_profile: {
                   type: "string",
@@ -332,7 +332,7 @@ function getStoryContextMessages(
                 save_key: {
                   type: "string",
                   description:
-                    "After the active_game is set to true, create a unique key for the user. It must be random and start with a proper name, then a verb and finally an object. For instance: jimmyeatsshoes",
+                    "After the active_game is set to true, create a unique key for the user. It must be random and start with a proper name, then a verb and finally an object. For instance: jimmyeatsshoes but the three words must be unique to each user.",
                 },
               },
               required: [
@@ -505,6 +505,9 @@ async function updateRoomImageUrl(userId, roomId, imageUrl) {
   const roomPath = `data/users/${userId}/room/${roomId}`;
   try {
     const roomData = await readJsonFromFirebase(roomPath);
+    // Log the data retrieved to check its structure and contents
+    console.log(`[data.js/updateRoomImageUrl] Retrieved room data:`, roomData);
+
     if (roomData) {
       roomData.image_url = imageUrl;
       await writeJsonToFirebase(roomPath, roomData);
@@ -528,11 +531,11 @@ function getRoomContextMessages(locations, roomData, conversationForGPT) {
   const messages = [
     {
       role: "system",
-      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Oregon Trail. Analyze the following conversation and the latest interaction to update the room data. YOU MUST DESCRIBE THE ROOM THEY ARE IN AND EVERY ROOM OR LOCATION THEY CAN MOVE TO AND BE SPECIFIC ABOUT LOCATIONS, DO NOT CREATE GENERAL CONCEPTS LIKE "AFRICA". If any, here is the current location data where the player may be or has been in the past: ${JSON.stringify(locations)}. Take this data and update with anything new based on the latest conversation update. That means if we need to add anything, you must include the original data in the output or it will be deleted. If it is a new location, create it. THERE MUST ALWAYS BE AT LEAST TWO DIRECTIONS THE PLAY CAN GO FROM A LOCATION AND YOU MUST DESCRIBE THOSE LOCATIONS. Make sure that when the player moves to a new room or location, that you remove them from the previous room and add them to the new room. I character can only ever be in one room at a time and the last response message is the final decider if the character is moving between rooms.`,
+      content: `You are a world class dungeon master and you are crafting a game for this user based on the old text based adventures like Oregon Trail. Analyze the following conversation and the latest interaction to update the room data. YOU MUST DESCRIBE THE ROOM THEY ARE IN AND EVERY ROOM OR LOCATION THEY CAN MOVE TO AND BE SPECIFIC ABOUT LOCATIONS, DO NOT CREATE GENERAL CONCEPTS LIKE "AFRICA". Take this data and update with anything new based on the latest conversation update. That means if we need to add anything, you must include the original data in the output or it will be deleted. DO NOT CHANGE A ROOM LOCATION ONCE YOU CREATE IT. For instance, if the room was called the "Throne Room" don't edit it into "The Tower" and make another room the "Throne Room". You can update details but don't fundamentally change a room once it was created. If it is a new location, create it. THERE MUST ALWAYS BE AT LEAST TWO DIRECTIONS THE PLAY CAN GO FROM A LOCATION THEY ARE IN AND YOU MUST CREATE THOSE LOCATIONS WHEN THEY ENTER THAT ROOM. Make sure that when the player moves to a new room or location, that you remove them from the previous room and add them to the new room by changing user_in_room to false. A character can only ever be in one room at a time and the last response message is the final decider if the character is moving between rooms.`,
     },
     {
       role: "system",
-      content: `Current room data: ${JSON.stringify(roomData)} and Message History:\n${conversationForGPT}`,
+      content: `Previous room data: ${JSON.stringify(roomData)} and Message History:\n${conversationForGPT}`,
     },
     {
       role: "user",
@@ -1122,44 +1125,45 @@ async function generateStoryImage(userId, roomDescription, room) {
 
 async function uploadImageToFirebase(imageUrl, userId) {
   console.log("[uploadImageToFirebase] Starting image upload");
+  console.log("[uploadImageToFirebase] Image URL:", imageUrl);
 
   const { default: fetch } = await import("node-fetch");
-  const mimeType = "image/png"; // This can be dynamically set as needed
+  const mimeType = "image/png";
 
-  // Include the user ID in the file path
   const fileName = `images/${userId}/${Date.now()}-${Math.random().toString(36).substring(2, 15)}.png`;
   const file = bucket.file(fileName);
 
   try {
     const response = await fetch(imageUrl);
-    if (!response.ok)
-      throw new Error(
-        `Failed to fetch the image from URL: ${response.statusText}`,
-      );
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch the image from URL: ${response.statusText}`);
+    }
 
     const buffer = await response.buffer();
 
     console.log("[uploadImageToFirebase] Resizing the image...");
+
     const resizedBuffer = await sharp(buffer).resize(512, 512).png().toBuffer();
 
-    await file.save(resizedBuffer, {
-      metadata: { contentType: mimeType },
-    });
+    console.log("[uploadImageToFirebase] Saving the resized image to Firebase Storage...");
+    await file.save(resizedBuffer, { metadata: { contentType: mimeType } });
+    console.log("[uploadImageToFirebase] Image saved successfully.");
 
-    console.log(
-      `[uploadImageToFirebase] Image resized and uploaded successfully: ${fileName}`,
-    );
-
-    const downloadURL = await file.getSignedUrl({
-      action: "read",
-      expires: "03-09-2491", // You might want to adjust this date to something more reasonable
-    });
-    return downloadURL[0];
+    try {
+      console.log("[uploadImageToFirebase] Getting signed URL...");
+      const downloadURL = await file.getSignedUrl({
+        action: "read",
+        expires: "03-09-2491",
+      });
+      console.log(`[uploadImageToFirebase] Signed URL obtained: ${downloadURL[0]}`);
+      return downloadURL[0];
+    } catch (error) {
+      console.error("[uploadImageToFirebase] Error obtaining signed URL:", error);
+      throw error;
+    }
   } catch (error) {
-    console.error(
-      "[uploadImageToFirebase] Error in image upload process:",
-      error,
-    );
+    console.error("[uploadImageToFirebase] Error in image upload process:", error);
     throw error;
   }
 }
