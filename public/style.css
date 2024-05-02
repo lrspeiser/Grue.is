@@ -149,6 +149,61 @@ footer {
 }
 
 
+#chat-container {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+#chat-input-container {
+  display: flex;
+  align-items: center;
+  padding: 10px;
+}
+
+#chat-prompt {
+  color: green;
+  margin-right: 5px;
+  font-family: 'AppleIIPro', monospace;
+}
+
+#chat-userInput {
+  background-color: transparent;
+  color: green;
+  border: none;
+  padding: 10px;
+  font-family: 'AppleIIPro', monospace;
+  width: 100%;
+  outline: none;
+  font-size: 16px;
+}
+
+#chat-messageContainer {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+
+.chat-user-message {
+  text-align: right;
+  background-color: #008001;
+  color: black;
+  padding: 5px 10px;
+  border-radius: 5px;
+  margin-left: auto;
+  margin-top: 10px;
+}
+
+.chat-assistant-message {
+  background-color: black;
+  color: #008001;
+  padding: 5px 10px;
+  border-radius: 5px;
+  margin-right: auto;
+  margin-top: 10px;
+}
+
 /* Media Queries for adjusting layout on smaller screens */
 @media (max-width: 600px) {
   .user-message, .response-message {

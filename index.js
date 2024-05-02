@@ -308,7 +308,7 @@ app.post("/api/chat", async (req, res) => {
         getUserFields(userData.story),
         getPlayerFields(userData.player),
         getRoomFields(userData.room),
-        getQuestFields(userData.quest)
+        getQuestFields(userData.quest),
       ),
       getPlayerSystemMessage(userData),
       getLocationSystemMessage(userData),
@@ -421,11 +421,8 @@ function getStorySummary(userData) {
 }
 
 function getStoryFields(storyData) {
-  const {
-    language_spoken,
-    player_lives_in_real_life,
-    education_level,
-  } = storyData;
+  const { language_spoken, player_lives_in_real_life, education_level } =
+    storyData;
 
   return `Language Spoken: ${language_spoken}
 User Lives in Real Life: ${player_lives_in_real_life}
@@ -433,8 +430,8 @@ User Education Level: ${education_level}`;
 }
 
 function getRoomFields(roomData) {
-  if (!roomData || typeof roomData !== 'object') {
-    return 'No rooms created yet';
+  if (!roomData || typeof roomData !== "object") {
+    return "No rooms created yet";
   }
   const { room_name, interesting_details, available_directions } = roomData;
   return `Room Name: ${room_name}
@@ -443,8 +440,8 @@ Exits: ${available_directions}`;
 }
 
 function getQuestFields(questData) {
-  if (!questData || typeof roomData !== 'object') {
-    return 'No crises created yet';
+  if (!questData || typeof roomData !== "object") {
+    return "No crises created yet";
   }
   const { quest_name, quest_steps } = questData;
   return `Quest Name: ${quest_name}
@@ -452,8 +449,8 @@ Quest Description: ${quest_steps}`;
 }
 
 function getPlayerFields(playerData) {
-  if (!playerData || typeof roomData !== 'object') {
-    return 'No players created yet';
+  if (!playerData || typeof roomData !== "object") {
+    return "No players created yet";
   }
   const { player_name, player_looks } = playerData;
   return `Player Name: ${player_name}
@@ -493,7 +490,7 @@ function getDMSystemMessage(
   userFields,
   roomFields,
   questFields,
-  playerFields
+  playerFields,
 ) {
   const lastMessageTimestamp = new Date(userData.lastMessageTime || new Date());
   const currentTime = new Date();
@@ -705,6 +702,272 @@ app.get("/api/room/:roomId/image", async (req, res) => {
     res.status(500).json({ error: "Internal Server Error" });
   }
 });
+
+app.get("/chat", (req, res) => {
+  res.sendFile(path.join(__dirname, "chat.html"));
+});
+
+app.post("/api/chat-with-me", async (req, res) => {
+  const { userId, messages: newMessages } = req.body;
+
+  console.log("Received chat request for user ID:", userId);
+  console.log("New messages:", newMessages);
+
+  // Set headers for SSE
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+  });
+
+  try {
+    const messages = [
+      // Example of adding system messages
+      { role: "system", content: `You are Leonard Speiser, the creator of Grue. You are here to collect feedback about how to make the game better. You should ask questions of the user when they make suggestions and if they say they don't know suggest some ideas or change to a different question. Here are some details about me:
+
+            www.linkedin.com/in/
+            leonardspeiser (LinkedIn)
+            www.horizon3.net (Company)
+            www.crunchbase.com/person/
+            leonard-speiser (Other)
+            github.com/lrspeiser (Other)
+            Top Skills
+            Product Management
+            Payments
+            Analytics
+            Patents
+            Listing recommendation in a
+            network-based commerce system
+            System to recommend listing
+            categories for buyer request listings
+            Method and system to provide
+            wanted ad listing within an ecommerce system
+            Product recommendation in a
+            network-based commerce system
+            Automated reward management for
+            network-based contests
+            Leonard Speiser
+            Founder IM '96, UGC '99, Bix (sold Yahoo!) 2006, Clover (sold First
+            Data) 2010. CSFB IBank, Trinity, Intuit, eBay, MIT
+            Los Altos, California, United States
+            Summary
+            Every detail matters.
+            Experience
+            Horizon 3
+            Founder & Managing Partner
+            December 2020 - Present (3 years 6 months)
+            Los Altos, California, United States
+            Horizon 3 is a Corporate Venture Studio. Just as Amazon jumpstarted AWS
+            by being it's first customer, we believe that within every large, successful
+            company is the opportunity to jumpstart a billion dollar startup. Instead of
+            building inside the company, Horizon 3 works with entrepreneurs to found
+            companies outside, but gives them insider access to the company's formidable
+            resources. Our partner in this journey is Jones Lang Lasalle, an $18B, 100K
+            person property/real estate company. We founded 4 companies in the first
+            year, each has found an immediate customer hungry for their solution.
+            Prudential Financial
+            Founder, PruStudio
+            October 2023 - Present (8 months)
+            Newark, New Jersey, United States
+            PruStudio is the corporate venture studio for Prudential. We found companies
+            whose first customer/channel is Prudential and then recruit founding teams to
+            grow these companies across customers 2 to N.
+            Jones Lang LaSalle
+            Founder, Spark X
+            December 2020 - Present (3 years 6 months)
+            San Francisco Bay Area
+            JLL Spark X is the corporate venture studio for JLL. We found companies
+            whose first customer/channel is JLL and then recruit founding teams to grow
+            these companies across customers 2 to N.
+            Page 1 of 5
+            Clover
+            Co-Founder
+            November 2010 - January 2017 (6 years 3 months)
+            Mountain View, CA
+            - Sold company to First Data/KKR
+            - Clover has shipped over 1 million hardware devices, processes over $250B
+            in credit cards, and supports over 150 third party apps on our platform.
+            - Clover opens the counter top of the brick and mortar merchant to a world
+            of innovative developers. We bring a combination of outstanding hardware,
+            reliable services, and developer friendly software to the stale world of point of
+            sale.
+            - We are the fastest growing POS in all of history. We are fanatical about
+            quality. We inspire our merchants to dream bigger than they ever could
+            before.
+            - To make it possible to marry the world of Silicon Valley with the traditional
+            banking style payments business, we worked with KKR to create a unique
+            structure that I hope many other companies follow in the future. It's called
+            a 'Founder's Provision'. If the autonomy of the Founder is altered in any
+            way, there is a extremely large financial payout to the team. This enables a
+            company to run as an independent entity based on Silicon Valley rules, while
+            binding them with the channel power of an established market leader in a
+            vertical.
+            Level
+            Board Director & Co-Founder
+            October 2016 - December 2016 (3 months)
+            San Francisco Bay Area
+            Level developed a commercial oven with RF steering, RGB/Thermal Cameras,
+            closed loop AI algos to steer heat to multiple foods at the same time and
+            automate cooking.
+            neuron.vc
+            Investor
+            March 2016 - March 2016 (1 month)
+            San Francisco Bay Area
+            The world's first Deep Learning fund. Specifically, I'm excited by the ability of
+            this technology to tackle problems that previously would have taken traditional
+            programmers far too long. From medical diagnostics to construction, there are
+            going to be a lot of exciting opportunities for this tool in the future. The fund is
+            now closed and not making new investments.
+            Page 2 of 5
+            Society
+            Co-Founder
+            May 2009 - October 2010 (1 year 6 months)
+            San Francisco Bay Area
+            Ran an incubator of about 20 products.
+            Trinity Ventures
+            Entrepreneur-in-residence
+            February 2009 - May 2009 (4 months)
+            Worked with the great team at Trinity. Helped evaluate companies and made
+            connections to entrepreneurs.
+            Yahoo
+            Senior Director, Product
+            February 2007 - February 2009 (2 years 1 month)
+            Yahoo Groups had not be touched for 10 years (same code from the original
+            acquisition). We started work on a complete rebuild of the product but it
+            became clear that the company needed a lot more help than a new Yahoo
+            Groups to survive.
+            Bix.com, Inc.
+            Co-Founder & Director, Product
+            February 2006 - February 2009 (3 years 1 month)
+            - Acquired by Yahoo!
+            - We built a killer voting engine that allowed anyone to vote even without
+            registering and detected fraud with great precision. Our voting algorithm
+            brought the best singing, photography and acting talent to the top.
+            - Eight months after fund raising, two months after launch we were acquired
+            by Yahoo! (in February 2007) to help them build a global brand like 19
+            Entertainment. Enough has been written about Yahoo! that you probably
+            figured out what happened.
+            eBay
+            Group Product Manager
+            December 2000 - April 2005 (4 years 5 months)
+            - Added Fixed Price to the core marketplace, accounted for 25% of items
+            4 weeks after launch. I am most proud of this project and we did it as a
+            skunkworks project that surprised everyone.
+            Page 3 of 5
+            - Launched the API program at eBay in 2000, 40% of items listed through
+            it within 6 months of launch. Worked with some fantastic developers and
+            learned a lot about building platforms.
+            - You wouldn't believe it, but no one wanted to work on search at eBay in
+            2001. I ask for it and was able to work with some world class engineers
+            to find all of the dead ends with search and start fixing them. Stemming,
+            Transliteration, Too Few Items, Too Many, and a new search engine that still
+            serves the company today.
+            - Last role before I left I created a team focused on retaining and engaging
+            buyers on eBay. Products included My eBay, View Item, Toolbar, Registration,
+            Home Page, and Favorites.
+            Pinacus
+            Founder, CEO
+            December 1999 - December 2000 (1 year 1 month)
+            Vision was to enable users to upload text, photos, video and share online. I
+            didn't execute this one the right way, but the team was awesome and went on
+            to build great companies.
+            Intuit
+            Manager, Business Development
+            August 1998 - November 1999 (1 year 4 months)
+            Responsible for entry into new products/markets via a combination of
+            partnerships and internal product development.
+            CSFB Technology Group
+            Associate/Analyst
+            July 1996 - August 1998 (2 years 2 months)
+            Responsible for Corporate Finance and M&A for a variety of technology
+            companies.
+            ScreenFIRE
+            Founder, CEO
+            April 1996 - July 1998 (2 years 4 months)
+            Founded first internet-based client/server instant messaging system.
+            Education
+            Massachusetts Institute of Technology
+            Page 4 of 5
+            S.B., Course 11 - Urban Planning \u00B7 (1992 - 1996)
+            Chaparral High School
+             \u00B7 (1988 - 1992)
+            Phoenix Country Day Schoo</document_content>
+            </document>
+            <document index="2">
+            <source>paste-2.txt</source>
+     and here is information about the game:         <document_content>Grue
+     Grue is an homage to the old text-based adventure games like Zork and Oregon Trail. I wanted to see what would happen if we wired one of those up to a LLM AI dungeon master. The only issue was, I don't know how to program. I decided to see if I could direct the LLM to write it for me. I was very pleased with the outcome. Play it at http://grue.is.
+
+     The game is focused on people interested in learning history by playing a game, much like Oregon Trail. You can pick any time period and you'll be engaged in a series of challenges to overcome. It should handle any language the user reads/writes. There are certainly improvements to be made, feedback welcome. https://www.threads.net/@leonardspeiser`,
+          },
+          ...newMessages,
+        ];
+
+    // Simulate fetching or generating response using an API like OpenAI
+    const response = await openai.chat.completions.create({
+      model: "gpt-4-0125-preview",
+      messages,
+      stream: true,
+    });
+
+    // Stream back the responses
+    for await (const part of response) {
+      const content = part.choices[0].delta.content || "";
+      res.write(`data: ${JSON.stringify({ content })}\n\n`);
+    }
+
+    res.write("data: [DONE]\n\n");
+    res.end();
+
+  } catch (error) {
+    console.error(`Error during chat for user ID: ${userId}:`, error);
+    if (!res.headersSent) {
+      res.status(500).send("Error during chat");
+    }
+  }
+});
+
+
+async function saveChatConversationHistory(userId, newMessages) {
+  const filePath = `chats/${userId}`;
+
+  console.log("Saving chat conversation history for user ID:", userId);
+
+  const conversationData = await updateChatConversationHistory(
+    userId,
+    newMessages,
+    filePath,
+  );
+
+  if (!conversationData) {
+    console.log(`No new messages to save for user ID: ${userId}`);
+  }
+}
+
+async function updateChatConversationHistory(userId, newMessages, filePath) {
+  const dbClient = getDatabase();
+  const conversationRef = ref(dbClient, filePath);
+
+  console.log("Retrieving existing chat conversation history");
+
+  const snapshot = await get(conversationRef);
+  let conversationData = snapshot.val() || [];
+
+  console.log("Updating chat conversation history with new messages");
+
+  newMessages.forEach((message) => {
+    conversationData.push({
+      role: message.role,
+      content: message.content,
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  await set(conversationRef, conversationData);
+  console.log(`Updated chat conversation history for user ID: ${userId}`);
+
+  return conversationData;
+}
 
 server.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
