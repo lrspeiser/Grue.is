@@ -131,6 +131,24 @@ input[type="text"]:focus {
   box-shadow: 0 0 3px black; /* Adds a glow effect when the input is focused */
 }
 
+#github-link {
+    position: fixed;
+    right: 20px;
+    bottom: 20px;
+    display: block;
+}
+
+
+footer {
+    text-align: right;
+}
+
+#github-icon {
+    width: 100px; /* Adjust size as needed */
+    height: auto;
+}
+
+
 /* Media Queries for adjusting layout on smaller screens */
 @media (max-width: 600px) {
   .user-message, .response-message {

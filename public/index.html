@@ -1,28 +1,37 @@
 <!doctype html>
 <html lang="en">
-<head>
+  <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Grue</title>
     <link rel="stylesheet" href="style.css" />
     <script src="https://cdn.socket.io/4.0.0/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/uuid/8.3.2/uuid.min.js"></script>
-    <script src="https://kit.fontawesome.com/cd48de0b54.js" crossorigin="anonymous"></script>
+    <script
+      src="https://kit.fontawesome.com/cd48de0b54.js"
+      crossorigin="anonymous"
+    ></script>
     <script type="module" src="front.js" defer></script>
-</head>
-<body>
+  </head>
+  <body>
     <div id="main-container">
-        <div id="imageContainer">
-            <img id="room-image" alt="Room Image">
+      <div id="imageContainer">
+        <img id="room-image" alt="Room Image" />
+      </div>
+      <div id="room-display"></div>
+      <div id="interaction-container">
+        <div id="input-container">
+          <span id="prompt">> </span>
+          <input type="text" id="userInput" autofocus />
         </div>
-        <div id="room-display"></div>
-        <div id="interaction-container">
-            <div id="input-container">
-                <span id="prompt">> </span>
-                <input type="text" id="userInput" autofocus />
-            </div>
-            <div id="messageContainer"></div>
-        </div>
+        <div id="messageContainer"></div>
+      </div>
+        <footer>
+            <a href="https://github.com/lrspeiser/Grue.is" target="_blank">
+                <img src="github.png" alt="GitHub" id="github-icon">
+            </a>
+        </footer>
+      </a>
     </div>
-</body>
+  </body>
 </html>
