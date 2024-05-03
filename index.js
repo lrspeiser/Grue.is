@@ -927,10 +927,8 @@ app.post("/api/chat-with-me", async (req, res) => {
     res.end();
     console.log("[/api/chat-with-me] Chat request completed.");
 
-    await saveChatConversationHistory(userId, [
-      ...newMessages,
-      { role: "assistant", content: fullResponse },
-    ]);
+    await saveChatConversationHistory(userId, newMessages, fullResponse);
+
     console.log("[/api/chat-with-me] Saved Chat");
   } catch (error) {
     console.error(`Error during chat for user ID: ${userId}:`, error);
@@ -940,7 +938,7 @@ app.post("/api/chat-with-me", async (req, res) => {
   }
 });
 
-async function saveChatConversationHistory(userId, newMessages) {
+async function saveChatConversationHistory(userId, newMessages, fullResponse) {
   const filePath = `chats/${userId}`;
 
   console.log(
@@ -948,20 +946,26 @@ async function saveChatConversationHistory(userId, newMessages) {
     userId,
   );
 
-  // Filter out incomplete messages (messages with an empty content)
-  const filteredMessages = newMessages.filter(
-    (message) => message.content.trim() !== "",
-  );
+  const userPrompt = newMessages.find((message) => message.role === "user");
 
-  const conversationData = await updateChatConversationHistory(
-    userId,
-    filteredMessages,
-    filePath,
-  );
+  if (userPrompt && fullResponse.trim() !== "") {
+    const conversationData = await updateChatConversationHistory(
+      userId,
+      {
+        userPrompt: userPrompt.content,
+        assistantResponse: fullResponse,
+      },
+      filePath,
+    );
 
-  if (!conversationData) {
+    if (!conversationData) {
+      console.log(
+        `[saveChatConversationHistory] No new messages to save for user ID: ${userId}`,
+      );
+    }
+  } else {
     console.log(
-      `[saveChatConversationHistory] No new messages to save for user ID: ${userId}`,
+      "[saveChatConversationHistory] Invalid user prompt or empty assistant response",
     );
   }
 }
@@ -1011,7 +1015,7 @@ async function getLastFiveChatMessages(userId) {
   return lastFiveMessages;
 }
 
-async function updateChatConversationHistory(userId, newMessages, filePath) {
+async function updateChatConversationHistory(userId, message, filePath) {
   const dbClient = getDatabase();
   const conversationRef = ref(dbClient, filePath);
 
@@ -1023,21 +1027,14 @@ async function updateChatConversationHistory(userId, newMessages, filePath) {
   let conversationData = snapshot.val() || [];
 
   console.log(
-    "[updateChatConversationHistory] Updating chat conversation history with new messages",
+    "[updateChatConversationHistory] Updating chat conversation history with new message",
   );
 
-  const userPrompt = newMessages.find((message) => message.role === "user");
-  const assistantResponse = newMessages.find(
-    (message) => message.role === "assistant",
-  );
-
-  if (userPrompt && assistantResponse) {
-    conversationData.push({
-      userPrompt: userPrompt.content,
-      assistantResponse: assistantResponse.content,
-      timestamp: new Date().toISOString(),
-    });
-  }
+  conversationData.push({
+    userPrompt: message.userPrompt,
+    assistantResponse: message.assistantResponse,
+    timestamp: new Date().toISOString(),
+  });
 
   await set(conversationRef, conversationData);
   console.log(
