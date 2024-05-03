@@ -6,7 +6,10 @@ body {
   padding: 10px;
   display: flex;
   flex-direction: column;
-  height: 100vh;
+  min-height: 100vh;
+  overflow-x: hidden; /* Hides horizontal overflow, preventing horizontal scroll */
+  position: relative; /* Add relative positioning to the body */
+
 }
 
 .image-placeholder {
@@ -52,7 +55,9 @@ body {
     width: 100%; /* Ensure it takes full width if less than 800px */
     height: 100vh; /* Optional: Makes sure the container takes full viewport height */
     display: flex;
+    flex: 1;
     flex-direction: column;
+    padding-bottom: 80px; /* Add padding at the bottom to make space for the footer */
     align-items: center; /* Aligns children elements to the center horizontally */
 }
 
@@ -132,46 +137,6 @@ input[type="text"]:focus {
 }
 
 
-
-footer {
-  position: absolute; /* Absolute positioning to help place it at the bottom */
-  top: 0; /* Locks the footer at the bottom */
-  width: 100%;
-  padding: 10px 20px;
-  text-align: center; /* Center align the content if needed */
-}
-
-#chat-icon {
-  width: 100px;
-  height: auto;
-}
-
-#github-icon {
-  width: 100px;
-  height: auto;
-}
-
-footer a {
-  text-decoration: none; /* Removes underline from links */
-}
-
-footer a:hover {
-  text-decoration: none; /* Ensures no underline appears on hover */
-}
-
-#github-link {
-  display: flex;
-  align-items: center;
-}
-
-#chat-link {
-  display: flex;
-  align-items: center;
-  color: green; /* To apply the green color to the FontAwesome icon */
-}
-
-
-
 #chat-container {
   display: flex;
   flex-direction: column;
@@ -236,4 +201,45 @@ footer a:hover {
   body {
     padding: 5px; /* Less padding on smaller screens */
   }
+}
+
+footer {
+  position: absolute; /* Change to absolute positioning */
+  bottom: 0; /* Changed from top to bottom */
+  width: 100%;
+  margin-top: auto;
+  padding: 10px 20px;
+  display: flex; /* Added flex display */
+  justify-content: space-between; /* Align items to the left and right */
+  align-items: center; /* Center align vertically */
+}
+
+#chat-icon {
+  padding: 30px;
+  width: 90px; /* Adjusted size */
+  height: auto;
+}
+
+#github-icon {
+  width: 80px; /* Adjusted size */
+  height: auto;
+}
+
+footer a {
+  text-decoration: none;
+}
+
+footer a:hover {
+  text-decoration: none;
+}
+
+#github-link {
+  display: flex;
+  align-items: center;
+}
+
+#chat-link {
+  display: flex;
+  align-items: center;
+  color: green;
 }
