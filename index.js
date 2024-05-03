@@ -710,20 +710,24 @@ app.get("/chat", (req, res) => {
 app.post("/api/chat-with-me", async (req, res) => {
   const { userId, messages: newMessages } = req.body;
 
-  console.log("Received chat request for user ID:", userId);
-  console.log("New messages:", newMessages);
+  console.log("[/api/chat-with-me] Received chat request for user ID:", userId);
+  console.log("[/api/chat-with-me] New messages:", newMessages);
 
   // Set headers for SSE
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
-    "Connection": "keep-alive",
+    Connection: "keep-alive",
   });
 
   try {
+    const lastFiveMessages = await getLastFiveChatMessages(userId);
+
     const messages = [
       // Example of adding system messages
-      { role: "system", content: `You are Leonard Speiser, the creator of Grue. You are here to collect feedback about how to make the game better. You should ask questions of the user when they make suggestions and if they say they don't know suggest some ideas or change to a different question. Here are some details about me:
+      {
+        role: "system",
+        content: `If this is your first conversation with the person, introduce yourself as AI Leonard Speiser, the creator of Grue. If you have chatted with the person before, pick up where you left off. If you don't know their name, ask them what their name is. You would love to hear thoughts on the game and ideas to make it better. You should speak in a familiar voice, like you are friends. You are genuinely interested in what they have to say, but you don't use fluffy words to express it. You are succinct. You should ask questions of the user when they make suggestions and if they say they don't know suggest some ideas or change to a different question. You can let them know that the real Leonard reads these chat conversations when he has time if they ask to pass a message along. Here are some details about Leonard Speiser:
 
             www.linkedin.com/in/
             leonardspeiser (LinkedIn)
@@ -899,9 +903,10 @@ app.post("/api/chat-with-me", async (req, res) => {
      Grue is an homage to the old text-based adventure games like Zork and Oregon Trail. I wanted to see what would happen if we wired one of those up to a LLM AI dungeon master. The only issue was, I don't know how to program. I decided to see if I could direct the LLM to write it for me. I was very pleased with the outcome. Play it at http://grue.is.
 
      The game is focused on people interested in learning history by playing a game, much like Oregon Trail. You can pick any time period and you'll be engaged in a series of challenges to overcome. It should handle any language the user reads/writes. There are certainly improvements to be made, feedback welcome. https://www.threads.net/@leonardspeiser`,
-          },
-          ...newMessages,
-        ];
+      },
+      ...lastFiveMessages,
+      ...newMessages,
+    ];
 
     // Simulate fetching or generating response using an API like OpenAI
     const response = await openai.chat.completions.create({
@@ -909,16 +914,24 @@ app.post("/api/chat-with-me", async (req, res) => {
       messages,
       stream: true,
     });
+    console.log("[/api/chat-with-me] Submitted chat request.");
 
-    // Stream back the responses
+    let fullResponse = "";
     for await (const part of response) {
       const content = part.choices[0].delta.content || "";
       res.write(`data: ${JSON.stringify({ content })}\n\n`);
+      fullResponse += content;
     }
 
     res.write("data: [DONE]\n\n");
     res.end();
+    console.log("[/api/chat-with-me] Chat request completed.");
 
+    await saveChatConversationHistory(userId, [
+      ...newMessages,
+      { role: "assistant", content: fullResponse },
+    ]);
+    console.log("[/api/chat-with-me] Saved Chat");
   } catch (error) {
     console.error(`Error during chat for user ID: ${userId}:`, error);
     if (!res.headersSent) {
@@ -927,44 +940,109 @@ app.post("/api/chat-with-me", async (req, res) => {
   }
 });
 
-
 async function saveChatConversationHistory(userId, newMessages) {
   const filePath = `chats/${userId}`;
 
-  console.log("Saving chat conversation history for user ID:", userId);
+  console.log(
+    "[saveChatConversationHistory] Saving chat conversation history for user ID:",
+    userId,
+  );
+
+  // Filter out incomplete messages (messages with an empty content)
+  const filteredMessages = newMessages.filter(
+    (message) => message.content.trim() !== "",
+  );
 
   const conversationData = await updateChatConversationHistory(
     userId,
-    newMessages,
+    filteredMessages,
     filePath,
   );
 
   if (!conversationData) {
-    console.log(`No new messages to save for user ID: ${userId}`);
+    console.log(
+      `[saveChatConversationHistory] No new messages to save for user ID: ${userId}`,
+    );
   }
+}
+
+async function getLastFiveChatMessages(userId) {
+  const filePath = `chats/${userId}`;
+  console.log(`[getLastFiveChatMessages] Constructed file path: ${filePath}`); // Log file path construction
+
+  const dbClient = getDatabase();
+  console.log("[getLastFiveChatMessages] Database client obtained"); // Log obtaining database client
+
+  const conversationRef = ref(dbClient, filePath);
+  console.log(
+    `[getLastFiveChatMessages] Database reference obtained for path: ${filePath}`,
+  ); // Log database reference creation
+
+  console.log("[getLastFiveChatMessages] Retrieving the last 5 chat messages"); // Log initiation of retrieval
+  const snapshot = await get(conversationRef);
+
+  if (!snapshot.exists()) {
+    console.log(
+      "[getLastFiveChatMessages] No data found for the given user ID",
+    ); // Log case where no data is found
+    return [];
+  }
+
+  const conversationData = snapshot.val() || [];
+  console.log(
+    "[getLastFiveChatMessages] Data snapshot retrieved:",
+    conversationData,
+  ); // Log data retrieval
+
+  // Get the last 5 messages and return the user prompt and assistant response
+  const lastFiveMessages = conversationData
+    .slice(-5)
+    .map(({ userPrompt, assistantResponse }) => [
+      { role: "user", content: userPrompt },
+      { role: "assistant", content: assistantResponse },
+    ])
+    .flat();
+
+  console.log(
+    "[getLastFiveChatMessages] Last five messages structured and ready to return:",
+    lastFiveMessages,
+  ); // Log final data structure
+
+  return lastFiveMessages;
 }
 
 async function updateChatConversationHistory(userId, newMessages, filePath) {
   const dbClient = getDatabase();
   const conversationRef = ref(dbClient, filePath);
 
-  console.log("Retrieving existing chat conversation history");
+  console.log(
+    "[updateChatConversationHistory] Retrieving existing chat conversation history",
+  );
 
   const snapshot = await get(conversationRef);
   let conversationData = snapshot.val() || [];
 
-  console.log("Updating chat conversation history with new messages");
+  console.log(
+    "[updateChatConversationHistory] Updating chat conversation history with new messages",
+  );
 
-  newMessages.forEach((message) => {
+  const userPrompt = newMessages.find((message) => message.role === "user");
+  const assistantResponse = newMessages.find(
+    (message) => message.role === "assistant",
+  );
+
+  if (userPrompt && assistantResponse) {
     conversationData.push({
-      role: message.role,
-      content: message.content,
+      userPrompt: userPrompt.content,
+      assistantResponse: assistantResponse.content,
       timestamp: new Date().toISOString(),
     });
-  });
+  }
 
   await set(conversationRef, conversationData);
-  console.log(`Updated chat conversation history for user ID: ${userId}`);
+  console.log(
+    `[updateChatConversationHistory] Updated chat conversation history for user ID: ${userId}`,
+  );
 
   return conversationData;
 }

@@ -1,10 +1,16 @@
 let chatUserId = localStorage.getItem("userId") || uuid.v4();
 let conversationHistory = [];
 let messageContainerIndex = 0;
+let isConversationInitialized = false;
 
 document.addEventListener("DOMContentLoaded", async () => {
   const chatUserInput = document.getElementById("chat-userInput");
   const chatMessageContainer = document.getElementById("chat-messageContainer");
+
+  if (!isConversationInitialized) {
+    await initializeConversation(chatUserId);
+    isConversationInitialized = true;
+  }
 
   if (!localStorage.getItem("userId")) {
     localStorage.setItem("userId", chatUserId);
@@ -67,7 +73,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (line.startsWith("data:")) {
         const data = JSON.parse(line.substr(5));
         if (data.content !== undefined) {
-          displayAssistantMessage(data.content, messageContainer);
+          if (messageContainer !== null) {
+            displayAssistantMessage(data.content, messageContainer);
+          }
           conversationHistory.unshift({
             role: "assistant",
             content: data.content,
@@ -127,5 +135,120 @@ document.addEventListener("DOMContentLoaded", async () => {
     content = content.replace(/([^ ])(\d+)/g, "$1 $2");
     content = content.replace(/(\d) /g, "$1");
     return content;
+  }
+
+  async function initializeConversation(chatUserId) {
+    console.log(
+      "[initializeConversation] Initializing conversation with user ID:",
+      chatUserId,
+    );
+
+    const messagesToSend = [{ role: "user", content: "hello" }];
+
+    console.log(
+      "[initializeConversation] Sending messages to /api/chat-with-me",
+      messagesToSend,
+    );
+
+    let retryCount = 0;
+    const maxRetries = 1;
+    const messageContainer = createMessageContainer();
+
+    async function fetchChatAPI() {
+      try {
+        const response = await fetch("/api/chat-with-me", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: messagesToSend,
+            userId: chatUserId,
+          }),
+        });
+
+        if (!response.ok) {
+          console.error(
+            "[initializeConversation] Failed to initialize conversation. Response status:",
+            response.status,
+          );
+          throw new Error("Failed to initialize conversation");
+        }
+
+        const reader = response.body
+          .pipeThrough(new TextDecoderStream())
+          .getReader();
+        console.log("[initializeConversation] Reader created:", reader);
+
+        while (true) {
+          const { value, done } = await reader.read();
+          console.log(
+            "[initializeConversation] Read from reader. Value:",
+            value,
+            "Done:",
+            done,
+          );
+
+          if (done) {
+            console.log(
+              "[initializeConversation] Conversation initialization ended",
+            );
+            break;
+          }
+
+          value.split("\n").forEach((line) => {
+            try {
+              if (line.startsWith("data:")) {
+                const parsedLine = JSON.parse(line.substr(5));
+                if (parsedLine.content !== undefined) {
+                  const content = parsedLine.content;
+                  conversationHistory.unshift({
+                    role: "assistant",
+                    content: content,
+                  });
+                  displayInitialAssistantMessage(content, messageContainer);
+                }
+              } else if (line.trim() === "[DONE]") {
+                console.log(
+                  "[initializeConversation] Message stream completed",
+                );
+              }
+            } catch (error) {
+              console.error(
+                "[initializeConversation] Error parsing chunk:",
+                error,
+              );
+            }
+          });
+        }
+      } catch (error) {
+        console.error("[initializeConversation] Error:", error);
+        if (retryCount < maxRetries) {
+          retryCount++;
+          await fetchChatAPI();
+        } else {
+          console.error(
+            "[initializeConversation] Max retries reached. Conversation initialization failed.",
+          );
+        }
+      }
+    }
+
+    await fetchChatAPI();
+  }
+
+  function displayInitialAssistantMessage(content, messageContainer) {
+    const assistantMessageElement = messageContainer.querySelector(
+      ".chat-assistant-message",
+    );
+    if (assistantMessageElement) {
+      assistantMessageElement.innerHTML += formatContent(content);
+    } else {
+      const newAssistantMessageElement = document.createElement("div");
+      newAssistantMessageElement.classList.add("chat-assistant-message");
+      newAssistantMessageElement.innerHTML = formatContent(content);
+      messageContainer.appendChild(newAssistantMessageElement);
+    }
+    console.log(
+      `[displayInitialAssistantMessage] Initial assistant message displayed: ${content}`,
+    );
   }
 });

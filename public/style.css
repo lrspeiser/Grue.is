@@ -131,22 +131,45 @@ input[type="text"]:focus {
   box-shadow: 0 0 3px black; /* Adds a glow effect when the input is focused */
 }
 
-#github-link {
-    position: fixed;
-    right: 20px;
-    bottom: 20px;
-    display: block;
-}
 
 
 footer {
-    text-align: right;
+  position: absolute; /* Absolute positioning to help place it at the bottom */
+  top: 0; /* Locks the footer at the bottom */
+  width: 100%;
+  padding: 10px 20px;
+  text-align: center; /* Center align the content if needed */
+}
+
+#chat-icon {
+  width: 100px;
+  height: auto;
 }
 
 #github-icon {
-    width: 100px; /* Adjust size as needed */
-    height: auto;
+  width: 100px;
+  height: auto;
 }
+
+footer a {
+  text-decoration: none; /* Removes underline from links */
+}
+
+footer a:hover {
+  text-decoration: none; /* Ensures no underline appears on hover */
+}
+
+#github-link {
+  display: flex;
+  align-items: center;
+}
+
+#chat-link {
+  display: flex;
+  align-items: center;
+  color: green; /* To apply the green color to the FontAwesome icon */
+}
+
 
 
 #chat-container {
