@@ -1,47 +1,34 @@
-//public/front.js
+// public/front.js
 
 let lastAssistantMessageElement = null;
-let lastDisplayedImageUrl = null;
-let lastDisplayedRoomId = null;
-let fullResponse = "";
+let fullResponse = ""; // Keep track of the full response for the current stream
 
 (function () {
   const originalLog = console.log;
   const originalError = console.error;
-
   console.log = function () {
     originalLog.apply(console, arguments);
-    // Convert all arguments to a string
-    const message = Array.from(arguments)
-      .map((arg) => (typeof arg === "object" ? JSON.stringify(arg) : arg))
-      .join(" ");
+    const message = Array.from(arguments).map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ");
     sendLogToServer("log", message);
   };
-
   console.error = function () {
     originalError.apply(console, arguments);
-    // Convert all arguments to a string
-    const message = Array.from(arguments)
-      .map((arg) => (typeof arg === "object" ? JSON.stringify(arg) : arg))
-      .join(" ");
+    const message = Array.from(arguments).map(arg => (typeof arg === "object" ? JSON.stringify(arg) : arg)).join(" ");
     sendLogToServer("error", message);
   };
-
   function sendLogToServer(type, message) {
     fetch("/api/logs", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type, message }),
-    }).catch((err) => originalError("Failed to send log to server", err));
+    }).catch(err => originalError("Failed to send log to server", err));
   }
 })();
 
-// Function to adjust image max width based on the window size
 function adjustImageMaxWidth() {
   const maxWidth = window.innerWidth;
-  const maxImageWidth = Math.min(maxWidth, 512);
+  const maxImageWidth = Math.min(maxWidth, 896);
   const imageContainer = document.getElementById("imageContainer");
-
   if (imageContainer) {
     const images = imageContainer.getElementsByTagName("img");
     for (const img of images) {
@@ -57,57 +44,74 @@ async function createNewUser() {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   });
-
   if (!response.ok) {
-    throw new Error(`Failed to create new user: ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Failed to create new user: ${response.statusText} - ${errorText}`);
   }
-
   const data = await response.json();
-  console.log(
-    "[front.js/createNewUser] New user created with ID:",
-    data.userId,
-  );
+  console.log("[front.js/createNewUser] New user created with ID:", data.userId);
   return data.userId;
 }
 
 let userId = localStorage.getItem("userId");
+let socket;
+let conversationHistory = []; // Global conversation history
 
 function updateRoomDisplay(roomId, imageUrl) {
   const roomImageElement = document.getElementById("room-image");
+  const defaultImageUrl = "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=36b1d99f-82ff-4acf-8766-c7f2ca757b9a";
 
-  // Update the room image if the element exists
   if (roomImageElement) {
-    roomImageElement.src = imageUrl;
-    roomImageElement.alt = `Room ${roomId} Image`;
-    console.log("[updateRoomDisplay] Room image updated:", roomId, imageUrl);
+    const validRoomId = (roomId && roomId !== "null" && roomId !== "undefined") ? String(roomId) : "unknown";
+    roomImageElement.dataset.roomId = validRoomId;
+
+    if (imageUrl) {
+      roomImageElement.src = imageUrl;
+      roomImageElement.alt = `Image for Room ${validRoomId}`;
+    } else {
+      roomImageElement.src = defaultImageUrl;
+      roomImageElement.alt = `Image loading or not available for Room ${validRoomId}`;
+    }
   } else {
     console.error("[updateRoomDisplay] Error: room-image element not found.");
   }
 }
 
-// Establish the socket connection with the userId only if it's present
-if (userId) {
-  const socket = io({ query: { userId } });
-
-  socket.on("connect", () => {
-    console.log(
-      "[Socket] Successfully connected to the server with userId:",
-      userId,
-    );
-  });
-
-  socket.on("roomData", (data) => {
-    console.log("[Socket] Room data received:", data);
-    if (data.room_id && data.image_url) {
-      updateRoomDisplay(data.room_id, data.image_url);
-    } else {
-      console.log("[Socket] Error: Room data missing room_id or image_url");
+function setupSocket() {
+    if (!userId) {
+        console.log("[Socket] No userId, socket cannot be initialized yet.");
+        return;
     }
-  });
-
-  socket.on("connect_error", (error) => {
-    console.error("[Socket] Connection Error:", error);
-  });
+    if (socket && socket.connected) {
+        return;
+    }
+    socket = io({ query: { userId } });
+    socket.on("connect", () => console.log("[Socket] Successfully connected to the server with userId:", userId));
+    socket.on("roomData", (data) => {
+        // console.log("[Socket] Room data received:", data);
+        if (data && (data.room_id !== null && data.room_id !== "")) {
+            updateRoomDisplay(String(data.room_id), data.image_url);
+        } else {
+            // console.warn("[Socket] Warning: Room data received with invalid room_id. Data:", data);
+            updateRoomDisplay(null, null); // Show default state if room_id is invalid
+        }
+    });
+    socket.on("newImageUrlForRoom", (data) => {
+        // console.log("[Socket] newImageUrlForRoom received:", data);
+        const roomImageElement = document.getElementById("room-image");
+        const currentDisplayedRoomId = roomImageElement ? roomImageElement.dataset.roomId : null;
+        if (data && data.roomId && data.imageUrl && String(data.roomId) === String(currentDisplayedRoomId)) {
+            updateRoomDisplay(String(data.roomId), data.imageUrl);
+        }
+    });
+    socket.on("gameCleared", () => {
+        console.log("[Socket] gameCleared event received. Resetting client state.");
+        conversationHistory = [];
+        displayConversationHistory();
+        updateRoomDisplay(null, null);
+    });
+    socket.on("connect_error", (error) => console.error("[Socket] Connection Error:", error));
+    socket.on("disconnect", (reason) => console.log("[Socket] Disconnected:", reason));
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -115,129 +119,101 @@ document.addEventListener("DOMContentLoaded", async () => {
   const userInput = document.getElementById("userInput");
   const messageContainer = document.getElementById("messageContainer");
 
-  // Adjust image max width on load and resize
   window.addEventListener("resize", adjustImageMaxWidth);
-  window.addEventListener("load", adjustImageMaxWidth);
-
-  let conversationHistory = [];
-  let lastDisplayedImageUrl = null;
-  let lastDisplayedRoomId = null;
+  adjustImageMaxWidth();
 
   if (!userId) {
-    userId = await createNewUser();
-    localStorage.setItem("userId", userId); // Store the userId in localStorage after creation
+    try {
+        userId = await createNewUser();
+        localStorage.setItem("userId", userId);
+    } catch (error) {
+        console.error("Failed to create new user ID on load:", error);
+        displayErrorMessage("Critical: Could not initialize session. Please refresh.", false);
+        return;
+    }
   }
+  setupSocket();
 
   const initializeUserData = async () => {
-    console.log("[front.js/init] Attempting to load or create user data");
-    const bodyContent = userId ? JSON.stringify({ userId }) : "{}";
-    const options = {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: bodyContent,
-    };
-    fetch("/api/users", options)
-      .then((response) => {
-        if (!response.ok) {
-          throw new Error(`Failed to fetch user data: ${response.statusText}`);
+    console.log("[front.js/init] Initializing user data for ID:", userId);
+    fetch("/api/users", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId }),
+    })
+    .then(response => {
+      if (!response.ok) return response.text().then(text => { throw new Error(`Init user data failed: ${response.statusText} - ${text}`); });
+      return response.json();
+    })
+    .then(data => {
+      if (data.userId && data.userId !== "undefined" && data.userId.trim() !== "") {
+        if (userId !== data.userId) {
+            console.warn(`[front.js/init] UserID corrected by server: ${data.userId}. Updating localStorage.`);
+            userId = data.userId; localStorage.setItem("userId", userId);
+            if (socket) socket.disconnect(); setupSocket();
         }
-        return response.json();
-      })
-      .then((data) => {
-        if (
-          data.userId &&
-          data.userId !== "undefined" &&
-          data.userId.trim() !== ""
-        ) {
-          userId = data.userId;
-          localStorage.setItem("userId", userId);
-          console.log("[front.js/init] User data loaded or created", {
-            userId,
-          });
+        console.log("[front.js/init] User data loaded/created", { userId: data.userId });
+        conversationHistory = Array.isArray(data.conversation) ? data.conversation : [];
+        displayConversationHistory();
 
-          if (data.story && data.story.active_game === true) {
-            if (data.latestImageUrl) {
-              console.log(
-                "[front.js/init] Displaying initial image URL for active game:",
-                data.latestImageUrl,
-              );
-              displayStoryImage(data.latestImageUrl, userId);
-              lastDisplayedImageUrl = data.latestImageUrl; // Update the last displayed image URL for comparison
-            }
-            if (Array.isArray(data.conversation)) {
-              conversationHistory = data.conversation;
-              console.log("[front.js/init] Conversation history loaded");
-              displayConversationHistory();
-            } else {
-              console.warn(
-                "[front.js/init] Conversation history is not an array, initializing as an empty array.",
-              );
-              conversationHistory = [];
-            }
+        const initialRoomId = data.story ? String(data.story.room_location_user) : null;
+        if (data.story && data.story.active_game === true) {
+          if (data.latestImageUrl) {
+            displayStoryImage(data.latestImageUrl, initialRoomId);
           } else {
-            console.log(
-              `[front.js/init] No active game found for ID: ${userId}`,
-            );
-
-            // Display a default placeholder image
-            displayStoryImage(
-              "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=36b1d99f-82ff-4acf-8766-c7f2ca757b9a",
-              userId,
-            );
-            const firstTimeUserMessage =
-              "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
-            //console.log(`[front.js/init] Sending first time user message: ${firstTimeUserMessage}`);
-            // Send the first-time user message using the callChatAPI function without storing it in the conversation history
-            callChatAPI(firstTimeUserMessage, userId, false);
+            if(initialRoomId && initialRoomId !== "null" && initialRoomId !== "undefined") fetchStoryImage(userId).catch(err => console.warn("Initial fetchStoryImage on active game failed:", err.message));
+            else displayStoryImage(null, null);
           }
         } else {
-          console.error("[front.js/init] Invalid userId received", data);
-          throw new Error("Invalid userId received");
+          displayStoryImage(null, null);
+          const firstTimeUserMessage = "This is a system generated message on behalf of a user who is loading this game for the first time: This is my first time loading the page. Tell me about how I can be the hero in my own story, I just need to give you some clues into what world you want to enter. Let me know that I can tell you specifically, or give you the name of an author, story, or movie that can help guide the creation of our world. And if I speak a language other than English to just let you know.";
+          if(conversationHistory.length === 0) { // Only send if history is actually empty
+            console.log("[front.js/init] No active game & empty history. Sending first time message.");
+            callChatAPI(firstTimeUserMessage, userId, false); // storeInHistory = false for this system message
+          } else {
+            // console.log("[front.js/init] No active game, but history exists. Not sending first time message.");
+          }
         }
-      })
-      .catch((error) => {
-        console.error("[front.js/init] Error initializing user data:", error);
-        // Display a default placeholder image even on error
-        displayStoryImage(
-          "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=8382dbec-03c7-4c51-821d-d037f8c9ed47",
-          userId,
-        );
-        userId = localStorage.getItem("userId") || null;
-        if (userId) {
-          console.log(
-            "[front.js/init] Using userId from local storage:",
-            userId,
-          );
-        } else {
-          console.log(
-            "[front.js/init] No userId found in local storage, creating new user",
-          );
-          createNewUser().then((newUserId) => {
-            userId = newUserId;
-            localStorage.setItem("userId", userId);
-          });
-        }
-      });
+      } else { throw new Error("Invalid userId in response from /api/users init"); }
+    })
+    .catch(error => {
+      console.error("[front.js/init] Error initializing user data:", error);
+      displayErrorMessage("Error initializing application. " + error.message, false);
+      displayStoryImage(null, null);
+      if (!localStorage.getItem("userId")) {
+          createNewUser().then(newUid => { userId = newUid; localStorage.setItem("userId", newUid); setupSocket(); initializeUserData(); })
+                         .catch(err => console.error("Fallback createNewUser also failed:", err));
+      } else { userId = localStorage.getItem("userId"); if(!socket || !socket.connected) setupSocket(); }
+    });
   };
 
-  initializeUserData();
+  await initializeUserData();
 
-  async function callChatAPI(userPrompt, userId, storeInHistory = true) {
-    console.log("[front.js/callChatAPI] Calling /api/chat with", {
-      userPrompt,
-      userId,
-    });
+  async function callChatAPI(userPrompt, currentUserId, storeInHistory = true) {
+    console.log("[front.js/callChatAPI] Calling /api/chat with prompt for user:", currentUserId);
 
-    const messagesToSend = storeInHistory
-      ? [...conversationHistory, { role: "user", content: userPrompt }]
-      : [...conversationHistory];
-    console.log(
-      "[front.js/callChatAPI] Sending messages to /api/chat",
-      messagesToSend,
-    );
+    if (!currentUserId) {
+        displayErrorMessage("User ID is missing. Cannot send message.", true); return;
+    }
+
+    // Prepare messages for API: always include the current userPrompt for the API call.
+    // `storeInHistory` will control if the *assistant's* response gets added to local `conversationHistory`.
+    // The user's prompt itself (if typed by user) is added to `conversationHistory` by the keydown listener.
+    const contextMessages = conversationHistory.slice(-10); // Use recent history for context
+    const messagesToSend = [...contextMessages];
+    // Ensure the current prompt is the last user message sent to API if not already there from history slice
+    if (!messagesToSend.length || messagesToSend[messagesToSend.length-1].content !== userPrompt || messagesToSend[messagesToSend.length-1].role !== 'user') {
+        messagesToSend.push({ role: "user", content: userPrompt });
+    }
+
+    console.log("[front.js/callChatAPI] Sending messages to /api/chat (count):", messagesToSend.length);
 
     let retryCount = 0;
     const maxRetries = 1;
+    fullResponse = ""; // Reset for the new stream
+    if (lastAssistantMessageElement) {
+        lastAssistantMessageElement.setAttribute("data-complete", "true");
+    }
+    lastAssistantMessageElement = null; // Prepare for new message element
 
     async function fetchChatAPI() {
       try {
@@ -246,335 +222,241 @@ document.addEventListener("DOMContentLoaded", async () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             messages: messagesToSend,
-            userId,
+            userId: currentUserId,
           }),
         });
 
         if (!response.ok) {
-          console.error(
-            "[front.js/callChatAPI] Failed to start chat session. Response status:",
-            response.status,
-          );
-          throw new Error("Failed to start chat session");
+          const errorText = await response.text();
+          console.error("[front.js/callChatAPI] Failed to start chat session. Status:", response.status, "Body:", errorText);
+          throw new Error(`Failed to start chat session: ${response.statusText} - ${errorText}`);
         }
 
-        const reader = response.body
-          .pipeThrough(new TextDecoderStream())
-          .getReader();
-        console.log("[front.js/callChatAPI] Reader created:", reader);
+        const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
+        // console.log("[front.js/callChatAPI] Reader created.");
 
         while (true) {
           const { value, done } = await reader.read();
-          console.log(
-            "[front.js/callChatAPI] Read from reader. Value:",
-            value,
-            "Done:",
-            done,
-          );
+          // console.log("[front.js/callChatAPI] Read from reader. Value:", value, "Done:", done);
 
           if (done) {
-            console.log("[front.js/callChatAPI] Chat session ended");
+            console.log("[front.js/callChatAPI] Chat session stream ended (reader.done is true).");
             markLastAssistantMessageAsComplete();
+            if (storeInHistory && fullResponse.trim() !== "") {
+                // Add the successfully accumulated assistant response to local history
+                conversationHistory.push({ role: "assistant", content: fullResponse });
+            }
             break;
           }
 
+          // Process each line from the chunk
           value.split("\n").forEach((line) => {
-            try {
-              if (line.startsWith("data:")) {
-                const parsedLine = JSON.parse(line.substr(5));
-
-                if (parsedLine.content !== undefined) {
-                  const content = parsedLine.content;
-                  displayAssistantMessage(content);
-
-                  if (
-                    parsedLine.imageUrl !== undefined &&
-                    parsedLine.imageUrl
-                  ) {
-                    console.log(
-                      "[front.js/callChatAPI] Image URL received:",
-                      parsedLine.imageUrl,
-                    );
-                    displayStoryImage(parsedLine.imageUrl);
+            if (line.startsWith("data:")) {
+              const jsonDataString = line.substring(5).trim();
+              if (jsonDataString && jsonDataString.toUpperCase() !== "[DONE]") {
+                try {
+                  const parsedLine = JSON.parse(jsonDataString);
+                  if (parsedLine.content !== undefined) {
+                    displayAssistantMessage(parsedLine.content); // This prepends
+                    fullResponse += parsedLine.content; // Accumulate for history
                   }
+                  // Image URL from stream (original logic, but image updates primarily via socket now)
+                  if (parsedLine.imageUrl) {
+                    console.log("[front.js/callChatAPI] Image URL in stream (rarely used now):", parsedLine.imageUrl);
+                    // displayStoryImage(parsedLine.imageUrl); // displayStoryImage needs room_id too
+                  }
+                } catch (error) {
+                  console.error("[front.js/callChatAPI] Error parsing JSON chunk:", error);
+                  console.error("[front.js/callChatAPI] Offending line content (after 'data:'):", jsonDataString);
                 }
-              } else if (line.trim() === "[DONE]") {
-                console.log("[front.js/callChatAPI] Message stream completed");
-                markLastAssistantMessageAsComplete();
               }
-            } catch (error) {
-              console.error(
-                "[front.js/callChatAPI] Error parsing chunk:",
-                error,
-              );
+              // No specific handling for "[DONE]" in data payload here, as `reader.done` is the main signal
+            } else if (line.trim() !== "") { // Log any non-empty, non-data lines
+              // console.warn("[front.js/callChatAPI] Unexpected line in stream (not starting with 'data:'):", line);
             }
           });
         }
       } catch (error) {
-        console.error("[front.js/callChatAPI] Error:", error);
+        console.error("[front.js/callChatAPI] Error in fetchChatAPI:", error);
         removePartialMessage();
-        displayErrorMessage("Oops! Something went wrong. Retrying...");
-
         if (retryCount < maxRetries) {
           retryCount++;
+          displayErrorMessage("Oops! Connection issue. Retrying...", false);
+          await new Promise(resolve => setTimeout(resolve, 1500 * retryCount)); // Slightly longer backoff
           await fetchChatAPI();
         } else {
-          displayErrorMessage(
-            "Oops! Something went wrong. Please try again.",
-            true,
-          );
+          displayErrorMessage("Oops! Something went wrong after retries. Please try again. " + error.message, true);
         }
       }
     }
-
     await fetchChatAPI();
   }
 
   userInput.addEventListener("keydown", async (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
+      // clearInterval(checkImageInterval); // This was from old code, not used now
+      // const imageLoadingElement = document.querySelector(".image-loading"); // This was from old code
+      // if (imageLoadingElement) imageLoadingElement.remove();
 
-      // Prevents multiple intervals from being set
-      clearInterval(checkImageInterval);
-      const imageLoadingElement = document.querySelector(".image-loading");
-      if (imageLoadingElement) {
-        imageLoadingElement.remove();
-      }
       const userPrompt = userInput.value.trim();
-      if (userPrompt !== "") {
+      if (userPrompt !== "" && userId) {
         console.log("[front.js/userInput] User prompt entered", { userPrompt });
-        displayUserMessage(userPrompt);
+        displayUserMessage(userPrompt); // Prepends
         userInput.value = "";
-        if (!Array.isArray(conversationHistory)) {
-          console.warn(
-            "[front.js/userInput] Initializing empty conversation history.",
-          );
+        if (!Array.isArray(conversationHistory)) { // Should always be an array due to init
+          console.warn("[front.js/userInput] Initializing empty conversation history (should not happen here).");
           conversationHistory = [];
         }
-        conversationHistory.push({ role: "user", content: userPrompt });
-        callChatAPI(userPrompt, userId);
-        await fetchStoryImage(userId);
-        const newImageLoadingElement = document.createElement("div");
-        newImageLoadingElement.classList.add("image-loading");
-        messageContainer.prepend(newImageLoadingElement);
+        conversationHistory.push({ role: "user", content: userPrompt }); // Add to local history
+        callChatAPI(userPrompt, userId, true); // Assistant response will also be handled
+
+        // Fetching story image immediately after sending prompt might be too soon.
+        // Image updates are now primarily driven by socket events.
+        // If you need an explicit fetch here, consider a delay or specific condition.
+        // await fetchStoryImage(userId); // Kept from your original, but consider its timing
+
+        // const newImageLoadingElement = document.createElement("div"); // Old logic
+        // newImageLoadingElement.classList.add("image-loading");
+        // messageContainer.prepend(newImageLoadingElement); // Old logic
       }
     }
   });
 
-  // Function to fetch room data and update the image display
-
-  async function displayStoryImage(imageUrl, userId = null) {
-    if (!imageUrl && !userId) {
-      console.error(
-        "[displayStoryImage] No imageUrl or userId provided, unable to display image.",
-      );
-      return;
-    }
-
-    // If no imageUrl is provided and userId is not null, fetch the image using the userId
-    if (!imageUrl && userId) {
-      console.log("[displayStoryImage] Fetching image using userId:", userId);
-      try {
-        const response = await fetch(`/api/get-latest-image-url/${userId}`);
-        if (!response.ok) {
-          throw new Error(`Failed to fetch image URL: ${response.statusText}`);
-        }
-        const data = await response.json();
-        imageUrl = data.imageUrl; // Assuming the API returns an object with an imageUrl field
-        if (!imageUrl) {
-          console.error(
-            "[displayStoryImage] No image URL returned from the server.",
-          );
-          return;
-        }
-      } catch (error) {
-        console.error("[displayStoryImage] Error fetching image URL:", error);
-        return;
-      }
-    }
-
+  function displayStoryImage(imageUrl, currentRoomId = null) {
     const roomImageElement = document.getElementById("room-image");
+    const defaultImageUrl = "https://firebasestorage.googleapis.com/v0/b/grue-4e13c.appspot.com/o/systemimages%2Fgrueoverview.png?alt=media&token=36b1d99f-82ff-4acf-8766-c7f2ca757b9a";
     if (roomImageElement) {
-      roomImageElement.src = imageUrl;
-      roomImageElement.alt = "Story Image";
-      console.log("[displayStoryImage] Image displayed:", imageUrl);
-    } else {
-      console.error("[displayStoryImage] room-image element not found.");
-    }
+      roomImageElement.src = imageUrl || defaultImageUrl;
+      roomImageElement.alt = imageUrl ? `Image for Room ${currentRoomId || 'current'}` : "Default Grue Image";
+      if(currentRoomId && currentRoomId !== "null" && currentRoomId !== "undefined") {
+          roomImageElement.dataset.roomId = String(currentRoomId);
+      } else {
+          roomImageElement.dataset.roomId = "unknown";
+      }
+    } else { console.error("[displayStoryImage] room-image element not found."); }
   }
 
-  let checkImageInterval;
+  // let checkImageInterval; // From your original code, not currently used with socket-driven updates
 
   function displayConversationHistory() {
-    console.log(
-      "[front.js/displayConversationHistory] Displaying last 5 messages from conversation history",
-    );
+    // console.log("[front.js/displayConversationHistory] Displaying last 10 messages.");
+    messageContainer.innerHTML = '';
+    const messagesToDisplay = conversationHistory.slice(-10);
 
-    const lastFiveMessages = conversationHistory.slice(-5);
-
-    lastFiveMessages.reverse().forEach((message, index) => {
-      const messageGroup = document.createElement("div");
-      messageGroup.classList.add("message-group");
-
-      // Append the image element only if index is greater than 0
-      if (message.imageUrl && index > 0) {
-        const imgElement = document.createElement("img");
-        imgElement.src = message.imageUrl;
-        imgElement.alt = "Story Image";
-        messageGroup.appendChild(imgElement);
+    messagesToDisplay.forEach(message => {
+      // This will display history with oldest at top of this block, newest at bottom.
+      // New live messages are prepended above this.
+      if (message.role === "user" && message.content) {
+        const el = document.createElement("div"); el.classList.add("user-message");
+        el.textContent = message.content; messageContainer.appendChild(el);
+      } else if (message.role === "assistant" && message.content) {
+        const el = document.createElement("div"); el.classList.add("response-message");
+        el.setAttribute("data-complete", "true"); el.innerHTML = formatContent(message.content);
+        messageContainer.appendChild(el);
       }
-
-      if (message.response) {
-        const assistantMessageElement = document.createElement("div");
-        assistantMessageElement.classList.add("assistant-message");
-        assistantMessageElement.innerHTML = message.response.replace(
-          /\n/g,
-          "<br>",
-        );
-        messageGroup.appendChild(assistantMessageElement);
-      }
-
-      if (message.userPrompt) {
-        const userMessageElement = document.createElement("div");
-        userMessageElement.classList.add("user-message");
-        userMessageElement.textContent = message.userPrompt;
-        messageGroup.appendChild(userMessageElement);
-      }
-
-      messageGroup.appendChild(document.createElement("br"));
-      messageGroup.appendChild(document.createElement("br"));
-
-      messageContainer.appendChild(messageGroup);
     });
+    // If you want the scroll to be at the bottom of this history block after loading:
+    // messageContainer.scrollTop = messageContainer.scrollHeight;
+    // But since new messages are prepended, the view naturally stays at the top.
   }
 
   function displayUserMessage(message) {
-    console.log("[front.js/displayUserMessage] Displaying user message", {
-      message,
-    });
+    // console.log("[front.js/displayUserMessage] Prepending user message:", { message });
     const userMessageElement = document.createElement("div");
     userMessageElement.classList.add("user-message");
     userMessageElement.textContent = message;
-    messageContainer.prepend(userMessageElement); // Append at the end, visually appears at the top
-    console.log("[front.js/displayUserMessage] User message displayed");
+    messageContainer.prepend(userMessageElement); // PREPEND for newest at top
+    // console.log("[front.js/displayUserMessage] User message prepended.");
   }
 
-  // Helper function to find the last assistant message element if it exists
-  // Helper function to find the last assistant message element if it exists
-
   function formatContent(content) {
-    // Replace newlines with HTML line breaks
+    content = String(content || ''); // Ensure it's a string
     content = content.replace(/\n/g, "<br>");
-
-    // Add space before numbers if not already spaced properly. Ensure no extra space is added after the number.
-    content = content.replace(/([^ ])(\d+)/g, "$1 $2");
-    content = content.replace(/(\d) /g, "$1");
-
+    content = content.replace(/([^ \n\d])(\d)/g, "$1 $2"); // Add space before number if not preceded by space/newline/digit
+    // The regex content = content.replace(/(\d) /g, "$1"); // was in your original, removed as it can strip needed spaces
     return content;
   }
 
-  function displayAssistantMessage(content) {
-    //console.log("[front.js/displayAssistantMessage] Displaying assistant message:",content,);
-
-    if (
-      lastAssistantMessageElement === null ||
-      lastAssistantMessageElement.getAttribute("data-complete") === "true"
-    ) {
+  function displayAssistantMessage(contentChunk) {
+    // console.log("[front.js/displayAssistantMessage] Prepending/appending assistant chunk:", contentChunk.substring(0,30)+"...");
+    if (!lastAssistantMessageElement || lastAssistantMessageElement.getAttribute("data-complete") === "true") {
       lastAssistantMessageElement = document.createElement("div");
       lastAssistantMessageElement.classList.add("response-message");
       lastAssistantMessageElement.setAttribute("data-complete", "false");
-      messageContainer.prepend(lastAssistantMessageElement);
-      //console.log("[front.js/displayAssistantMessage] New message element created:",lastAssistantMessageElement,);
+      messageContainer.prepend(lastAssistantMessageElement); // PREPEND new assistant message bubble
+      // console.log("[front.js/displayAssistantMessage] New assistant message element prepended.");
     }
-
-    // Format content to handle spacing and line breaks
-    content = formatContent(content);
-
-    // Use innerHTML to append the formatted content
-    lastAssistantMessageElement.innerHTML += content;
-    //console.log("[front.js/displayAssistantMessage] Message content appended with line breaks and numbers:",lastAssistantMessageElement.innerHTML,);
-
-    console.log(
-      "[front.js/displayAssistantMessage] Assistant message displayed",
-    );
+    lastAssistantMessageElement.innerHTML += formatContent(contentChunk);
+    // console.log("[front.js/displayAssistantMessage] Chunk appended to current assistant bubble.");
   }
 
   function markLastAssistantMessageAsComplete() {
     if (lastAssistantMessageElement) {
-      //console.log("[front.js/markLastAssistantMessageAsComplete] Marking last assistant message as complete:", lastAssistantMessageElement,);
+      // console.log("[front.js/markLastAssistantMessageAsComplete] Marking last assistant message as complete.");
       lastAssistantMessageElement.setAttribute("data-complete", "true");
-
-      // Check if imageUrl is provided and display the placeholder
-      const imageUrl =
-        lastAssistantMessageElement.getAttribute("data-image-url");
-      if (imageUrl === "true") {
-        console.log(
-          "[front.js/markLastAssistantMessageAsComplete] Image URL expected, displaying placeholder.",
-        );
-        const imgPlaceholder = document.createElement("div");
-        imgPlaceholder.classList.add("image-placeholder");
-        imgPlaceholder.textContent = "Image Generating...";
-        messageContainer.prepend(imgPlaceholder);
-        console.log(
-          "[front.js/markLastAssistantMessageAsComplete] Image placeholder appended to message container.",
-        );
-      }
     }
     lastAssistantMessageElement = null;
-    console.log(
-      "[front.js/markLastAssistantMessageAsComplete] Last assistant message element reset to null",
-    );
-    setTimeout(() => {
-      fetchStoryImage(userId);
-    }, 5000); // 5000 milliseconds equals 5 seconds
+    // console.log("[front.js/markLastAssistantMessageAsComplete] Last assistant message element reset.");
+    // setTimeout for fetchStoryImage was in your original, kept commented out as socket events are primary.
+    // setTimeout(() => {
+    //   if (userId) fetchStoryImage(userId).catch(e => console.warn("Delayed fetchStoryImage failed:", e.message));
+    // }, 5000);
   }
 
   function displayErrorMessage(message, showRetryButton = false) {
-    console.log("[front.js/displayErrorMessage] Displaying error message", {
-      message,
-    });
+    console.log("[front.js/displayErrorMessage] Prepending error:", { message });
     const errorMessageElement = document.createElement("div");
     errorMessageElement.classList.add("error-message");
     errorMessageElement.textContent = message;
-    messageContainer.prepend(errorMessageElement);
-
-    if (showRetryButton) {
+    if (showRetryButton && userId) {
       const retryButton = document.createElement("button");
-      retryButton.textContent = "Retry";
+      retryButton.textContent = "Retry"; // Original was "Retry"
       retryButton.addEventListener("click", () => {
         errorMessageElement.remove();
-        callChatAPI(userInput.value.trim(), userId);
+        // Retry last user prompt if available in history
+        const lastUserPromptEntry = conversationHistory.findLast(m => m.role === 'user');
+        if (lastUserPromptEntry) {
+            callChatAPI(lastUserPromptEntry.content, userId, true);
+        } else {
+            // Or retry the text in the input field if nothing in history
+            callChatAPI(userInput.value.trim(), userId, true);
+        }
       });
       errorMessageElement.appendChild(retryButton);
     }
-
-    console.log("[front.js/displayErrorMessage] Error message displayed");
+    messageContainer.prepend(errorMessageElement); // PREPEND error
+    // console.log("[front.js/displayErrorMessage] Error message prepended.");
   }
 
   function removePartialMessage() {
-    const lastMessage = messageContainer.lastElementChild;
-    if (lastMessage && !lastMessage.hasAttribute("data-complete")) {
-      lastMessage.remove();
+    if (lastAssistantMessageElement && lastAssistantMessageElement.getAttribute("data-complete") === "false") {
+      lastAssistantMessageElement.remove();
+      lastAssistantMessageElement = null;
+      console.log("[front.js/removePartialMessage] Removed partial assistant message bubble.");
     }
   }
 
-  async function fetchStoryImage(userId) {
-    console.log("[fetchStoryImage] Fetching story image for user:", userId);
-    const eventSource = new EventSource(`/api/story-image-proxy/${userId}`);
-
+  async function fetchStoryImage(currentUserId) { // currentUserId is passed
+    if (!currentUserId) { console.error("[fetchStoryImage] No userId provided."); return Promise.reject(new Error("No userId for fetchStoryImage")); }
+    // console.log("[fetchStoryImage] Fetching story image for user:", currentUserId);
+    const eventSource = new EventSource(`/api/story-image-proxy/${currentUserId}`);
     return new Promise((resolve, reject) => {
       eventSource.onmessage = (event) => {
         const imageUrl = event.data;
-        console.log("[fetchStoryImage] Image URL received:", imageUrl);
-        displayStoryImage(imageUrl, userId);
+        // console.log("[fetchStoryImage] Image URL received via SSE:", imageUrl);
+        const roomImageElement = document.getElementById("room-image");
+        const currentRoomIdOnImage = roomImageElement ? roomImageElement.dataset.roomId : null;
+        displayStoryImage(imageUrl, currentRoomIdOnImage); // Pass current room ID for context
         eventSource.close();
         resolve(imageUrl);
       };
-
-      eventSource.onerror = (error) => {
-        console.error("[fetchStoryImage] Error fetching story image:", error);
+      eventSource.onerror = (errorEvent) => {
+        console.error("[fetchStoryImage] SSE Error for user:", currentUserId, "ReadyState:", eventSource.readyState, "Event:", errorEvent);
+        const roomImageElement = document.getElementById("room-image");
+        displayStoryImage(null, roomImageElement ? roomImageElement.dataset.roomId : null); // Show placeholder
         eventSource.close();
-        reject(error);
+        reject(new Error("SSE connection error or server error during image fetch."));
       };
     });
   }
