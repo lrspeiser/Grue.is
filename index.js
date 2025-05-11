@@ -597,6 +597,7 @@ function getDMSystemMessage(userData, historySummary, storyFields, userFields, r
     5. Start the story:
     - Keep the text you write to the user very brief. Tell them what city, room, or location they will start in.
     - Ask if they are ready to begin their journey.
+    - Keep your part of the text very brief, like how games like Zork worked, where the user had to ask questions or give commands to get information.
 
     6. Language handling:
     - If they are writing in a language other than English, confirm they want the game in that language.
