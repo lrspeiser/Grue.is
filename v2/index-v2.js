@@ -11,14 +11,24 @@ const { createCompletePlan } = require("./game-planner");
 const { generateWorldWithoutImages } = require("./world-generator-fast");
 const GameEngine = require("./game-engine");
 
-const app = express();
+const router = express.Router();
 const PORT = process.env.PORT || 3001; // Use environment port
 
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public-v2"))); // Serve static files
+router.use(express.json());
 
-const server = http.createServer(app);
-const io = new Server(server);
+// Only create server and io if running standalone
+let server, io;
+if (require.main === module) {
+  const app = express();
+  app.use(express.json());
+  app.use(express.static(path.join(__dirname, "public-v2")));
+  server = http.createServer(app);
+  io = new Server(server);
+  app.use('/', router);
+} else {
+  // When imported as module, io will be set by the parent app
+  io = null;
+}
 
 // Store active game engines
 const activeGames = new Map();
@@ -70,7 +80,7 @@ const db = getFirebaseAdmin();
  * API: Start a new game
  * This triggers the AI to plan and generate the entire world
  */
-app.post("/new-game", async (req, res) => {
+router.post("/new-game", async (req, res) => {
   const { userId, userProfile } = req.body;
   
   console.log(`[Server] Starting new game for user ${userId}`);
@@ -137,7 +147,7 @@ app.post("/new-game", async (req, res) => {
 /**
  * API: Continue existing game
  */
-app.post("/continue-game", async (req, res) => {
+router.post("/continue-game", async (req, res) => {
   const { userId } = req.body;
   
   try {
@@ -263,7 +273,7 @@ io.on("connection", (socket) => {
 /**
  * API: Get world map (for mini-map feature)
  */
-app.get("/world-map/:userId", (req, res) => {
+router.get("/world-map/:userId", (req, res) => {
   const userId = req.params.userId;
   const gameEngine = activeGames.get(userId);
   
@@ -292,7 +302,7 @@ app.get("/world-map/:userId", (req, res) => {
 /**
  * API: Generate game preview (shows what AI will create)
  */
-app.post("/preview-game", async (req, res) => {
+router.post("/preview-game", async (req, res) => {
   const { userProfile } = req.body;
   
   try {
@@ -374,8 +384,14 @@ async function saveWorldToFirebase(userId, world) {
   }
 }
 
-// Export for use as a module
-module.exports = app;
+// Function to set io instance when used as module
+router.setIo = function(ioInstance) {
+  io = ioInstance;
+  console.log("[V2] Socket.IO instance set from parent app");
+};
+
+// Export router for use as a module
+module.exports = router;
 
 // Only start server if run directly (not imported)
 if (require.main === module) {
