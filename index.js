@@ -95,7 +95,18 @@ app.use(function onError(err, req, res, next) {
 const usersDir = path.join(__dirname, "data", "users"); // Kept as in original
 
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.NODE_ENV === 'production' 
+      ? ["https://grue.is", "https://www.grue.is"] 
+      : ["http://localhost:3000", "http://localhost:3001"],
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'], // Enable both transports
+  pingTimeout: 60000, // Increase timeout to prevent disconnections
+  pingInterval: 25000
+});
 app.set('io', io); // Store io instance on the app for access in request handlers
 
 // Setup v2 routes after io is created

@@ -85,6 +85,18 @@ router.post("/new-game", async (req, res) => {
   
   console.log(`[Server] Starting new game for user ${userId}`);
   
+  // Set timeout for Vercel (10 seconds max for API routes)
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(202).json({
+        success: true,
+        status: 'generating',
+        message: 'Game generation in progress. Please check back.',
+        userId
+      });
+    }
+  }, 9000);
+  
   try {
     // Check if we have a cached world for this profile
     const profileKey = JSON.stringify(userProfile);
@@ -105,30 +117,37 @@ router.post("/new-game", async (req, res) => {
       // Cache for similar profiles
       worldCache.set(profileKey, world);
       
-      // Save to Firebase for persistence
-      await saveWorldToFirebase(userId, world);
+      // Save to Firebase asynchronously (don't wait)
+      saveWorldToFirebase(userId, world).catch(err => 
+        console.error("[Server] Firebase save error:", err)
+      );
     }
     
     // Step 3: Initialize game engine with Socket.IO for image updates
     const gameEngine = new GameEngine(world, userId, io);
     activeGames.set(userId, gameEngine);
     
+    clearTimeout(timeout);
+    
     // Return initial game state
-    res.json({
-      success: true,
-      gameId: world.metadata.gameId || userId,
-      initialState: gameEngine.getPublicState(),
-      currentRoom: gameEngine.getCurrentRoomData(),
-      worldOverview: {
-        title: world.overview.title,
-        setting: world.overview.setting,
-        totalRooms: world.world.rooms.length,
-        totalQuests: world.world.quests.length,
-        estimatedPlaytime: world.overview.estimated_playtime
-      }
-    });
+    if (!res.headersSent) {
+      res.json({
+        success: true,
+        gameId: world.metadata.gameId || userId,
+        initialState: gameEngine.getPublicState(),
+        currentRoom: gameEngine.getCurrentRoomData(),
+        worldOverview: {
+          title: world.overview.title,
+          setting: world.overview.setting,
+          totalRooms: world.world.rooms.length,
+          totalQuests: world.world.quests.length,
+          estimatedPlaytime: world.overview.estimated_playtime
+        }
+      });
+    }
     
   } catch (error) {
+    clearTimeout(timeout);
     console.error("[Server] Error creating new game:", error);
     console.error("[Server] Error details:", error.message);
     if (error.response) {
@@ -136,11 +155,13 @@ router.post("/new-game", async (req, res) => {
     }
     
     // Send proper JSON error response
-    res.status(500).json({
-      success: false,
-      error: error.message || "Failed to create game",
-      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
-    });
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: error.message || "Failed to create game",
+        details: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      });
+    }
   }
 });
 
@@ -150,15 +171,31 @@ router.post("/new-game", async (req, res) => {
 router.post("/continue-game", async (req, res) => {
   const { userId } = req.body;
   
+  // Set timeout for Vercel
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(202).json({
+        success: true,
+        status: 'loading',
+        message: 'Game loading in progress. Please retry.',
+        userId
+      });
+    }
+  }, 9000);
+  
   try {
     // Check if game engine exists in memory
     if (activeGames.has(userId)) {
       const gameEngine = activeGames.get(userId);
-      res.json({
-        success: true,
-        state: gameEngine.getPublicState(),
-        currentRoom: gameEngine.getCurrentRoomData()
-      });
+      clearTimeout(timeout);
+      
+      if (!res.headersSent) {
+        res.json({
+          success: true,
+          state: gameEngine.getPublicState(),
+          currentRoom: gameEngine.getCurrentRoomData()
+        });
+      }
     } else {
       // Load from Firebase
       const savedGame = await loadGameFromFirebase(userId);
@@ -167,40 +204,53 @@ router.post("/continue-game", async (req, res) => {
         gameEngine.state = savedGame.state;
         activeGames.set(userId, gameEngine);
         
-        res.json({
-          success: true,
-          state: gameEngine.getPublicState(),
-          currentRoom: gameEngine.getCurrentRoomData()
-        });
+        clearTimeout(timeout);
+        
+        if (!res.headersSent) {
+          res.json({
+            success: true,
+            state: gameEngine.getPublicState(),
+            currentRoom: gameEngine.getCurrentRoomData()
+          });
+        }
       } else {
-        res.json({
-          success: false,
-          error: "No saved game found"
-        });
+        clearTimeout(timeout);
+        
+        if (!res.headersSent) {
+          res.json({
+            success: false,
+            error: "No saved game found"
+          });
+        }
       }
     }
   } catch (error) {
+    clearTimeout(timeout);
     console.error("[Server] Error loading game:", error);
-    res.status(500).json({
-      success: false,
-      error: "Failed to load game"
-    });
+    
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: "Failed to load game"
+      });
+    }
   }
 });
 
 /**
  * Socket.IO: Handle real-time gameplay
  */
-io.on("connection", (socket) => {
-  console.log("New client connected:", socket.id);
-  
-  const userId = socket.handshake.query.userId;
-  if (!userId) {
-    socket.disconnect(true);
-    return;
-  }
-  
-  socket.join(userId);
+if (io) {
+  io.on("connection", (socket) => {
+    console.log("New client connected:", socket.id);
+    
+    const userId = socket.handshake.query.userId;
+    if (!userId) {
+      socket.disconnect(true);
+      return;
+    }
+    
+    socket.join(userId);
   
   // Handle game commands
   socket.on("gameCommand", async (data) => {
@@ -263,11 +313,37 @@ io.on("connection", (socket) => {
     }
   });
   
-  // Handle disconnect
-  socket.on("disconnect", () => {
-    console.log(`Client disconnected: ${socket.id}`);
-    // Keep game in memory for reconnection
+    // Handle disconnect
+    socket.on("disconnect", () => {
+      console.log(`Client disconnected: ${socket.id}`);
+      // Keep game in memory for reconnection
+    });
   });
+}
+
+/**
+ * API: Check game generation status
+ */
+router.get("/game-status/:userId", (req, res) => {
+  const userId = req.params.userId;
+  
+  if (activeGames.has(userId)) {
+    const gameEngine = activeGames.get(userId);
+    res.json({
+      success: true,
+      status: 'ready',
+      hasGame: true,
+      currentRoom: gameEngine.getCurrentRoomData(),
+      state: gameEngine.getPublicState()
+    });
+  } else {
+    res.json({
+      success: true,
+      status: 'not_found',
+      hasGame: false,
+      message: 'No active game found. Start a new game or continue from saved.'
+    });
+  }
 });
 
 /**
