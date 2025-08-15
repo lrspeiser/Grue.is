@@ -82,7 +82,7 @@ async function generateAllRoomContent(gamePlan) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4-turbo-preview",
       messages,
       tools: roomTools,
       tool_choice: { type: "function", function: { name: "generate_all_rooms" } }
@@ -169,7 +169,7 @@ async function generateAllCharacters(gamePlan) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4-turbo-preview",
       messages,
       tools: characterTools,
       tool_choice: { type: "function", function: { name: "generate_all_characters" } }
@@ -253,7 +253,7 @@ async function generateQuestContent(gamePlan) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4-turbo-preview",
       messages,
       tools: questTools,
       tool_choice: { type: "function", function: { name: "generate_quest_content" } }

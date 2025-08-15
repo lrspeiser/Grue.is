@@ -161,7 +161,7 @@ class GameEngine {
 
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-4-turbo-preview",
         messages: [
           { role: "system", content: dmPrompt },
           { role: "user", content: userInput }

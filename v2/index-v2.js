@@ -120,9 +120,16 @@ app.post("/new-game", async (req, res) => {
     
   } catch (error) {
     console.error("[Server] Error creating new game:", error);
+    console.error("[Server] Error details:", error.message);
+    if (error.response) {
+      console.error("[Server] API response error:", error.response.data);
+    }
+    
+    // Send proper JSON error response
     res.status(500).json({
       success: false,
-      error: "Failed to create game"
+      error: error.message || "Failed to create game",
+      details: process.env.NODE_ENV === 'development' ? error.stack : undefined
     });
   }
 });
