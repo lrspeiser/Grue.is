@@ -347,6 +347,13 @@
                 <button id="start-generation" style="width: 100%; padding: 15px; background: #00ff00; color: #0a0a0a; border: none; font-size: 18px; font-weight: bold; cursor: pointer;">
                     Generate My Adventure
                 </button>
+                
+                <div style="margin-top: 20px; text-align: center;">
+                    <p style="color: #666; margin-bottom: 10px;">Having issues? Start completely fresh:</p>
+                    <button id="clear-data" style="padding: 10px 20px; background: #333; color: #ff00ff; border: 1px solid #ff00ff; cursor: pointer;">
+                        Clear All Data & Start Fresh
+                    </button>
+                </div>
             </div>
             
             <div id="generation-status">
@@ -906,6 +913,15 @@
         document.getElementById('submit-btn').addEventListener('click', submitCommand);
         document.getElementById('command-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') submitCommand();
+        });
+        
+        // Handle clear data button
+        document.getElementById('clear-data').addEventListener('click', () => {
+            if (confirm('This will delete all your game data and start completely fresh. Are you sure?')) {
+                debugLog('game', 'Clearing all data and starting fresh');
+                localStorage.clear();
+                window.location.reload();
+            }
         });
         
         // Try to continue existing game with retry logic
