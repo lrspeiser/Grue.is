@@ -1,0 +1,22 @@
+{
+  "name": "grue-v2",
+  "version": "2.0.0",
+  "description": "AI-driven text adventure game with pre-generated worlds",
+  "main": "index-v2.js",
+  "scripts": {
+    "start": "node index-v2.js",
+    "dev": "nodemon index-v2.js",
+    "test-local": "node test-local.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "socket.io": "^4.6.1",
+    "openai": "^4.0.0",
+    "firebase": "^10.7.1",
+    "firebase-admin": "^11.11.1",
+    "dotenv": "^16.3.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}
