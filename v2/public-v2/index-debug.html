@@ -717,16 +717,17 @@
             updateGameState(gameData.initialState);
             updateRoom(gameData.currentRoom);
             
-            // Connect socket with better configuration
+            // Connect socket with Vercel-compatible configuration (polling only)
             debugLog('socket', `Connecting Socket.IO with userId: ${userId}`);
             socket = io({
                 query: { userId },
-                transports: ['websocket', 'polling'],
+                transports: ['polling'], // Force polling for Vercel compatibility
                 reconnection: true,
                 reconnectionAttempts: 10,
                 reconnectionDelay: 1000,
                 reconnectionDelayMax: 5000,
-                timeout: 20000
+                timeout: 20000,
+                upgrade: false // Don't try to upgrade to websocket
             });
             
             socket.on('connect', () => {
