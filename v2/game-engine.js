@@ -7,6 +7,12 @@ const imageService = require('./image-service');
 
 class GameEngine {
   constructor(world, userId, io = null) {
+    // Validate world structure
+    if (!world || !world.world || !world.world.rooms || !Array.isArray(world.world.rooms)) {
+      console.error("[GameEngine] Invalid world structure:", JSON.stringify(world, null, 2).substring(0, 500));
+      throw new Error("Invalid world structure - missing world.world.rooms array");
+    }
+    
     this.world = world;
     this.userId = userId;
     this.io = io; // Socket.IO instance for emitting events

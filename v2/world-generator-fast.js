@@ -39,6 +39,11 @@ async function generateRoomImage(room) {
 async function generateWorldWithoutImages(gamePlan) {
   console.log("[WorldGen-Fast] Starting fast world generation");
   
+  // Validate gamePlan structure
+  if (!gamePlan || !gamePlan.world_map || !gamePlan.characters || !gamePlan.quests) {
+    throw new Error("Invalid game plan structure - missing required fields");
+  }
+  
   const startTime = Date.now();
   
   try {

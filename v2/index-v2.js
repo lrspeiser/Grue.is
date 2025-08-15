@@ -110,6 +110,11 @@ router.post("/new-game", async (req, res) => {
       console.log("[Server] AI is planning the game...");
       const gamePlan = await createCompletePlan(userProfile);
       
+      // Check if gamePlan was successfully created
+      if (!gamePlan || !gamePlan.world_map || !gamePlan.characters || !gamePlan.quests) {
+        throw new Error("Failed to generate valid game plan from AI");
+      }
+      
       // Step 2: Generate world content WITHOUT images (fast)
       console.log("[Server] Generating world content (without images)...");
       world = await generateWorldWithoutImages(gamePlan);
