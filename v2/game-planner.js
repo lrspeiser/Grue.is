@@ -201,19 +201,37 @@ async function planGameWorld(userProfile) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4-turbo-preview", // Using latest available model
       messages,
       tools: gameDesignTools,
       tool_choice: { type: "function", function: { name: "create_complete_game_design" } }
     });
 
-    if (response.choices[0].message.tool_calls) {
-      const gameDesign = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);
-      console.log("[GamePlanner] AI created game design:", gameDesign.game_overview.title);
-      return gameDesign;
+    if (!response || !response.choices || !response.choices[0]) {
+      console.error("[GamePlanner] Invalid response structure from OpenAI");
+      throw new Error("Invalid response from AI service");
+    }
+
+    if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
+      try {
+        const gameDesign = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);
+        console.log("[GamePlanner] AI created game design:", gameDesign.game_overview.title);
+        return gameDesign;
+      } catch (parseError) {
+        console.error("[GamePlanner] Failed to parse game design JSON:", parseError);
+        console.error("[GamePlanner] Raw response:", response.choices[0].message.tool_calls[0].function.arguments?.substring(0, 500));
+        throw new Error("Failed to parse game design from AI response");
+      }
+    } else {
+      console.error("[GamePlanner] No tool calls in response");
+      console.error("[GamePlanner] Response content:", response.choices[0].message.content);
+      throw new Error("AI did not generate a proper game design");
     }
   } catch (error) {
-    console.error("[GamePlanner] Error planning game:", error);
+    console.error("[GamePlanner] Error planning game:", error.message);
+    if (error.response) {
+      console.error("[GamePlanner] API error response:", error.response.data);
+    }
     throw error;
   }
 }
@@ -247,7 +265,7 @@ async function validateAndEnhanceGameDesign(gameDesign) {
 
   try {
     const response = await openai.chat.completions.create({
-      model: "gpt-5",
+      model: "gpt-4-turbo-preview",
       messages,
       max_tokens: 4000
     });
@@ -279,7 +297,7 @@ async function createCompletePlan(userProfile) {
       createdAt: new Date().toISOString(),
       userId: userProfile.userId,
       version: "2.0",
-      planningModel: "gpt-5",
+      planningModel: "gpt-4-turbo-preview",
       estimatedGenerationTime: calculateGenerationTime(validatedDesign)
     }
   };

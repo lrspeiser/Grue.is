@@ -405,7 +405,7 @@ app.post("/api/chat", async (req, res) => {
     // console.log("[/api/chat] Total messages for OpenAI:", messagesForOpenAI.length);
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5", // Using a generally available powerful model
+      model: "gpt-4-turbo-preview", // Using a generally available powerful model
       messages: messagesForOpenAI,
       stream: true,
     });
@@ -977,7 +977,7 @@ app.post("/api/chat-with-me", async (req, res) => {
     ];
 
     const response = await openai.chat.completions.create({
-      model: "gpt-5", // Using gpt-5 as a robust default
+      model: "gpt-4-turbo-preview", // Using gpt-4-turbo as a robust default
       messages,
       stream: true,
     });
