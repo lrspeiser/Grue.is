@@ -3,14 +3,22 @@
 
 const OpenAIApi = require("openai");
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
+const imageService = require('./image-service');
 
 class GameEngine {
-  constructor(world, userId) {
+  constructor(world, userId, io = null) {
     this.world = world;
     this.userId = userId;
+    this.io = io; // Socket.IO instance for emitting events
     this.state = this.initializeState();
     this.conversationBuffer = []; // Keep last 10 turns
     this.maxBufferSize = 10;
+    
+    // Load existing images into cache
+    imageService.loadExistingImages(world);
+    
+    // Generate images for starting room and adjacent
+    this.generateImagesForCurrentRoom();
   }
 
   initializeState() {
@@ -198,9 +206,15 @@ class GameEngine {
    */
   applyStateChanges(changes) {
     if (changes.new_room_id && this.world.world.rooms.find(r => r.id === changes.new_room_id)) {
+      const previousRoomId = this.state.currentRoomId;
       this.state.currentRoomId = changes.new_room_id;
       if (!this.state.visitedRooms.includes(changes.new_room_id)) {
         this.state.visitedRooms.push(changes.new_room_id);
+      }
+      
+      // Generate images for new room and adjacent rooms
+      if (previousRoomId !== changes.new_room_id) {
+        this.generateImagesForCurrentRoom();
       }
     }
 
@@ -398,6 +412,91 @@ class GameEngine {
       questsCompleted: this.state.completedQuests.length,
       totalQuests: this.world.world.quests.length,
       survivalRate: this.state.health
+    };
+  }
+
+  /**
+   * Generate images for current room and adjacent rooms
+   */
+  async generateImagesForCurrentRoom() {
+    const currentRoom = this.world.world.rooms.find(r => r.id === this.state.currentRoomId);
+    if (!currentRoom) return;
+    
+    // Get adjacent rooms
+    const adjacentRooms = this.getAdjacentRooms(currentRoom);
+    
+    console.log(`[GameEngine] Generating images for room ${currentRoom.id} and ${adjacentRooms.length} adjacent rooms`);
+    
+    // Generate images
+    await imageService.generateRoomAndAdjacent(
+      currentRoom,
+      adjacentRooms,
+      (imageUpdate) => {
+        // Update the room in world data
+        const room = this.world.world.rooms.find(r => r.id === imageUpdate.roomId);
+        if (room) {
+          room.imageUrl = imageUpdate.imageUrl;
+        }
+        
+        // Emit to client if Socket.IO is available
+        if (this.io) {
+          this.io.to(this.userId).emit('imageGenerated', {
+            roomId: imageUpdate.roomId,
+            imageUrl: imageUpdate.imageUrl,
+            isCurrent: imageUpdate.roomId === this.state.currentRoomId,
+            queueSize: imageUpdate.queueSize
+          });
+        }
+      }
+    );
+  }
+
+  /**
+   * Get adjacent rooms based on navigation
+   */
+  getAdjacentRooms(currentRoom) {
+    const adjacentRoomIds = [];
+    const navigation = this.world.navigation[currentRoom.id];
+    
+    if (!navigation) return [];
+    
+    // Collect all connected room IDs
+    ['north', 'south', 'east', 'west', 'up', 'down'].forEach(direction => {
+      if (navigation[direction]) {
+        adjacentRoomIds.push(navigation[direction]);
+      }
+    });
+    
+    // Add special connections
+    if (navigation.special && Array.isArray(navigation.special)) {
+      adjacentRoomIds.push(...navigation.special);
+    }
+    
+    // Get room objects
+    const adjacentRooms = adjacentRoomIds
+      .map(roomId => this.world.world.rooms.find(r => r.id === roomId))
+      .filter(room => room !== undefined);
+    
+    return adjacentRooms;
+  }
+
+  /**
+   * Get current room data with cached image
+   */
+  getCurrentRoomData() {
+    const room = this.world.world.rooms.find(r => r.id === this.state.currentRoomId);
+    
+    // Try to get cached image
+    const cachedImage = imageService.getCachedImage(room.id);
+    
+    return {
+      id: room.id,
+      name: room.name,
+      description: room.description,
+      imageUrl: cachedImage || room.imageUrl || null,
+      imageStatus: cachedImage ? 'ready' : (imageService.isGenerating(room.id) ? 'generating' : 'pending'),
+      firstVisit: this.state.visitedRooms.filter(id => id === room.id).length === 1,
+      exits: this.world.navigation[room.id]
     };
   }
 }
