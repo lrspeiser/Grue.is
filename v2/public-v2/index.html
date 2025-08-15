@@ -313,14 +313,14 @@
             const statusText = document.getElementById('status-text');
             
             const progressInterval = setInterval(() => {
-                progress += 2;
-                progressBar.style.width = Math.min(progress, 90) + '%';
+                progress += 3;
+                progressBar.style.width = Math.min(progress, 85) + '%';
                 
-                if (progress === 20) statusText.textContent = 'AI is planning your adventure...';
-                if (progress === 40) statusText.textContent = 'Generating locations and rooms...';
-                if (progress === 60) statusText.textContent = 'Creating characters and quests...';
-                if (progress === 80) statusText.textContent = 'Generating images...';
-            }, 200);
+                if (progress === 21) statusText.textContent = 'AI is planning your adventure...';
+                if (progress === 42) statusText.textContent = 'Generating locations and rooms...';
+                if (progress === 63) statusText.textContent = 'Creating characters and quests...';
+                if (progress === 84) statusText.textContent = 'Finalizing world...';
+            }, 150);
             
             try {
                 // Generate the game
@@ -387,6 +387,26 @@
                 appendNarrative('\n[Error: ' + data.message + ']');
                 document.getElementById('command-input').disabled = false;
                 document.getElementById('submit-btn').disabled = false;
+            });
+            
+            // Handle progressive image generation
+            socket.on('imageGenerated', (data) => {
+                console.log(`Image generated for room ${data.roomId}: ${data.progress}% complete`);
+                
+                // Update image if it's the current room
+                const currentRoomImage = document.getElementById('room-image');
+                if (currentRoomImage && data.imageUrl) {
+                    // Check if this is the current room (you might need to track current room ID)
+                    currentRoomImage.src = data.imageUrl;
+                }
+                
+                // Show progress
+                if (data.progress < 100) {
+                    const statusText = document.getElementById('status-text');
+                    if (statusText) {
+                        statusText.textContent = `Generating room images: ${data.progress}%`;
+                    }
+                }
             });
             
             // Enable input
