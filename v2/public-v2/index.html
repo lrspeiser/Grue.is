@@ -324,7 +324,7 @@
             
             try {
                 // Generate the game
-                const response = await fetch('/api/v2/new-game', {
+                const response = await fetch('/v2/api/new-game', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId, userProfile: profile })
@@ -465,7 +465,7 @@
         });
         
         // Try to continue existing game
-        fetch('/api/v2/continue-game', {
+        fetch('/v2/api/continue-game', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId })

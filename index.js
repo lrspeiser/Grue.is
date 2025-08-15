@@ -40,6 +40,14 @@ const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
 
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+
+// Serve v2 static files
+app.use('/v2', express.static(path.join(__dirname, "v2/public-v2")));
+
+// Mount v2 API routes
+const v2Routes = require("./v2/index-v2");
+app.use('/v2/api', v2Routes);
+
 Sentry.init({
   dsn: "https://3df40e009cff002fcf8b9f676bddf9d5@o502926.ingest.us.sentry.io/4507164679405568",
   integrations: [
