@@ -50,7 +50,7 @@ const db = initializeFirebase();
  * API: Start a new game
  * This triggers the AI to plan and generate the entire world
  */
-app.post("/api/v2/new-game", async (req, res) => {
+app.post("/new-game", async (req, res) => {
   const { userId, userProfile } = req.body;
   
   console.log(`[Server] Starting new game for user ${userId}`);
@@ -110,7 +110,7 @@ app.post("/api/v2/new-game", async (req, res) => {
 /**
  * API: Continue existing game
  */
-app.post("/api/v2/continue-game", async (req, res) => {
+app.post("/continue-game", async (req, res) => {
   const { userId } = req.body;
   
   try {
@@ -236,7 +236,7 @@ io.on("connection", (socket) => {
 /**
  * API: Get world map (for mini-map feature)
  */
-app.get("/api/v2/world-map/:userId", (req, res) => {
+app.get("/world-map/:userId", (req, res) => {
   const userId = req.params.userId;
   const gameEngine = activeGames.get(userId);
   
@@ -265,7 +265,7 @@ app.get("/api/v2/world-map/:userId", (req, res) => {
 /**
  * API: Generate game preview (shows what AI will create)
  */
-app.post("/api/v2/preview-game", async (req, res) => {
+app.post("/preview-game", async (req, res) => {
   const { userProfile } = req.body;
   
   try {
@@ -332,9 +332,14 @@ async function saveWorldToFirebase(userId, world) {
   }
 }
 
-// Start server
-server.listen(PORT, () => {
-  console.log(`Game Server v2 running on port ${PORT}`);
-  console.log(`Architecture: AI-planned, pre-generated worlds`);
-  console.log(`Features: Instant room navigation, rich content, educational focus`);
-});
+// Export for use as a module
+module.exports = app;
+
+// Only start server if run directly (not imported)
+if (require.main === module) {
+  server.listen(PORT, () => {
+    console.log(`Game Server v2 running on port ${PORT}`);
+    console.log(`Architecture: AI-planned, pre-generated worlds`);
+    console.log(`Features: Instant room navigation, rich content, educational focus`);
+  });
+}
