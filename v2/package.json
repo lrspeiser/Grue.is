@@ -6,7 +6,9 @@
   "scripts": {
     "start": "node index-v2.js",
     "dev": "nodemon index-v2.js",
-    "test-local": "node test-local.js"
+    "test-local": "node test-local.js",
+    "test": "node test-game-engine.js",
+    "test:watch": "nodemon test-game-engine.js"
   },
   "dependencies": {
     "express": "^4.18.2",
