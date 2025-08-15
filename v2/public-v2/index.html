@@ -283,6 +283,7 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/v2/game-loader.js"></script>
     <script>
         // Generate unique user ID or get from localStorage
         const userId = localStorage.getItem('userId') || 'user-' + Math.random().toString(36).substr(2, 9);
@@ -323,27 +324,17 @@
             }, 150);
             
             try {
-                // Generate the game
-                const response = await fetch('/v2/api/new-game', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, userProfile: profile })
-                });
+                // Generate the game with retry logic
+                const data = await generateGameWithRetry(userId, profile);
                 
-                const data = await response.json();
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                statusText.textContent = 'World created! Starting game...';
                 
-                if (data.success) {
-                    clearInterval(progressInterval);
-                    progressBar.style.width = '100%';
-                    statusText.textContent = 'World created! Starting game...';
-                    
-                    setTimeout(() => {
-                        document.getElementById('setup-screen').style.display = 'none';
-                        initializeGame(data);
-                    }, 1000);
-                } else {
-                    throw new Error(data.error || 'Failed to generate game');
-                }
+                setTimeout(() => {
+                    document.getElementById('setup-screen').style.display = 'none';
+                    initializeGame(data);
+                }, 1000);
                 
             } catch (error) {
                 clearInterval(progressInterval);
@@ -486,15 +477,9 @@
             if (e.key === 'Enter') submitCommand();
         });
         
-        // Try to continue existing game
-        fetch('/v2/api/continue-game', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success && data.status !== 'loading' && data.state && data.currentRoom) {
+        // Try to continue existing game with retry logic
+        checkExistingGame(userId).then(data => {
+            if (data) {
                 document.getElementById('setup-screen').style.display = 'none';
                 initializeGame({
                     initialState: data.state,
@@ -503,8 +488,8 @@
                 });
                 appendNarrative('\n[Game restored from previous session]');
             }
-        })
-        .catch(() => {
+            // Otherwise show setup screen
+        }).catch(() => {
             // No saved game, show setup screen
         });
     </script>

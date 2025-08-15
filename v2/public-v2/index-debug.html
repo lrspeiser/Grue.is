@@ -418,6 +418,7 @@
     </div>
 
     <script src="/socket.io/socket.io.js"></script>
+    <script src="/v2/game-loader.js"></script>
     <script>
         // Debug System
         const DEBUG_MODE = window.location.search.includes('debug');
@@ -677,34 +678,24 @@
             }, 150);
             
             try {
-                debugLog('api', `Calling /v2/api/new-game endpoint`);
+                debugLog('api', `Starting game generation with retry logic`);
                 debugLog('llm', `Sending user profile to LLM for game generation`);
                 
-                // Generate the game
-                const response = await fetch('/v2/api/new-game', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId, userProfile: profile })
-                });
+                // Use the retry function
+                const data = await generateGameWithRetry(userId, profile);
                 
-                const data = await response.json();
+                clearInterval(progressInterval);
+                progressBar.style.width = '100%';
+                statusText.textContent = 'World created! Starting game...';
                 
-                if (data.success) {
-                    clearInterval(progressInterval);
-                    progressBar.style.width = '100%';
-                    statusText.textContent = 'World created! Starting game...';
-                    
-                    debugLog('llm', '=== LLM GAME GENERATION COMPLETE ===');
-                    debugLog('game', `Game successfully generated: ${data.gameId}`);
-                    debugLog('game', `World overview: ${JSON.stringify(data.worldOverview, null, 2)}`);
-                    
-                    setTimeout(() => {
-                        document.getElementById('setup-screen').style.display = 'none';
-                        initializeGame(data);
-                    }, 1000);
-                } else {
-                    throw new Error(data.error || 'Failed to generate game');
-                }
+                debugLog('llm', '=== LLM GAME GENERATION COMPLETE ===');
+                debugLog('game', `Game successfully generated: ${data.gameId}`);
+                debugLog('game', `World overview: ${JSON.stringify(data.worldOverview, null, 2)}`);
+                
+                setTimeout(() => {
+                    document.getElementById('setup-screen').style.display = 'none';
+                    initializeGame(data);
+                }, 1000);
                 
             } catch (error) {
                 clearInterval(progressInterval);
@@ -884,16 +875,10 @@
             if (e.key === 'Enter') submitCommand();
         });
         
-        // Try to continue existing game
+        // Try to continue existing game with retry logic
         debugLog('game', 'Checking for existing game session...');
-        fetch('/v2/api/continue-game', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ userId })
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success && data.status !== 'loading' && data.state && data.currentRoom) {
+        checkExistingGame(userId).then(data => {
+            if (data) {
                 debugLog('game', 'Found existing game session, restoring...');
                 document.getElementById('setup-screen').style.display = 'none';
                 initializeGame({
@@ -902,14 +887,10 @@
                     worldOverview: { title: 'Continued Adventure' }
                 });
                 appendNarrative('\n[Game restored from previous session]');
-            } else if (data.status === 'loading') {
-                debugLog('game', 'Game is still loading, showing setup screen');
-                // Game is still loading, show setup screen for now
             } else {
                 debugLog('game', 'No existing game found, showing setup screen');
             }
-        })
-        .catch((error) => {
+        }).catch((error) => {
             debugLog('error', `Failed to check for existing game: ${error.message}`);
         });
     </script>
