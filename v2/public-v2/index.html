@@ -350,8 +350,27 @@
             updateGameState(gameData.initialState);
             updateRoom(gameData.currentRoom);
             
-            // Connect socket
-            socket = io({ query: { userId } });
+            // Connect socket with better configuration
+            socket = io({
+                query: { userId },
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                timeout: 20000
+            });
+            
+            socket.on('connect', () => {
+                console.log('Socket.IO connected');
+            });
+            
+            socket.on('disconnect', (reason) => {
+                console.log('Socket.IO disconnected:', reason);
+                if (reason === 'io server disconnect') {
+                    socket.connect();
+                }
+            });
             
             socket.on('gameResponse', (data) => {
                 appendNarrative(data.narrative);
