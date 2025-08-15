@@ -45,8 +45,19 @@ app.use(express.static(path.join(__dirname, "public")));
 app.use('/v2', express.static(path.join(__dirname, "v2/public-v2")));
 
 // Mount v2 API routes
-const v2Routes = require("./v2/index-v2");
-app.use('/v2/api', v2Routes);
+try {
+  const v2Routes = require("./v2/index-v2");
+  console.log("[V2 Routes] Successfully loaded v2 module");
+  app.use('/v2/api', v2Routes);
+  console.log("[V2 Routes] Mounted v2 routes at /v2/api");
+  
+  // Add a test route to verify v2 is working
+  app.get('/v2/api/test', (req, res) => {
+    res.json({ status: 'ok', message: 'V2 API is working' });
+  });
+} catch (error) {
+  console.error("[V2 Routes] Error loading v2 module:", error);
+}
 
 Sentry.init({
   dsn: "https://3df40e009cff002fcf8b9f676bddf9d5@o502926.ingest.us.sentry.io/4507164679405568",
