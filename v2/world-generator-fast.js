@@ -97,10 +97,17 @@ async function generateWorldWithoutImages(gamePlan) {
       navigation: buildNavigationMap(gamePlan.world_map.locations)
     };
     
+    console.log("[WorldGen-Fast] World structure built successfully");
+    console.log("[WorldGen-Fast] Total rooms:", completeWorld.world.rooms.length);
+    console.log("[WorldGen-Fast] Total characters:", completeWorld.world.characters.length);
+    console.log("[WorldGen-Fast] Total quests:", completeWorld.world.quests.length);
+    console.log("[WorldGen-Fast] ========================================");
     return completeWorld;
     
   } catch (error) {
-    console.error("[WorldGen-Fast] Failed to generate world:", error);
+    console.error("[WorldGen-Fast] Failed to generate world:", error.message);
+    console.error("[WorldGen-Fast] Error type:", error.constructor.name);
+    console.error("[WorldGen-Fast] Stack trace:", error.stack);
     throw error;
   }
 }
@@ -109,7 +116,10 @@ async function generateWorldWithoutImages(gamePlan) {
  * Generate images for a world asynchronously
  */
 async function generateImagesAsync(world, onImageGenerated) {
-  console.log("[WorldGen-Fast] Starting async image generation for", world.world.rooms.length, "rooms");
+  console.log("[WorldGen-Fast] ========================================");
+  console.log("[WorldGen-Fast] STARTING ASYNC IMAGE GENERATION");
+  console.log("[WorldGen-Fast] ========================================");
+  console.log("[WorldGen-Fast] Total rooms to generate images for:", world.world.rooms.length);
   
   const CONCURRENT_LIMIT = 2; // Only 2 at a time to avoid rate limits
   const DELAY_BETWEEN_BATCHES = 3000; // 3 seconds between batches

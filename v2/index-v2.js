@@ -83,7 +83,11 @@ const db = getFirebaseAdmin();
 router.post("/new-game", async (req, res) => {
   const { userId, userProfile } = req.body;
   
-  console.log(`[Server] Starting new game for user ${userId}`);
+  console.log("[Server] ========================================");
+  console.log("[Server] NEW GAME REQUEST");
+  console.log("[Server] ========================================");
+  console.log(`[Server] User ID: ${userId}`);
+  console.log(`[Server] Profile:`, JSON.stringify(userProfile, null, 2));
   
   // Set timeout for Vercel (10 seconds max for API routes)
   const timeout = setTimeout(() => {
@@ -107,8 +111,11 @@ router.post("/new-game", async (req, res) => {
       world = worldCache.get(profileKey);
     } else {
       // Step 1: AI plans the game
-      console.log("[Server] AI is planning the game...");
+      console.log("[Server] Step 1: Requesting game plan from AI...");
+      const planStartTime = Date.now();
       const gamePlan = await createCompletePlan(userProfile);
+      const planDuration = Date.now() - planStartTime;
+      console.log(`[Server] Game plan created in ${planDuration}ms`);
       
       // Check if gamePlan was successfully created
       if (!gamePlan || !gamePlan.world_map || !gamePlan.characters || !gamePlan.quests) {
@@ -116,8 +123,11 @@ router.post("/new-game", async (req, res) => {
       }
       
       // Step 2: Generate world content WITHOUT images (fast)
-      console.log("[Server] Generating world content (without images)...");
+      console.log("[Server] Step 2: Generating world content (without images)...");
+      const worldStartTime = Date.now();
       world = await generateWorldWithoutImages(gamePlan);
+      const worldDuration = Date.now() - worldStartTime;
+      console.log(`[Server] World generated in ${worldDuration}ms`);
       
       // Cache for similar profiles
       worldCache.set(profileKey, world);
@@ -129,13 +139,18 @@ router.post("/new-game", async (req, res) => {
     }
     
     // Step 3: Initialize game engine with Socket.IO for image updates
+    console.log("[Server] Step 3: Initializing game engine...");
     const gameEngine = new GameEngine(world, userId, io);
     activeGames.set(userId, gameEngine);
+    console.log("[Server] Game engine initialized successfully");
+    console.log("[Server] Active games count:", activeGames.size);
     
     clearTimeout(timeout);
     
     // Return initial game state
     if (!res.headersSent) {
+      console.log("[Server] Sending successful response to client");
+      console.log("[Server] ========================================");
       res.json({
         success: true,
         gameId: world.metadata.gameId || userId,
@@ -153,11 +168,16 @@ router.post("/new-game", async (req, res) => {
     
   } catch (error) {
     clearTimeout(timeout);
-    console.error("[Server] Error creating new game:", error);
-    console.error("[Server] Error details:", error.message);
+    console.error("[Server] ========================================");
+    console.error("[Server] ERROR CREATING NEW GAME");
+    console.error("[Server] Error message:", error.message);
+    console.error("[Server] Error type:", error.constructor.name);
+    console.error("[Server] Stack trace:", error.stack);
     if (error.response) {
-      console.error("[Server] API response error:", error.response.data);
+      console.error("[Server] API response error:", JSON.stringify(error.response.data, null, 2));
+      console.error("[Server] API status code:", error.response.status);
     }
+    console.error("[Server] ========================================");
     
     // Send proper JSON error response
     if (!res.headersSent) {
@@ -268,10 +288,19 @@ if (io) {
     }
     
     try {
+      console.log("[Socket] Processing command through game engine...");
+      const startTime = Date.now();
+      
       // Process command with AI
       const result = await gameEngine.processUserInput(command);
       
+      const duration = Date.now() - startTime;
+      console.log(`[Socket] Command processed in ${duration}ms`);
+      console.log("[Socket] Action type:", result.actionType || "unknown");
+      
       // Send response to client
+      console.log("[Socket] Sending response to client");
+      console.log("[Socket] ========================================");
       socket.emit("gameResponse", {
         narrative: result.narrative,
         educationalNote: result.educationalNote,

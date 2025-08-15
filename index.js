@@ -41,7 +41,16 @@ const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Serve v2 static files
+// Serve v2 with debug support
+app.get('/v2', (req, res) => {
+  if (req.query.debug !== undefined) {
+    res.sendFile(path.join(__dirname, 'v2/public-v2/index-debug.html'));
+  } else {
+    res.sendFile(path.join(__dirname, 'v2/public-v2/index.html'));
+  }
+});
+
+// Serve v2 static files for other resources
 app.use('/v2', express.static(path.join(__dirname, "v2/public-v2")));
 
 // Mount v2 API routes (must be after io is created)

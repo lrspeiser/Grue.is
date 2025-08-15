@@ -166,6 +166,12 @@ class GameEngine {
     ];
 
     try {
+      console.log("[GameEngine] Sending to OpenAI API...");
+      console.log("[GameEngine] Model: gpt-4-turbo-preview");
+      console.log("[GameEngine] Tool: update_game_state");
+      console.log("[GameEngine] Prompt length:", dmPrompt.length);
+      
+      const startTime = Date.now();
       const response = await openai.chat.completions.create({
         model: "gpt-4-turbo-preview",
         messages: [
@@ -175,11 +181,17 @@ class GameEngine {
         tools: gameUpdateTools,
         tool_choice: { type: "function", function: { name: "update_game_state" } }
       });
+      
+      const duration = Date.now() - startTime;
+      console.log(`[GameEngine] OpenAI response received in ${duration}ms`);
 
       if (response.choices[0].message.tool_calls) {
+        console.log("[GameEngine] Tool call received from OpenAI");
         const gameUpdate = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);
+        console.log("[GameEngine] Game update:", JSON.stringify(gameUpdate, null, 2));
         
         // Apply state changes
+        console.log("[GameEngine] Applying state changes...");
         this.applyStateChanges(gameUpdate.state_changes);
         
         // Add to conversation history
@@ -188,13 +200,21 @@ class GameEngine {
         // Increment turn counter
         this.state.turnCount++;
         
-        return {
+        const result = {
           narrative: gameUpdate.narrative_response,
           educationalNote: gameUpdate.educational_note,
           actionType: gameUpdate.action_type,
           currentRoom: this.getCurrentRoomData(),
           gameState: this.getPublicState()
         };
+        
+        console.log("[GameEngine] Response prepared successfully");
+        console.log("[GameEngine] Action type:", gameUpdate.action_type);
+        console.log("[GameEngine] ========================================");
+        return result;
+      } else {
+        console.log("[GameEngine] No tool call in response");
+        console.log("[GameEngine] ========================================");
       }
     } catch (error) {
       console.error("[GameEngine] Error processing input:", error);

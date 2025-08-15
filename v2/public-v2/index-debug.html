@@ -1,0 +1,906 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grue v2 - AI Adventure Game</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Courier New', monospace;
+            background: #1a1a1a;
+            color: #00ff00;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #header {
+            background: #0a0a0a;
+            padding: 20px;
+            border-bottom: 2px solid #00ff00;
+        }
+        
+        #game-container {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+        
+        #main-panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+        }
+        
+        #side-panel {
+            width: 350px;
+            background: #0a0a0a;
+            padding: 20px;
+            border-left: 2px solid #00ff00;
+            overflow-y: auto;
+        }
+        
+        /* Debug Panel Styles */
+        #debug-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 300px;
+            background: #000;
+            border-top: 3px solid #ff00ff;
+            display: none;
+            flex-direction: column;
+            z-index: 999;
+        }
+        
+        #debug-panel.active {
+            display: flex;
+        }
+        
+        #debug-header {
+            background: #111;
+            padding: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #ff00ff;
+        }
+        
+        #debug-tabs {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .debug-tab {
+            padding: 5px 15px;
+            background: #222;
+            color: #ff00ff;
+            cursor: pointer;
+            border: 1px solid #ff00ff;
+        }
+        
+        .debug-tab.active {
+            background: #ff00ff;
+            color: #000;
+        }
+        
+        #debug-content {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+            font-size: 12px;
+            font-family: 'Monaco', 'Consolas', monospace;
+        }
+        
+        .debug-log {
+            margin-bottom: 5px;
+            padding: 3px 5px;
+            border-left: 3px solid #666;
+        }
+        
+        .debug-log.info {
+            border-color: #00aaff;
+            color: #00aaff;
+        }
+        
+        .debug-log.warn {
+            border-color: #ffaa00;
+            color: #ffaa00;
+        }
+        
+        .debug-log.error {
+            border-color: #ff0000;
+            color: #ff0000;
+        }
+        
+        .debug-log.api {
+            border-color: #00ff00;
+            color: #00ff00;
+        }
+        
+        .debug-log.socket {
+            border-color: #ff00ff;
+            color: #ff00ff;
+        }
+        
+        .debug-log.llm {
+            border-color: #ffff00;
+            color: #ffff00;
+            background: rgba(255, 255, 0, 0.1);
+        }
+        
+        .debug-timestamp {
+            color: #666;
+            margin-right: 10px;
+        }
+        
+        .debug-clear {
+            padding: 5px 10px;
+            background: #ff00ff;
+            color: #000;
+            border: none;
+            cursor: pointer;
+        }
+        
+        #debug-minimize {
+            padding: 5px 10px;
+            background: #333;
+            color: #ff00ff;
+            border: 1px solid #ff00ff;
+            cursor: pointer;
+        }
+        
+        /* Adjust main content when debug panel is open */
+        body.debug-active #game-container {
+            margin-bottom: 300px;
+        }
+        
+        #room-image {
+            width: 100%;
+            height: 300px;
+            background: #2a2a2a;
+            border: 2px solid #00ff00;
+            margin-bottom: 20px;
+            object-fit: cover;
+        }
+        
+        #narrative {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            background: #0a0a0a;
+            border: 2px solid #00ff00;
+            margin-bottom: 20px;
+            white-space: pre-wrap;
+            line-height: 1.6;
+        }
+        
+        #input-container {
+            display: flex;
+            gap: 10px;
+        }
+        
+        #command-input {
+            flex: 1;
+            background: #0a0a0a;
+            border: 2px solid #00ff00;
+            color: #00ff00;
+            padding: 15px;
+            font-size: 16px;
+            font-family: inherit;
+        }
+        
+        #submit-btn {
+            background: #00ff00;
+            color: #0a0a0a;
+            border: none;
+            padding: 15px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            font-family: inherit;
+        }
+        
+        #submit-btn:hover {
+            background: #00cc00;
+        }
+        
+        .stat-item {
+            margin-bottom: 10px;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #00ff00;
+        }
+        
+        .loading {
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        #setup-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: #1a1a1a;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        
+        #setup-form {
+            background: #0a0a0a;
+            border: 2px solid #00ff00;
+            padding: 40px;
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        .form-group {
+            margin-bottom: 20px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            background: #1a1a1a;
+            border: 1px solid #00ff00;
+            color: #00ff00;
+            font-family: inherit;
+        }
+        
+        #generation-status {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .progress-bar {
+            width: 100%;
+            height: 20px;
+            background: #1a1a1a;
+            border: 1px solid #00ff00;
+            margin: 20px 0;
+        }
+        
+        .progress-fill {
+            height: 100%;
+            background: #00ff00;
+            width: 0%;
+            transition: width 0.5s;
+        }
+    </style>
+</head>
+<body>
+    <!-- Debug Panel -->
+    <div id="debug-panel">
+        <div id="debug-header">
+            <div id="debug-tabs">
+                <button class="debug-tab active" data-tab="all">All</button>
+                <button class="debug-tab" data-tab="llm">LLM</button>
+                <button class="debug-tab" data-tab="api">API</button>
+                <button class="debug-tab" data-tab="socket">Socket</button>
+                <button class="debug-tab" data-tab="game">Game</button>
+                <button class="debug-tab" data-tab="errors">Errors</button>
+            </div>
+            <div>
+                <button class="debug-clear">Clear</button>
+                <button id="debug-minimize">Minimize</button>
+            </div>
+        </div>
+        <div id="debug-content"></div>
+    </div>
+
+    <!-- Setup Screen -->
+    <div id="setup-screen">
+        <div id="setup-form">
+            <h1>Grue v2 - AI Adventure Generator</h1>
+            <p style="margin: 20px 0;">The AI will create a complete game world just for you!</p>
+            
+            <div id="profile-form">
+                <div class="form-group">
+                    <label>Your Grade/Education Level:</label>
+                    <input type="text" id="education" value="7th grade" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Where do you live?</label>
+                    <input type="text" id="location" value="California, USA" />
+                </div>
+                
+                <div class="form-group">
+                    <label>Time Period for Adventure:</label>
+                    <select id="timePeriod">
+                        <option value="Ancient Greece - 480 BC">Ancient Greece - Battle of Thermopylae</option>
+                        <option value="Ancient Rome - 44 BC">Ancient Rome - Fall of Julius Caesar</option>
+                        <option value="Medieval England - 1066">Medieval England - Norman Conquest</option>
+                        <option value="Renaissance Italy - 1500">Renaissance Italy - Age of Leonardo</option>
+                        <option value="American Revolution - 1776">American Revolution</option>
+                        <option value="California Gold Rush - 1849">California Gold Rush</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Your Role:</label>
+                    <input type="text" id="role" value="Advisor to the main historical figure" />
+                </div>
+                
+                <button id="start-generation" style="width: 100%; padding: 15px; background: #00ff00; color: #0a0a0a; border: none; font-size: 18px; font-weight: bold; cursor: pointer;">
+                    Generate My Adventure
+                </button>
+            </div>
+            
+            <div id="generation-status">
+                <h2>AI is creating your world...</h2>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress"></div>
+                </div>
+                <p id="status-text">Planning game structure...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Game -->
+    <div id="header">
+        <h1>GRUE v2 - <span id="game-title">Adventure</span></h1>
+        <p id="room-name">Loading...</p>
+    </div>
+    
+    <div id="game-container">
+        <div id="main-panel">
+            <div id="narrative">
+                Welcome to Grue v2!
+                
+                This is a completely AI-generated adventure game.
+                The entire world has been pre-created for instant gameplay.
+                
+                Type 'help' for commands.
+            </div>
+            
+            <div id="input-container">
+                <input type="text" id="command-input" placeholder="Enter command..." disabled />
+                <button id="submit-btn" disabled>Submit</button>
+            </div>
+        </div>
+        
+        <div id="side-panel">
+            <img id="room-image" src="" alt="Room view" />
+            
+            <div class="stat-item">
+                <strong>Health:</strong> <span id="health">100</span>/100
+            </div>
+            
+            <div class="stat-item">
+                <strong>Gold:</strong> <span id="gold">100</span>
+            </div>
+            
+            <div class="stat-item">
+                <strong>Turn:</strong> <span id="turn">0</span>
+            </div>
+            
+            <div class="stat-item">
+                <strong>Score:</strong> <span id="score">0</span>
+            </div>
+            
+            <div class="stat-item">
+                <strong>Inventory:</strong>
+                <div id="inventory">Empty</div>
+            </div>
+            
+            <div class="stat-item">
+                <strong>Active Quests:</strong>
+                <div id="quests">None</div>
+            </div>
+            
+            <div class="stat-item">
+                <strong>Rooms Explored:</strong> <span id="rooms-explored">0</span>
+            </div>
+        </div>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        // Debug System
+        const DEBUG_MODE = window.location.search.includes('debug');
+        let currentDebugTab = 'all';
+        const debugLogs = [];
+        const MAX_DEBUG_LOGS = 1000;
+
+        function initDebugPanel() {
+            if (!DEBUG_MODE) return;
+            
+            const debugPanel = document.getElementById('debug-panel');
+            debugPanel.classList.add('active');
+            document.body.classList.add('debug-active');
+            
+            // Tab switching
+            document.querySelectorAll('.debug-tab').forEach(tab => {
+                tab.addEventListener('click', () => {
+                    document.querySelectorAll('.debug-tab').forEach(t => t.classList.remove('active'));
+                    tab.classList.add('active');
+                    currentDebugTab = tab.dataset.tab;
+                    renderDebugLogs();
+                });
+            });
+            
+            // Clear button
+            document.querySelector('.debug-clear').addEventListener('click', () => {
+                debugLogs.length = 0;
+                renderDebugLogs();
+            });
+            
+            // Minimize button
+            document.getElementById('debug-minimize').addEventListener('click', () => {
+                debugPanel.classList.toggle('active');
+                document.body.classList.toggle('debug-active');
+            });
+            
+            // Override console methods
+            const originalConsole = {
+                log: console.log,
+                error: console.error,
+                warn: console.warn,
+                info: console.info
+            };
+            
+            console.log = function(...args) {
+                debugLog('info', args.join(' '));
+                originalConsole.log.apply(console, args);
+            };
+            
+            console.error = function(...args) {
+                debugLog('error', args.join(' '));
+                originalConsole.error.apply(console, args);
+            };
+            
+            console.warn = function(...args) {
+                debugLog('warn', args.join(' '));
+                originalConsole.warn.apply(console, args);
+            };
+            
+            console.info = function(...args) {
+                debugLog('info', args.join(' '));
+                originalConsole.info.apply(console, args);
+            };
+            
+            // Override fetch for API logging
+            const originalFetch = window.fetch;
+            window.fetch = async function(...args) {
+                const startTime = Date.now();
+                const [url, options] = args;
+                
+                debugLog('api', `API Request: ${options?.method || 'GET'} ${url}`);
+                if (options?.body) {
+                    try {
+                        const body = JSON.parse(options.body);
+                        debugLog('api', `Request Body: ${JSON.stringify(body, null, 2)}`);
+                    } catch (e) {
+                        debugLog('api', `Request Body: ${options.body}`);
+                    }
+                }
+                
+                try {
+                    const response = await originalFetch.apply(this, args);
+                    const duration = Date.now() - startTime;
+                    
+                    // Clone response to read it
+                    const clonedResponse = response.clone();
+                    
+                    debugLog('api', `API Response: ${response.status} ${response.statusText} (${duration}ms)`);
+                    
+                    // Try to parse and log response body
+                    try {
+                        const data = await clonedResponse.json();
+                        debugLog('api', `Response Body: ${JSON.stringify(data, null, 2)}`);
+                        
+                        // Special logging for LLM-related responses
+                        if (url.includes('/api/new-game') || url.includes('/api/continue-game')) {
+                            debugLog('llm', `Game Generation Response: ${JSON.stringify(data, null, 2)}`);
+                        }
+                    } catch (e) {
+                        // Not JSON response
+                    }
+                    
+                    return response;
+                } catch (error) {
+                    const duration = Date.now() - startTime;
+                    debugLog('error', `API Error: ${error.message} (${duration}ms)`);
+                    throw error;
+                }
+            };
+        }
+
+        function debugLog(type, message) {
+            if (!DEBUG_MODE) return;
+            
+            const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+            const logEntry = {
+                timestamp,
+                type,
+                message,
+                category: getLogCategory(type, message)
+            };
+            
+            debugLogs.push(logEntry);
+            
+            // Keep only last MAX_DEBUG_LOGS entries
+            if (debugLogs.length > MAX_DEBUG_LOGS) {
+                debugLogs.shift();
+            }
+            
+            // Update UI if visible
+            if (document.getElementById('debug-panel').classList.contains('active')) {
+                appendDebugLog(logEntry);
+            }
+        }
+
+        function getLogCategory(type, message) {
+            if (message.includes('LLM') || message.includes('OpenAI') || message.includes('GPT') || message.includes('AI')) {
+                return 'llm';
+            }
+            if (message.includes('socket') || message.includes('Socket')) {
+                return 'socket';
+            }
+            if (message.includes('API') || message.includes('fetch')) {
+                return 'api';
+            }
+            if (message.includes('game') || message.includes('Game')) {
+                return 'game';
+            }
+            if (type === 'error') {
+                return 'errors';
+            }
+            return 'all';
+        }
+
+        function renderDebugLogs() {
+            const content = document.getElementById('debug-content');
+            content.innerHTML = '';
+            
+            const filteredLogs = currentDebugTab === 'all' 
+                ? debugLogs 
+                : debugLogs.filter(log => 
+                    log.category === currentDebugTab || 
+                    (currentDebugTab === 'errors' && log.type === 'error')
+                );
+            
+            filteredLogs.forEach(log => {
+                const logDiv = document.createElement('div');
+                logDiv.className = `debug-log ${log.type}`;
+                logDiv.innerHTML = `<span class="debug-timestamp">${log.timestamp}</span>${escapeHtml(log.message)}`;
+                content.appendChild(logDiv);
+            });
+            
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function appendDebugLog(logEntry) {
+            if (currentDebugTab !== 'all' && 
+                logEntry.category !== currentDebugTab && 
+                !(currentDebugTab === 'errors' && logEntry.type === 'error')) {
+                return;
+            }
+            
+            const content = document.getElementById('debug-content');
+            const logDiv = document.createElement('div');
+            logDiv.className = `debug-log ${logEntry.type}`;
+            logDiv.innerHTML = `<span class="debug-timestamp">${logEntry.timestamp}</span>${escapeHtml(logEntry.message)}`;
+            content.appendChild(logDiv);
+            content.scrollTop = content.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize debug panel
+        initDebugPanel();
+
+        // Log initial state
+        debugLog('info', '=== Grue v2 Debug Mode Initialized ===');
+        debugLog('info', `User ID: ${localStorage.getItem('userId') || 'Not set'}`);
+        debugLog('info', `Debug Mode: ${DEBUG_MODE ? 'ENABLED' : 'DISABLED'}`);
+        
+        // Generate unique user ID or get from localStorage
+        const userId = localStorage.getItem('userId') || 'user-' + Math.random().toString(36).substr(2, 9);
+        localStorage.setItem('userId', userId);
+        debugLog('game', `User ID set: ${userId}`);
+        
+        let socket;
+        let gameActive = false;
+        
+        // Setup form handling
+        document.getElementById('start-generation').addEventListener('click', async () => {
+            const profile = {
+                userId: userId,
+                educationLevel: document.getElementById('education').value,
+                location: document.getElementById('location').value,
+                language: 'English',
+                timePeriod: document.getElementById('timePeriod').value,
+                characterRole: document.getElementById('role').value,
+                storyLocation: document.getElementById('timePeriod').value.split(' - ')[0]
+            };
+            
+            debugLog('game', `Starting game generation with profile: ${JSON.stringify(profile, null, 2)}`);
+            debugLog('llm', '=== STARTING LLM GAME GENERATION ===');
+            
+            // Show generation status
+            document.getElementById('profile-form').style.display = 'none';
+            document.getElementById('generation-status').style.display = 'block';
+            
+            // Simulate progress
+            let progress = 0;
+            const progressBar = document.getElementById('progress');
+            const statusText = document.getElementById('status-text');
+            
+            const progressInterval = setInterval(() => {
+                progress += 3;
+                progressBar.style.width = Math.min(progress, 85) + '%';
+                
+                if (progress === 21) {
+                    statusText.textContent = 'AI is planning your adventure...';
+                    debugLog('llm', 'Progress: AI planning phase started');
+                }
+                if (progress === 42) {
+                    statusText.textContent = 'Generating locations and rooms...';
+                    debugLog('llm', 'Progress: Location generation phase');
+                }
+                if (progress === 63) {
+                    statusText.textContent = 'Creating characters and quests...';
+                    debugLog('llm', 'Progress: Character and quest generation phase');
+                }
+                if (progress === 84) {
+                    statusText.textContent = 'Finalizing world...';
+                    debugLog('llm', 'Progress: Finalization phase');
+                }
+            }, 150);
+            
+            try {
+                debugLog('api', `Calling /v2/api/new-game endpoint`);
+                debugLog('llm', `Sending user profile to LLM for game generation`);
+                
+                // Generate the game
+                const response = await fetch('/v2/api/new-game', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ userId, userProfile: profile })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    clearInterval(progressInterval);
+                    progressBar.style.width = '100%';
+                    statusText.textContent = 'World created! Starting game...';
+                    
+                    debugLog('llm', '=== LLM GAME GENERATION COMPLETE ===');
+                    debugLog('game', `Game successfully generated: ${data.gameId}`);
+                    debugLog('game', `World overview: ${JSON.stringify(data.worldOverview, null, 2)}`);
+                    
+                    setTimeout(() => {
+                        document.getElementById('setup-screen').style.display = 'none';
+                        initializeGame(data);
+                    }, 1000);
+                } else {
+                    throw new Error(data.error || 'Failed to generate game');
+                }
+                
+            } catch (error) {
+                clearInterval(progressInterval);
+                debugLog('error', `Game generation failed: ${error.message}`);
+                debugLog('llm', `LLM generation error: ${error.message}`);
+                alert('Failed to generate game: ' + error.message);
+                document.getElementById('profile-form').style.display = 'block';
+                document.getElementById('generation-status').style.display = 'none';
+            }
+        });
+        
+        function initializeGame(gameData) {
+            debugLog('game', '=== Initializing Game ===');
+            debugLog('game', `Initial state: ${JSON.stringify(gameData.initialState, null, 2)}`);
+            debugLog('game', `Current room: ${JSON.stringify(gameData.currentRoom, null, 2)}`);
+            
+            // Update UI with initial state
+            document.getElementById('game-title').textContent = gameData.worldOverview.title;
+            updateGameState(gameData.initialState);
+            updateRoom(gameData.currentRoom);
+            
+            // Connect socket
+            debugLog('socket', `Connecting Socket.IO with userId: ${userId}`);
+            socket = io({ query: { userId } });
+            
+            socket.on('connect', () => {
+                debugLog('socket', 'Socket.IO connected successfully');
+            });
+            
+            socket.on('disconnect', () => {
+                debugLog('socket', 'Socket.IO disconnected');
+            });
+            
+            socket.on('gameResponse', (data) => {
+                debugLog('socket', `Received gameResponse: ${JSON.stringify(data, null, 2)}`);
+                debugLog('llm', `LLM Response: ${data.narrative}`);
+                
+                appendNarrative(data.narrative);
+                if (data.educationalNote) {
+                    appendNarrative('\n[Historical Note: ' + data.educationalNote + ']');
+                    debugLog('game', `Educational note: ${data.educationalNote}`);
+                }
+                updateGameState(data.gameState);
+                updateRoom(data.currentRoom);
+                
+                // Re-enable input
+                document.getElementById('command-input').disabled = false;
+                document.getElementById('submit-btn').disabled = false;
+            });
+            
+            socket.on('gameComplete', (summary) => {
+                debugLog('game', `Game completed! Summary: ${JSON.stringify(summary, null, 2)}`);
+                appendNarrative('\n\n=== GAME COMPLETE ===');
+                appendNarrative(`Score: ${summary.score}`);
+                appendNarrative(`Turns: ${summary.turnCount}`);
+                appendNarrative(`Rooms Explored: ${summary.roomsExplored}/${summary.totalRooms}`);
+                appendNarrative(`Quests Completed: ${summary.questsCompleted}/${summary.totalQuests}`);
+            });
+            
+            socket.on('error', (data) => {
+                debugLog('error', `Socket error: ${data.message}`);
+                appendNarrative('\n[Error: ' + data.message + ']');
+                document.getElementById('command-input').disabled = false;
+                document.getElementById('submit-btn').disabled = false;
+            });
+            
+            // Handle progressive image generation
+            socket.on('imageGenerated', (data) => {
+                debugLog('llm', `Image generated for room ${data.roomId}: ${data.progress}% complete`);
+                debugLog('game', `Image URL: ${data.imageUrl}`);
+                console.log(`Image generated for room ${data.roomId}: ${data.progress}% complete`);
+                
+                // Update image if it's the current room
+                const currentRoomImage = document.getElementById('room-image');
+                if (currentRoomImage && data.imageUrl) {
+                    currentRoomImage.src = data.imageUrl;
+                }
+                
+                // Show progress
+                if (data.progress < 100) {
+                    const statusText = document.getElementById('status-text');
+                    if (statusText) {
+                        statusText.textContent = `Generating room images: ${data.progress}%`;
+                    }
+                }
+            });
+            
+            // Enable input
+            gameActive = true;
+            document.getElementById('command-input').disabled = false;
+            document.getElementById('submit-btn').disabled = false;
+            
+            appendNarrative('\n\n=== Game Started ===\n');
+            appendNarrative('Type "help" for commands, or describe what you want to do.\n');
+            debugLog('game', 'Game initialization complete');
+        }
+        
+        function updateGameState(state) {
+            debugLog('game', `Updating game state: ${JSON.stringify(state, null, 2)}`);
+            document.getElementById('health').textContent = state.health;
+            document.getElementById('gold').textContent = state.resources.gold;
+            document.getElementById('turn').textContent = state.turnCount;
+            document.getElementById('score').textContent = state.score;
+            document.getElementById('rooms-explored').textContent = state.visitedRooms.length;
+            
+            // Update inventory
+            const invDiv = document.getElementById('inventory');
+            invDiv.textContent = state.inventory.length > 0 ? state.inventory.join(', ') : 'Empty';
+            
+            // Update quests
+            const questDiv = document.getElementById('quests');
+            if (state.activeQuests.length > 0) {
+                questDiv.innerHTML = state.activeQuests.map(q => 
+                    `${q.name} (${q.progress}%)`
+                ).join('<br>');
+            } else {
+                questDiv.textContent = 'None';
+            }
+        }
+        
+        function updateRoom(room) {
+            debugLog('game', `Updating room: ${room.name} (${room.id || 'unknown id'})`);
+            document.getElementById('room-name').textContent = room.name;
+            
+            if (room.imageUrl) {
+                debugLog('game', `Loading room image: ${room.imageUrl}`);
+                document.getElementById('room-image').src = room.imageUrl;
+            }
+            
+            if (room.firstVisit) {
+                appendNarrative('\n[First time visiting this location]');
+                debugLog('game', 'First visit to this room');
+            }
+        }
+        
+        function appendNarrative(text) {
+            const narrative = document.getElementById('narrative');
+            narrative.textContent += '\n' + text;
+            narrative.scrollTop = narrative.scrollHeight;
+        }
+        
+        // Handle input
+        function submitCommand() {
+            if (!gameActive) return;
+            
+            const input = document.getElementById('command-input');
+            const command = input.value.trim();
+            
+            if (!command) return;
+            
+            debugLog('game', `Player command: "${command}"`);
+            debugLog('llm', `Sending command to LLM for processing: "${command}"`);
+            
+            appendNarrative('\n> ' + command);
+            
+            // Disable input while processing
+            input.disabled = true;
+            document.getElementById('submit-btn').disabled = true;
+            
+            // Send to server
+            debugLog('socket', `Emitting gameCommand: ${command}`);
+            socket.emit('gameCommand', { command });
+            
+            input.value = '';
+        }
+        
+        document.getElementById('submit-btn').addEventListener('click', submitCommand);
+        document.getElementById('command-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') submitCommand();
+        });
+        
+        // Try to continue existing game
+        debugLog('game', 'Checking for existing game session...');
+        fetch('/v2/api/continue-game', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId })
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                debugLog('game', 'Found existing game session, restoring...');
+                document.getElementById('setup-screen').style.display = 'none';
+                initializeGame({
+                    initialState: data.state,
+                    currentRoom: data.currentRoom,
+                    worldOverview: { title: 'Continued Adventure' }
+                });
+                appendNarrative('\n[Game restored from previous session]');
+            } else {
+                debugLog('game', 'No existing game found, showing setup screen');
+            }
+        })
+        .catch((error) => {
+            debugLog('error', `Failed to check for existing game: ${error.message}`);
+        });
+    </script>
+</body>
+</html>

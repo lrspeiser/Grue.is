@@ -10,6 +10,7 @@ const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
  */
 async function planGameWorld(userProfile) {
   console.log("[GamePlanner] Starting AI game planning for user:", userProfile.userId);
+  console.log("[GamePlanner] User profile:", JSON.stringify(userProfile, null, 2));
   
   const planningPrompt = `Design a text adventure game set in ${userProfile.timePeriod} at ${userProfile.storyLocation}.
   Player role: ${userProfile.characterRole}
@@ -84,6 +85,13 @@ async function planGameWorld(userProfile) {
   ];
 
   try {
+    console.log("[GamePlanner] Sending request to OpenAI API...");
+    console.log("[GamePlanner] Model: gpt-4-turbo-preview");
+    console.log("[GamePlanner] Max tokens: 4000");
+    console.log("[GamePlanner] Tool: create_game_design");
+    console.log("[GamePlanner] Prompt length:", planningPrompt.length);
+    
+    const startTime = Date.now();
     const response = await openai.chat.completions.create({
       model: "gpt-4-turbo-preview", // Using latest available model
       messages,
@@ -91,6 +99,9 @@ async function planGameWorld(userProfile) {
       tool_choice: { type: "function", function: { name: "create_game_design" } },
       max_tokens: 4000
     });
+    
+    const duration = Date.now() - startTime;
+    console.log(`[GamePlanner] OpenAI API response received in ${duration}ms`);
 
     if (!response || !response.choices || !response.choices[0]) {
       console.error("[GamePlanner] Invalid response structure from OpenAI");
@@ -100,7 +111,12 @@ async function planGameWorld(userProfile) {
     if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
       try {
         const gameDesign = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);
-        console.log("[GamePlanner] AI created game design:", gameDesign.game_overview.title);
+        console.log("[GamePlanner] Successfully parsed game design JSON");
+        console.log("[GamePlanner] Game title:", gameDesign.title);
+        console.log("[GamePlanner] Number of locations:", gameDesign.locations?.length || 0);
+        console.log("[GamePlanner] Number of characters:", gameDesign.characters?.length || 0);
+        console.log("[GamePlanner] Number of quests:", gameDesign.quests?.length || 0);
+        console.log("[GamePlanner] Starting location:", gameDesign.starting_location);
         return gameDesign;
       } catch (parseError) {
         console.error("[GamePlanner] Failed to parse game design JSON:", parseError);
@@ -114,8 +130,11 @@ async function planGameWorld(userProfile) {
     }
   } catch (error) {
     console.error("[GamePlanner] Error planning game:", error.message);
+    console.error("[GamePlanner] Error type:", error.constructor.name);
+    console.error("[GamePlanner] Stack trace:", error.stack);
     if (error.response) {
-      console.error("[GamePlanner] API error response:", error.response.data);
+      console.error("[GamePlanner] API error response:", JSON.stringify(error.response.data, null, 2));
+      console.error("[GamePlanner] API status code:", error.response.status);
     }
     throw error;
   }
@@ -195,7 +214,13 @@ function enhanceGameDesign(gameDesign, userProfile) {
  * Main function to create a complete game plan
  */
 async function createCompletePlan(userProfile) {
-  console.log("[GamePlanner] Creating complete game plan for user:", userProfile.userId);
+  console.log("[GamePlanner] ========================================");
+  console.log("[GamePlanner] STARTING COMPLETE GAME PLAN GENERATION");
+  console.log("[GamePlanner] ========================================");
+  console.log("[GamePlanner] User:", userProfile.userId);
+  console.log("[GamePlanner] Time period:", userProfile.timePeriod);
+  console.log("[GamePlanner] Location:", userProfile.storyLocation);
+  console.log("[GamePlanner] Role:", userProfile.characterRole);
   
   // Step 1: AI plans the entire game
   const gameDesign = await planGameWorld(userProfile);
@@ -216,6 +241,10 @@ async function createCompletePlan(userProfile) {
   };
   
   console.log("[GamePlanner] Complete game plan created successfully");
+  console.log("[GamePlanner] Total locations:", completePlan.world_map?.locations?.length || 0);
+  console.log("[GamePlanner] Total characters:", completePlan.characters?.length || 0);
+  console.log("[GamePlanner] Total quests:", completePlan.quests?.length || 0);
+  console.log("[GamePlanner] ========================================");
   return completePlan;
 }
 
