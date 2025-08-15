@@ -17,7 +17,7 @@ app.post("/api/chat-with-me", async (req, res) => {
     ];
 
     const response = await openai.chat.completions.create({
-      model: "gpt-4.1",
+      model: "gpt-5",
       messages,
       stream: true,
     });

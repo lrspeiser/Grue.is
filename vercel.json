@@ -1,0 +1,38 @@
+{
+  "version": 2,
+  "builds": [
+    {
+      "src": "index.js",
+      "use": "@vercel/node"
+    },
+    {
+      "src": "v2/index-v2.js", 
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/v2/api/(.*)",
+      "dest": "/v2/index-v2.js"
+    },
+    {
+      "src": "/v2/(.*)",
+      "dest": "/v2/public-v2/$1"
+    },
+    {
+      "src": "/v2",
+      "dest": "/v2/public-v2/index.html"
+    },
+    {
+      "src": "/api/(.*)",
+      "dest": "/index.js"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/public/$1"
+    }
+  ],
+  "env": {
+    "NODE_ENV": "production"
+  }
+}

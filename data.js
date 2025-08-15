@@ -68,7 +68,7 @@ async function updateStoryContext(userId, conversationData, ioInstance) {
   const { messages, tools } = getStoryContextMessages(storyDataToUpdate, currentRoomObjectForPrompt, playerArrayForPrompt, questArrayForPrompt, formattedHistory);
   console.log("[data.js/updateStoryContext] Calling OpenAI for story update...");
   try {
-    const response = await openai.chat.completions.create({ model: "gpt-4.1", messages, tools, tool_choice: "auto" });
+    const response = await openai.chat.completions.create({ model: "gpt-5", messages, tools, tool_choice: "auto" });
     const responseMessage = response.choices[0].message;
     console.log("[data.js/updateStoryContext] OpenAI Response for story:", JSON.stringify(responseMessage).substring(0, 200) + "...");
     if (responseMessage && responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
@@ -249,7 +249,7 @@ async function updateRoomContext(userId, ioInstance) {
 
   console.log("[data.js/updateRoomContext] Calling OpenAI for room update...");
   try {
-    const response = await openai.chat.completions.create({ model: "gpt-4.1", messages, tools, tool_choice: "auto" });
+    const response = await openai.chat.completions.create({ model: "gpt-5", messages, tools, tool_choice: "auto" });
     console.log("[data.js/updateRoomContext] OpenAI response for room.");
     await processGPTResponseForRoomUpdate(response, filePaths, userId, ioInstance, targetCurrentRoomIdFromStory); // Pass target ID for validation
   } catch (error) { console.error("[data.js/updateRoomContext] Failed:", error); }
@@ -521,7 +521,7 @@ async function updatePlayerContext(userId, ioInstance) { // ioInstance kept for 
   const { messages, tools } = getPlayerContextMessages(storyDataForContext, playerArrayForContext, formattedHistory);
   console.log("[data.js/updatePlayerContext] Calling OpenAI for player update...");
   try {
-    const response = await openai.chat.completions.create({ model: "gpt-4.1", messages, tools, tool_choice: "auto" });
+    const response = await openai.chat.completions.create({ model: "gpt-5", messages, tools, tool_choice: "auto" });
     const responseMessage = response.choices[0].message;
     console.log("[data.js/updatePlayerContext] OpenAI response for player:", JSON.stringify(responseMessage).substring(0,200)+"...");
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
@@ -587,7 +587,7 @@ async function updateQuestContext(userId, ioInstance) { // ioInstance kept
   const { messages, tools } = getQuestContextMessages(storyDataForContext, questArrayForContext, formattedHistory);
   console.log("[data.js/updateQuestContext] Calling OpenAI for quest update...");
   try {
-    const response = await openai.chat.completions.create({ model: "gpt-4.1", messages, tools, tool_choice: "auto" });
+    const response = await openai.chat.completions.create({ model: "gpt-5", messages, tools, tool_choice: "auto" });
     const responseMessage = response.choices[0].message;
     console.log("[data.js/updateQuestContext] OpenAI response for quest:", JSON.stringify(responseMessage).substring(0,200)+"...");
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
@@ -664,13 +664,13 @@ async function generateStoryImage(userId, roomDescriptionForDalle, roomObject, i
 
   try {
     const imageGenParams = {
-        model: "gpt-image-1", // Explicitly using gpt-image-1
+        model: "dall-e-3", // Using DALL-E 3 for better quality
         prompt: fullPrompt,
         n: 1,
-        size: "1024x1024",     // Valid size for gpt-image-1
-        quality: "auto",       // Valid quality for gpt-image-1 (high, medium, low, auto)
-        output_format: "png",  // Explicitly requesting PNG, default for gpt-image-1 anyway
-        // 'response_format' is NOT used for gpt-image-1, it always returns b64_json
+        size: "1024x1024",     // Square images are faster
+        quality: "standard",   // Options: "standard" or "hd" (HD is slower but higher quality)
+        style: "natural",      // Options: "natural" or "vivid" 
+        response_format: "b64_json"  // Get base64 encoded image
     };
     console.log("[data.js/generateStoryImage] Calling OpenAI Images API with params:", JSON.stringify(imageGenParams, null, 2));
 
