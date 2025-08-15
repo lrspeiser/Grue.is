@@ -6,7 +6,6 @@ const http = require("http");
 const path = require("path");
 const { Server } = require("socket.io");
 const admin = require("firebase-admin");
-const { getDatabase } = require("firebase/database");
 
 const { createCompletePlan } = require("./game-planner");
 const { generateCompleteWorld } = require("./world-generator");
@@ -28,23 +27,44 @@ const activeGames = new Map();
 const worldCache = new Map();
 
 /**
- * Initialize Firebase (simplified)
+ * Initialize or get existing Firebase Admin instance
  */
-function initializeFirebase() {
-  const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+function getFirebaseAdmin() {
+  const V2_APP_NAME = 'grue-v2-app';
   
-  if (!admin.apps.length) {
-    admin.initializeApp({
+  try {
+    // Check if v2 app already exists
+    const existingApp = admin.apps.find(app => app.name === V2_APP_NAME);
+    if (existingApp) {
+      return existingApp.database();
+    }
+    
+    // Check if we have service account
+    if (!process.env.GOOGLE_SERVICE_ACCOUNT) {
+      console.error("[V2] GOOGLE_SERVICE_ACCOUNT not found in environment");
+      // Return null to handle gracefully
+      return null;
+    }
+    
+    const serviceAccount = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT);
+    
+    // Initialize with a specific name for v2
+    const app = admin.initializeApp({
       credential: admin.credential.cert(serviceAccount),
       databaseURL: process.env.databaseURL,
       storageBucket: process.env.storageBucket
-    });
+    }, V2_APP_NAME);
+    
+    console.log("[V2] Firebase Admin initialized successfully");
+    return app.database();
+  } catch (error) {
+    console.error("[V2] Error initializing Firebase:", error.message);
+    // Return null to handle gracefully
+    return null;
   }
-  
-  return admin.database();
 }
 
-const db = initializeFirebase();
+const db = getFirebaseAdmin();
 
 /**
  * API: Start a new game
@@ -293,6 +313,11 @@ app.post("/preview-game", async (req, res) => {
  * Save game to Firebase
  */
 async function saveGameToFirebase(userId, gameEngine) {
+  if (!db) {
+    console.warn("[Server] Firebase not available, skipping save");
+    return;
+  }
+  
   try {
     const saveData = {
       world: gameEngine.world,
@@ -311,6 +336,11 @@ async function saveGameToFirebase(userId, gameEngine) {
  * Load game from Firebase
  */
 async function loadGameFromFirebase(userId) {
+  if (!db) {
+    console.warn("[Server] Firebase not available, cannot load game");
+    return null;
+  }
+  
   try {
     const snapshot = await db.ref(`games-v2/${userId}`).once('value');
     return snapshot.val();
@@ -324,6 +354,11 @@ async function loadGameFromFirebase(userId) {
  * Save world to Firebase (for persistence)
  */
 async function saveWorldToFirebase(userId, world) {
+  if (!db) {
+    console.warn("[Server] Firebase not available, skipping world save");
+    return;
+  }
+  
   try {
     await db.ref(`worlds-v2/${userId}`).set(world);
     console.log(`[Server] World saved for user ${userId}`);
