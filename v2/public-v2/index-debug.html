@@ -717,16 +717,48 @@
             updateGameState(gameData.initialState);
             updateRoom(gameData.currentRoom);
             
-            // Connect socket
+            // Connect socket with better configuration
             debugLog('socket', `Connecting Socket.IO with userId: ${userId}`);
-            socket = io({ query: { userId } });
+            socket = io({
+                query: { userId },
+                transports: ['websocket', 'polling'],
+                reconnection: true,
+                reconnectionAttempts: 10,
+                reconnectionDelay: 1000,
+                reconnectionDelayMax: 5000,
+                timeout: 20000
+            });
             
             socket.on('connect', () => {
                 debugLog('socket', 'Socket.IO connected successfully');
+                debugLog('socket', `Socket ID: ${socket.id}`);
+                debugLog('socket', `Transport: ${socket.io.engine.transport.name}`);
             });
             
-            socket.on('disconnect', () => {
-                debugLog('socket', 'Socket.IO disconnected');
+            socket.on('disconnect', (reason) => {
+                debugLog('socket', `Socket.IO disconnected: ${reason}`);
+                if (reason === 'io server disconnect') {
+                    // Server disconnected, try to reconnect
+                    debugLog('socket', 'Server disconnected, attempting reconnection...');
+                    socket.connect();
+                }
+            });
+            
+            socket.on('connect_error', (error) => {
+                debugLog('error', `Socket.IO connection error: ${error.message}`);
+                debugLog('error', `Error type: ${error.type}`);
+            });
+            
+            socket.on('reconnect', (attemptNumber) => {
+                debugLog('socket', `Socket.IO reconnected after ${attemptNumber} attempts`);
+            });
+            
+            socket.on('reconnect_attempt', (attemptNumber) => {
+                debugLog('socket', `Socket.IO reconnection attempt #${attemptNumber}`);
+            });
+            
+            socket.on('reconnect_failed', () => {
+                debugLog('error', 'Socket.IO reconnection failed after all attempts');
             });
             
             socket.on('gameResponse', (data) => {

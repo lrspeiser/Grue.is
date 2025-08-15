@@ -263,18 +263,27 @@ router.post("/continue-game", async (req, res) => {
 });
 
 /**
- * Socket.IO: Handle real-time gameplay
+ * Setup Socket.IO handlers
  */
-if (io) {
-  io.on("connection", (socket) => {
-    console.log("New client connected:", socket.id);
+function setupSocketHandlers(ioInstance) {
+  if (!ioInstance) {
+    console.error("[V2] Cannot setup socket handlers: io instance is null");
+    return;
+  }
+  
+  console.log("[V2] Setting up Socket.IO handlers");
+  
+  ioInstance.on("connection", (socket) => {
+    console.log("[V2] New client connected:", socket.id);
     
     const userId = socket.handshake.query.userId;
     if (!userId) {
+      console.log("[V2] No userId provided, disconnecting client");
       socket.disconnect(true);
       return;
     }
     
+    console.log(`[V2] Client ${socket.id} associated with user ${userId}`);
     socket.join(userId);
   
   // Handle game commands
@@ -348,11 +357,19 @@ if (io) {
   });
   
     // Handle disconnect
-    socket.on("disconnect", () => {
-      console.log(`Client disconnected: ${socket.id}`);
+    socket.on("disconnect", (reason) => {
+      console.log(`[V2] Client disconnected: ${socket.id}`);
+      console.log(`[V2] Disconnect reason: ${reason}`);
+      console.log(`[V2] User ID: ${userId}`);
+      console.log(`[V2] Active games remaining: ${activeGames.size}`);
       // Keep game in memory for reconnection
     });
   });
+}
+
+// Setup socket handlers if running standalone
+if (io) {
+  setupSocketHandlers(io);
 }
 
 /**
@@ -498,6 +515,7 @@ async function saveWorldToFirebase(userId, world) {
 router.setIo = function(ioInstance) {
   io = ioInstance;
   console.log("[V2] Socket.IO instance set from parent app");
+  setupSocketHandlers(io);
 };
 
 // Export router for use as a module
