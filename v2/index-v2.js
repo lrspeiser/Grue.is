@@ -8,7 +8,7 @@ const { Server } = require("socket.io");
 const admin = require("firebase-admin");
 
 const { createCompletePlan } = require("./game-planner");
-const { generateCompleteWorld } = require("./world-generator");
+const { generateWorldWithoutImages, generateImagesAsync } = require("./world-generator-fast");
 const GameEngine = require("./game-engine");
 
 const app = express();
@@ -88,15 +88,29 @@ app.post("/new-game", async (req, res) => {
       console.log("[Server] AI is planning the game...");
       const gamePlan = await createCompletePlan(userProfile);
       
-      // Step 2: Generate all content
-      console.log("[Server] Generating complete world...");
-      world = await generateCompleteWorld(gamePlan);
+      // Step 2: Generate world content WITHOUT images (fast)
+      console.log("[Server] Generating world content (without images)...");
+      world = await generateWorldWithoutImages(gamePlan);
       
       // Cache for similar profiles
       worldCache.set(profileKey, world);
       
       // Save to Firebase for persistence
       await saveWorldToFirebase(userId, world);
+      
+      // Step 3: Start async image generation (non-blocking)
+      console.log("[Server] Starting background image generation...");
+      generateImagesAsync(world, (imageUpdate) => {
+        // Emit image updates to client via Socket.IO
+        io.to(userId).emit("imageGenerated", imageUpdate);
+        
+        // Save updated world periodically
+        if (imageUpdate.progress % 20 === 0) {
+          saveWorldToFirebase(userId, world).catch(console.error);
+        }
+      }).catch(error => {
+        console.error("[Server] Background image generation failed:", error);
+      });
     }
     
     // Step 3: Initialize game engine
