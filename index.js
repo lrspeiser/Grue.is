@@ -107,14 +107,18 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
-      ? ["https://grue.is", "https://www.grue.is"] 
+      ? ["https://grue.is", "https://www.grue.is", "https://grue-is.vercel.app"] 
       : ["http://localhost:3000", "http://localhost:3001"],
-    methods: ["GET", "POST"],
-    credentials: true
+    methods: ["GET", "POST", "OPTIONS"],
+    credentials: true,
+    allowedHeaders: ["content-type"]
   },
-  transports: ['websocket', 'polling'], // Enable both transports
+  transports: ['polling', 'websocket'], // Polling first for Vercel
+  allowEIO3: true, // Allow different engine.io versions
   pingTimeout: 60000, // Increase timeout to prevent disconnections
-  pingInterval: 25000
+  pingInterval: 25000,
+  upgradeTimeout: 30000, // Timeout for upgrade from polling to websocket
+  maxHttpBufferSize: 1e6 // 1MB max buffer size
 });
 app.set('io', io); // Store io instance on the app for access in request handlers
 
