@@ -419,19 +419,20 @@
         }
         
         function updateGameState(state) {
-            document.getElementById('health').textContent = state.health;
-            document.getElementById('gold').textContent = state.resources.gold;
-            document.getElementById('turn').textContent = state.turnCount;
-            document.getElementById('score').textContent = state.score;
-            document.getElementById('rooms-explored').textContent = state.visitedRooms.length;
+            if (!state) return;
+            document.getElementById('health').textContent = state.health || 100;
+            document.getElementById('gold').textContent = state.resources?.gold || 0;
+            document.getElementById('turn').textContent = state.turnCount || 0;
+            document.getElementById('score').textContent = state.score || 0;
+            document.getElementById('rooms-explored').textContent = state.visitedRooms?.length || 0;
             
             // Update inventory
             const invDiv = document.getElementById('inventory');
-            invDiv.textContent = state.inventory.length > 0 ? state.inventory.join(', ') : 'Empty';
+            invDiv.textContent = state.inventory?.length > 0 ? state.inventory.join(', ') : 'Empty';
             
             // Update quests
             const questDiv = document.getElementById('quests');
-            if (state.activeQuests.length > 0) {
+            if (state.activeQuests?.length > 0) {
                 questDiv.innerHTML = state.activeQuests.map(q => 
                     `${q.name} (${q.progress}%)`
                 ).join('<br>');
@@ -441,6 +442,7 @@
         }
         
         function updateRoom(room) {
+            if (!room) return;
             document.getElementById('room-name').textContent = room.name;
             
             if (room.imageUrl) {
@@ -492,7 +494,7 @@
         })
         .then(res => res.json())
         .then(data => {
-            if (data.success) {
+            if (data.success && data.status !== 'loading' && data.state && data.currentRoom) {
                 document.getElementById('setup-screen').style.display = 'none';
                 initializeGame({
                     initialState: data.state,
