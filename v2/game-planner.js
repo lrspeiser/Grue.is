@@ -10,67 +10,36 @@ const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
  */
 async function planGameWorld(userProfile) {
   console.log("[GamePlanner] Starting AI game planning for user:", userProfile.userId);
+  console.log("[GamePlanner] User profile:", JSON.stringify(userProfile, null, 2));
   
-  const planningPrompt = `You are the master game designer for a text-based adventure game like Oregon Trail meets Zork.
+  const planningPrompt = `Design a text adventure game set in ${userProfile.timePeriod} at ${userProfile.storyLocation}.
+  Player role: ${userProfile.characterRole}
   
-  USER PROFILE:
-  - Education Level: ${userProfile.educationLevel}
-  - Location: ${userProfile.location}
-  - Language: ${userProfile.language}
-  - Time Period Chosen: ${userProfile.timePeriod}
-  - Historical Figure/Role: ${userProfile.characterRole}
-  - Story Setting: ${userProfile.storyLocation}
-  
-  Create a complete game design document with interconnected elements. Your game should:
-  1. Have 15-20 interconnected locations that tell a coherent story
-  2. Include 3 major quests with multiple steps each
-  3. Feature 10-15 NPCs with distinct personalities and roles
-  4. Have a clear progression from beginning to end
-  5. Include educational historical elements appropriate for the user's level
-  6. Create meaningful choices that affect the story
-  
-  Design the COMPLETE game world as a structured blueprint that another AI can use to generate all content.`;
+  Create 10-12 locations, 5-8 characters, and 3 main quests. Make it educational and engaging.`;
 
   const gameDesignTools = [
     {
       type: "function",
       function: {
-        name: "create_complete_game_design",
-        description: "Creates the complete game design document with all interconnected elements",
+        name: "create_game_design",
+        description: "Creates game design with locations, characters, and quests",
         parameters: {
           type: "object",
           properties: {
-            game_overview: {
-              type: "object",
-              properties: {
-                title: { type: "string", description: "The game's title" },
-                setting: { type: "string", description: "Time period and location" },
-                main_story: { type: "string", description: "The overarching narrative (200-300 words)" },
-                educational_goals: { type: "array", items: { type: "string" }, description: "What the player will learn" },
-                difficulty_curve: { type: "string", description: "How challenge progresses through the game" },
-                estimated_playtime: { type: "string", description: "Expected completion time" }
-              }
-            },
-            world_map: {
-              type: "object",
-              properties: {
-                starting_location: { type: "string", description: "Where the player begins" },
-                locations: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      id: { type: "string", description: "Unique location ID (e.g., 'athens-agora')" },
-                      name: { type: "string", description: "Location name" },
-                      description: { type: "string", description: "Detailed description for image generation" },
-                      purpose: { type: "string", description: "What happens here in the story" },
-                      connections: { type: "array", items: { type: "string" }, description: "IDs of connected locations" },
-                      required_items: { type: "array", items: { type: "string" }, description: "Items needed to access" },
-                      hidden: { type: "boolean", description: "Whether this location starts hidden" }
-                    }
-                  }
-                },
-                connection_logic: { type: "string", description: "How locations connect and unlock" }
+            title: { type: "string" },
+            setting: { type: "string" },
+            main_story: { type: "string" },
+            starting_location: { type: "string" },
+            locations: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  id: { type: "string" },
+                  name: { type: "string" },
+                  description: { type: "string" },
+                  connections: { type: "array", items: { type: "string" } }
+                }
               }
             },
             characters: {
@@ -78,14 +47,10 @@ async function planGameWorld(userProfile) {
               items: {
                 type: "object",
                 properties: {
-                  id: { type: "string", description: "Unique NPC ID" },
-                  name: { type: "string", description: "Character name" },
-                  role: { type: "string", description: "Their role in the story" },
-                  personality: { type: "string", description: "Personality traits and speaking style" },
-                  location: { type: "string", description: "Where they're found" },
-                  knowledge: { type: "array", items: { type: "string" }, description: "What they know/teach" },
-                  quest_giver: { type: "boolean", description: "Whether they give quests" },
-                  dialogue_themes: { type: "array", items: { type: "string" }, description: "Topics they discuss" }
+                  id: { type: "string" },
+                  name: { type: "string" },
+                  location: { type: "string" },
+                  role: { type: "string" }
                 }
               }
             },
@@ -94,95 +59,15 @@ async function planGameWorld(userProfile) {
               items: {
                 type: "object",
                 properties: {
-                  id: { type: "string", description: "Unique quest ID" },
-                  name: { type: "string", description: "Quest name" },
-                  type: { type: "string", description: "main_story, side_quest, or educational" },
-                  description: { type: "string", description: "What the player must do" },
-                  giver: { type: "string", description: "NPC who gives this quest" },
-                  steps: {
-                    type: "array",
-                    items: {
-                      type: "object",
-                      properties: {
-                        step_id: { type: "string" },
-                        description: { type: "string" },
-                        location: { type: "string" },
-                        required_items: { type: "array", items: { type: "string" } },
-                        unlocks: { type: "array", items: { type: "string" } }
-                      }
-                    }
-                  },
-                  rewards: { type: "array", items: { type: "string" }, description: "What player gains" },
-                  educational_value: { type: "string", description: "What this teaches about history" }
+                  id: { type: "string" },
+                  name: { type: "string" },
+                  description: { type: "string" },
+                  steps: { type: "array", items: { type: "string" } }
                 }
-              }
-            },
-            items: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string", description: "Unique item ID" },
-                  name: { type: "string", description: "Item name" },
-                  description: { type: "string", description: "What it is and looks like" },
-                  location: { type: "string", description: "Where it's found" },
-                  purpose: { type: "string", description: "What it's used for" },
-                  historical_significance: { type: "string", description: "Real historical context" }
-                }
-              }
-            },
-            challenges: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string", description: "Challenge ID" },
-                  type: { type: "string", description: "puzzle, combat, diplomacy, or resource_management" },
-                  location: { type: "string", description: "Where this occurs" },
-                  description: { type: "string", description: "The challenge details" },
-                  solution_hints: { type: "array", items: { type: "string" } },
-                  consequences: {
-                    type: "object",
-                    properties: {
-                      success: { type: "string" },
-                      failure: { type: "string" }
-                    }
-                  }
-                }
-              }
-            },
-            progression: {
-              type: "object",
-              properties: {
-                acts: {
-                  type: "array",
-                  items: {
-                    type: "object",
-                    properties: {
-                      act_number: { type: "integer" },
-                      name: { type: "string" },
-                      description: { type: "string" },
-                      locations_unlocked: { type: "array", items: { type: "string" } },
-                      key_events: { type: "array", items: { type: "string" } },
-                      completion_trigger: { type: "string" }
-                    }
-                  }
-                },
-                victory_conditions: { type: "array", items: { type: "string" } },
-                failure_conditions: { type: "array", items: { type: "string" } }
-              }
-            },
-            historical_elements: {
-              type: "object",
-              properties: {
-                historical_events: { type: "array", items: { type: "string" } },
-                historical_figures: { type: "array", items: { type: "string" } },
-                cultural_elements: { type: "array", items: { type: "string" } },
-                educational_notes: { type: "array", items: { type: "string" } }
               }
             }
           },
-          required: ["game_overview", "world_map", "characters", "quests", "items", "challenges", "progression", "historical_elements"]
+          required: ["title", "setting", "main_story", "starting_location", "locations", "characters", "quests"]
         }
       }
     }
@@ -195,17 +80,28 @@ async function planGameWorld(userProfile) {
     },
     {
       role: "user",
-      content: `Design a complete game for this user. Make it educational, engaging, and historically accurate. Create a rich, interconnected world where every element serves the story and learning objectives. The game should take about 30-45 minutes to complete.`
+      content: `Create the game now.`
     }
   ];
 
   try {
+    console.log("[GamePlanner] Sending request to OpenAI API...");
+    console.log("[GamePlanner] Model: gpt-4-turbo-preview");
+    console.log("[GamePlanner] Max tokens: 4000");
+    console.log("[GamePlanner] Tool: create_game_design");
+    console.log("[GamePlanner] Prompt length:", planningPrompt.length);
+    
+    const startTime = Date.now();
     const response = await openai.chat.completions.create({
       model: "gpt-4-turbo-preview", // Using latest available model
       messages,
       tools: gameDesignTools,
-      tool_choice: { type: "function", function: { name: "create_complete_game_design" } }
+      tool_choice: { type: "function", function: { name: "create_game_design" } },
+      max_tokens: 4000
     });
+    
+    const duration = Date.now() - startTime;
+    console.log(`[GamePlanner] OpenAI API response received in ${duration}ms`);
 
     if (!response || !response.choices || !response.choices[0]) {
       console.error("[GamePlanner] Invalid response structure from OpenAI");
@@ -215,7 +111,12 @@ async function planGameWorld(userProfile) {
     if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
       try {
         const gameDesign = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);
-        console.log("[GamePlanner] AI created game design:", gameDesign.game_overview.title);
+        console.log("[GamePlanner] Successfully parsed game design JSON");
+        console.log("[GamePlanner] Game title:", gameDesign.title);
+        console.log("[GamePlanner] Number of locations:", gameDesign.locations?.length || 0);
+        console.log("[GamePlanner] Number of characters:", gameDesign.characters?.length || 0);
+        console.log("[GamePlanner] Number of quests:", gameDesign.quests?.length || 0);
+        console.log("[GamePlanner] Starting location:", gameDesign.starting_location);
         return gameDesign;
       } catch (parseError) {
         console.error("[GamePlanner] Failed to parse game design JSON:", parseError);
@@ -229,66 +130,103 @@ async function planGameWorld(userProfile) {
     }
   } catch (error) {
     console.error("[GamePlanner] Error planning game:", error.message);
+    console.error("[GamePlanner] Error type:", error.constructor.name);
+    console.error("[GamePlanner] Stack trace:", error.stack);
     if (error.response) {
-      console.error("[GamePlanner] API error response:", error.response.data);
+      console.error("[GamePlanner] API error response:", JSON.stringify(error.response.data, null, 2));
+      console.error("[GamePlanner] API status code:", error.response.status);
     }
     throw error;
   }
 }
 
 /**
- * Phase 2: AI validates and enhances the game design
- * Ensures all connections make sense and the game is playable
+ * Phase 2: Enhance the game design with additional structure
  */
-async function validateAndEnhanceGameDesign(gameDesign) {
-  console.log("[GamePlanner] Validating game design...");
+function enhanceGameDesign(gameDesign, userProfile) {
+  console.log("[GamePlanner] Enhancing game design...");
   
-  const validationPrompt = `Review this game design and ensure:
-  1. All location connections are bidirectional and make geographic sense
-  2. Every quest step references valid locations and items
-  3. The progression is smooth and difficulty increases appropriately
-  4. There are no dead ends or unwinnable states
-  5. Educational content is woven naturally into gameplay
-  
-  Fix any issues and enhance the design where needed.`;
-
-  const messages = [
-    {
-      role: "system",
-      content: validationPrompt
+  // Add structure needed for the game engine
+  return {
+    game_overview: {
+      title: gameDesign.title,
+      setting: gameDesign.setting,
+      main_story: gameDesign.main_story,
+      educational_goals: [`Learn about ${userProfile.timePeriod}`, `Understand ${userProfile.characterRole}`],
+      difficulty_curve: "Progressive",
+      estimated_playtime: "30-45 minutes"
     },
-    {
-      role: "user",
-      content: `Validate and enhance this game design: ${JSON.stringify(gameDesign)}`
+    world_map: {
+      starting_location: gameDesign.starting_location,
+      locations: gameDesign.locations.map(loc => ({
+        ...loc,
+        purpose: "Exploration and story progression",
+        required_items: [],
+        hidden: false
+      })),
+      connection_logic: "Direct connections between locations"
+    },
+    characters: gameDesign.characters.map(char => ({
+      ...char,
+      personality: "Friendly and helpful",
+      knowledge: [`History of ${gameDesign.setting}`],
+      quest_giver: false,
+      dialogue_themes: ["history", "quests", "items"]
+    })),
+    quests: gameDesign.quests.map(quest => ({
+      ...quest,
+      type: "main_story",
+      giver: gameDesign.characters[0]?.id || "narrator",
+      steps: quest.steps.map((step, idx) => ({
+        step_id: `step_${idx}`,
+        description: step,
+        location: gameDesign.locations[0]?.id || "start",
+        required_items: [],
+        unlocks: []
+      })),
+      rewards: ["Experience", "Knowledge"],
+      educational_value: `Learn about ${gameDesign.setting}`
+    })),
+    items: [],
+    challenges: [],
+    progression: {
+      acts: [{
+        act_number: 1,
+        name: "Beginning",
+        description: "Start of the adventure",
+        locations_unlocked: gameDesign.locations.map(l => l.id),
+        key_events: ["Game start"],
+        completion_trigger: "Complete main quest"
+      }],
+      victory_conditions: ["Complete all quests"],
+      failure_conditions: ["None"]
+    },
+    historical_elements: {
+      historical_events: [`Events of ${userProfile.timePeriod}`],
+      historical_figures: [userProfile.characterRole],
+      cultural_elements: [`Culture of ${userProfile.storyLocation}`],
+      educational_notes: ["Historical accuracy maintained throughout"]
     }
-  ];
-
-  try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
-      messages,
-      max_tokens: 4000
-    });
-
-    // AI provides enhanced version or confirms design is good
-    return gameDesign; // Return validated/enhanced design
-  } catch (error) {
-    console.error("[GamePlanner] Validation error:", error);
-    return gameDesign; // Return original if validation fails
-  }
+  };
 }
 
 /**
  * Main function to create a complete game plan
  */
 async function createCompletePlan(userProfile) {
-  console.log("[GamePlanner] Creating complete game plan for user:", userProfile.userId);
+  console.log("[GamePlanner] ========================================");
+  console.log("[GamePlanner] STARTING COMPLETE GAME PLAN GENERATION");
+  console.log("[GamePlanner] ========================================");
+  console.log("[GamePlanner] User:", userProfile.userId);
+  console.log("[GamePlanner] Time period:", userProfile.timePeriod);
+  console.log("[GamePlanner] Location:", userProfile.storyLocation);
+  console.log("[GamePlanner] Role:", userProfile.characterRole);
   
   // Step 1: AI plans the entire game
   const gameDesign = await planGameWorld(userProfile);
   
-  // Step 2: Validate and enhance the design
-  const validatedDesign = await validateAndEnhanceGameDesign(gameDesign);
+  // Step 2: Enhance the design with additional structure
+  const validatedDesign = enhanceGameDesign(gameDesign, userProfile);
   
   // Step 3: Add metadata
   const completePlan = {
@@ -303,14 +241,18 @@ async function createCompletePlan(userProfile) {
   };
   
   console.log("[GamePlanner] Complete game plan created successfully");
+  console.log("[GamePlanner] Total locations:", completePlan.world_map?.locations?.length || 0);
+  console.log("[GamePlanner] Total characters:", completePlan.characters?.length || 0);
+  console.log("[GamePlanner] Total quests:", completePlan.quests?.length || 0);
+  console.log("[GamePlanner] ========================================");
   return completePlan;
 }
 
 function calculateGenerationTime(gameDesign) {
   // Estimate time based on content volume
-  const locationCount = gameDesign.world_map.locations.length;
-  const characterCount = gameDesign.characters.length;
-  const questCount = gameDesign.quests.length;
+  const locationCount = gameDesign.world_map?.locations?.length || 10;
+  const characterCount = gameDesign.characters?.length || 5;
+  const questCount = gameDesign.quests?.length || 3;
   
   // Rough estimates: 2s per location for images, 1s per character, 0.5s per quest
   const estimatedSeconds = (locationCount * 2) + characterCount + (questCount * 0.5);
@@ -320,5 +262,5 @@ function calculateGenerationTime(gameDesign) {
 module.exports = {
   createCompletePlan,
   planGameWorld,
-  validateAndEnhanceGameDesign
+  enhanceGameDesign
 };

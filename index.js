@@ -41,12 +41,41 @@ const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
 
-// Serve v2 static files
+// Serve v2 with debug support
+app.get('/v2', (req, res) => {
+  if (req.query.debug !== undefined) {
+    res.sendFile(path.join(__dirname, 'v2/public-v2/index-debug.html'));
+  } else {
+    res.sendFile(path.join(__dirname, 'v2/public-v2/index.html'));
+  }
+});
+
+// Serve v2 static files for other resources
 app.use('/v2', express.static(path.join(__dirname, "v2/public-v2")));
 
-// Mount v2 API routes
-const v2Routes = require("./v2/index-v2");
-app.use('/v2/api', v2Routes);
+// Mount v2 API routes (must be after io is created)
+// Delay loading v2 routes until after io is created
+app.setupV2Routes = function(ioInstance) {
+  try {
+    const v2Routes = require("./v2/index-v2");
+    console.log("[V2 Routes] Successfully loaded v2 module");
+    
+    // Pass io instance to v2 routes
+    if (v2Routes.setIo) {
+      v2Routes.setIo(ioInstance);
+    }
+    
+    app.use('/v2/api', v2Routes);
+    console.log("[V2 Routes] Mounted v2 routes at /v2/api");
+    
+    // Add a test route to verify v2 is working
+    app.get('/v2/api/test', (req, res) => {
+      res.json({ status: 'ok', message: 'V2 API is working' });
+    });
+  } catch (error) {
+    console.error("[V2 Routes] Error loading v2 module:", error);
+  }
+};
 
 Sentry.init({
   dsn: "https://3df40e009cff002fcf8b9f676bddf9d5@o502926.ingest.us.sentry.io/4507164679405568",
@@ -75,8 +104,22 @@ app.use(function onError(err, req, res, next) {
 const usersDir = path.join(__dirname, "data", "users"); // Kept as in original
 
 const server = http.createServer(app);
-const io = new Server(server);
+const io = new Server(server, {
+  cors: {
+    origin: process.env.NODE_ENV === 'production' 
+      ? ["https://grue.is", "https://www.grue.is"] 
+      : ["http://localhost:3000", "http://localhost:3001"],
+    methods: ["GET", "POST"],
+    credentials: true
+  },
+  transports: ['websocket', 'polling'], // Enable both transports
+  pingTimeout: 60000, // Increase timeout to prevent disconnections
+  pingInterval: 25000
+});
 app.set('io', io); // Store io instance on the app for access in request handlers
+
+// Setup v2 routes after io is created
+app.setupV2Routes(io);
 
 let serviceAccount;
 try {
