@@ -140,6 +140,10 @@ router.post("/new-game", async (req, res) => {
     
     // Step 3: Initialize game engine with Socket.IO for image updates
     console.log("[Server] Step 3: Initializing game engine...");
+    console.log("[Server] Current io instance:", io ? "available" : "null");
+    if (!io) {
+      console.warn("[Server] Warning: io instance is null when creating GameEngine");
+    }
     const gameEngine = new GameEngine(world, userId, io);
     activeGames.set(userId, gameEngine);
     console.log("[Server] Game engine initialized successfully");
@@ -225,9 +229,15 @@ router.post("/continue-game", async (req, res) => {
       // Load from Firebase
       const savedGame = await loadGameFromFirebase(userId);
       if (savedGame) {
+        console.log("[V2] Loading saved game for user:", userId);
+        console.log("[V2] Current io instance:", io ? "available" : "null");
+        if (!io) {
+          console.warn("[V2] Warning: io instance is null when creating GameEngine");
+        }
         const gameEngine = new GameEngine(savedGame.world, userId, io);
         gameEngine.state = savedGame.state;
         activeGames.set(userId, gameEngine);
+        console.log("[V2] Game loaded and added to activeGames");
         
         clearTimeout(timeout);
         
@@ -288,23 +298,38 @@ function setupSocketHandlers(ioInstance) {
   
   // Handle game commands
   socket.on("gameCommand", async (data) => {
+    console.log(`[V2] gameCommand received from user ${userId}:`, data);
     const { command } = data;
+    
+    console.log(`[V2] Looking for game engine for user ${userId}`);
+    console.log(`[V2] Active games map size: ${activeGames.size}`);
+    console.log(`[V2] Active games keys:`, Array.from(activeGames.keys()));
     
     const gameEngine = activeGames.get(userId);
     if (!gameEngine) {
+      console.error(`[V2] No active game found for user ${userId}`);
       socket.emit("error", { message: "No active game found" });
       return;
     }
+    
+    console.log(`[V2] Found game engine for user ${userId}, processing command: "${command}"`);
     
     try {
       console.log("[Socket] Processing command through game engine...");
       const startTime = Date.now();
       
       // Process command with AI
+      console.log(`[V2] Calling gameEngine.processUserInput with command: "${command}"`);
       const result = await gameEngine.processUserInput(command);
+      
+      if (!result) {
+        console.error("[V2] processUserInput returned null/undefined");
+        throw new Error("Game engine returned no result");
+      }
       
       const duration = Date.now() - startTime;
       console.log(`[Socket] Command processed in ${duration}ms`);
+      console.log("[Socket] Result:", JSON.stringify(result, null, 2));
       console.log("[Socket] Action type:", result.actionType || "unknown");
       
       // Send response to client
@@ -329,8 +354,10 @@ function setupSocketHandlers(ioInstance) {
       }
       
     } catch (error) {
-      console.error("[Server] Error processing command:", error);
-      socket.emit("error", { message: "Failed to process command" });
+      console.error("[V2] Error processing command - Full error:", error);
+      console.error("[V2] Error stack:", error.stack);
+      console.error("[V2] Error message:", error.message);
+      socket.emit("error", { message: `Failed to process command: ${error.message}` });
     }
   });
   
@@ -515,6 +542,18 @@ async function saveWorldToFirebase(userId, world) {
 router.setIo = function(ioInstance) {
   io = ioInstance;
   console.log("[V2] Socket.IO instance set from parent app");
+  console.log("[V2] io is now:", io ? "available" : "still null");
+  
+  // Re-initialize any active games with the new io instance
+  if (activeGames.size > 0) {
+    console.log("[V2] Updating io instance for", activeGames.size, "active games");
+    for (const [userId, gameEngine] of activeGames.entries()) {
+      if (gameEngine && gameEngine.setIo) {
+        gameEngine.setIo(io);
+      }
+    }
+  }
+  
   setupSocketHandlers(io);
 };
 

@@ -4,6 +4,14 @@
 const OpenAIApi = require("openai");
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
 
+// Log API configuration on startup
+if (!process.env.OPENAI_API_KEY) {
+  console.error("[WorldGenerator] WARNING: OPENAI_API_KEY not found in environment variables");
+} else {
+  console.log("[WorldGenerator] OpenAI API key loaded (last 4 chars):", process.env.OPENAI_API_KEY.slice(-4));
+  console.log("[WorldGenerator] Using model: gpt-4-turbo-preview (GPT-5 does not exist)");
+}
+
 /**
  * Generate all room descriptions and narratives in a single AI call
  */

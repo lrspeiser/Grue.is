@@ -5,6 +5,14 @@ const OpenAIApi = require("openai");
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
 const imageService = require('./image-service');
 
+// Log API configuration on startup
+if (!process.env.OPENAI_API_KEY) {
+  console.error("[GameEngine] WARNING: OPENAI_API_KEY not found in environment variables");
+} else {
+  console.log("[GameEngine] OpenAI API key loaded (last 4 chars):", process.env.OPENAI_API_KEY.slice(-4));
+  console.log("[GameEngine] Using model: gpt-4-turbo-preview (GPT-5 does not exist)");
+}
+
 class GameEngine {
   constructor(world, userId, io = null) {
     // Validate world structure
@@ -524,6 +532,14 @@ class GameEngine {
       firstVisit: this.state.visitedRooms.filter(id => id === room.id).length === 1,
       exits: this.world.navigation[room.id]
     };
+  }
+  
+  /**
+   * Update the Socket.IO instance (useful when loaded before io is available)
+   */
+  setIo(ioInstance) {
+    this.io = ioInstance;
+    console.log(`[GameEngine] Socket.IO instance updated for user ${this.userId}`);
   }
 }
 

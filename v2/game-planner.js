@@ -4,9 +4,17 @@
 const OpenAIApi = require("openai");
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
 
+// Log API configuration on startup
+if (!process.env.OPENAI_API_KEY) {
+  console.error("[GamePlanner] WARNING: OPENAI_API_KEY not found in environment variables");
+} else {
+  console.log("[GamePlanner] OpenAI API key loaded (last 4 chars):", process.env.OPENAI_API_KEY.slice(-4));
+  console.log("[GamePlanner] Using model: gpt-4-turbo-preview (GPT-5 does not exist)");
+}
+
 /**
  * Phase 1: AI Plans the entire game structure
- * This is where GPT-5 creates the complete game blueprint
+ * This is where GPT-4 Turbo creates the complete game blueprint
  */
 async function planGameWorld(userProfile) {
   console.log("[GamePlanner] Starting AI game planning for user:", userProfile.userId);
