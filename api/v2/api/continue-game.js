@@ -47,8 +47,18 @@ async function loadGameFromFirebase(userId) {
 }
 
 module.exports = async function handler(req, res) {
+  // Set CORS headers for all requests
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Handle OPTIONS request for CORS preflight
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+  
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ error: 'Method not allowed', method: req.method });
   }
 
   const { userId } = req.body;
@@ -56,11 +66,6 @@ module.exports = async function handler(req, res) {
   if (!userId) {
     return res.status(400).json({ error: 'userId is required' });
   }
-
-  // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 
   try {
     console.log('[V2] Checking for existing game for user:', userId);
