@@ -1,5 +1,5 @@
 // Direct Vercel API route - bypasses Express
-export default function handler(req, res) {
+module.exports = function handler(req, res) {
   res.status(200).json({
     message: 'Direct Vercel API route works!',
     path: req.url,

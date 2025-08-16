@@ -1,7 +1,7 @@
 // Vercel function for /api/v2/api/new-game
-import { createCompletePlan } from '../../../v2/game-planner.js';
-import { generateWorldWithoutImages } from '../../../v2/world-generator-fast.js';
-import admin from 'firebase-admin';
+const { createCompletePlan } = require('../../../v2/game-planner.js');
+const { generateWorldWithoutImages } = require('../../../v2/world-generator-fast.js');
+const admin = require('firebase-admin');
 
 // Initialize Firebase Admin if not already initialized
 const V2_APP_NAME = 'grue-v2-app';
@@ -46,7 +46,7 @@ async function saveGameToFirebase(userId, gameData) {
   }
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
