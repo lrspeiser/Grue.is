@@ -56,9 +56,9 @@
             height: 300px;
             background: #000;
             border-top: 3px solid #ff00ff;
-            display: flex; /* Changed from none to flex - always visible */
+            display: flex !important; /* Force visible with !important */
             flex-direction: column;
-            z-index: 999;
+            z-index: 9999; /* Higher z-index */
         }
         
         #debug-panel.active {
