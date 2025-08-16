@@ -12,11 +12,11 @@
     },
     {
       "source": "/v2-debug",
-      "destination": "/public/v2-index-debug.html"
+      "destination": "/v2-index-debug.html"
     },
     {
       "source": "/v2",
-      "destination": "/public/v2-index.html"
+      "destination": "/v2-index.html"
     },
     {
       "source": "/test-route",
