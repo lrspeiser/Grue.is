@@ -36,6 +36,21 @@ const {
 const app = express();
 const PORT = 3000;
 
+// VERY FIRST ROUTE - Test if ANY routing works
+app.get('/test-route', (req, res) => {
+  res.json({ 
+    message: 'Test route works!',
+    timestamp: new Date().toISOString(),
+    headers: req.headers
+  });
+});
+
+// Log all incoming requests for debugging
+app.use((req, res, next) => {
+  console.log(`[Request] ${req.method} ${req.url}`);
+  next();
+});
+
 const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
 
 app.use(express.json());
