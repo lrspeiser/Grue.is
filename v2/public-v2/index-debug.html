@@ -635,6 +635,27 @@
         localStorage.setItem('userId', userId);
         debugLog('game', `User ID set: ${userId}`);
         
+        // Check OpenAI API usage immediately on page load
+        debugLog('api', 'Checking OpenAI API usage and status...');
+        fetch('/api/check-usage')
+            .then(response => response.json())
+            .then(usage => {
+                if (usage.apiKeyWorking) {
+                    debugLog('api', `OpenAI API Key: ✓ WORKING (Status: ${usage.statusCode})`);
+                    if (usage.tokens) {
+                        debugLog('api', `Token Usage (24h): Input: ${usage.tokens.input}, Output: ${usage.tokens.output}, Cached: ${usage.tokens.cached}, Requests: ${usage.tokens.requests}`);
+                    }
+                } else {
+                    debugLog('error', `OpenAI API Key: ✗ NOT WORKING (Status: ${usage.statusCode || 'N/A'})`);
+                    if (usage.message) {
+                        debugLog('error', `API Error: ${usage.message}`);
+                    }
+                }
+            })
+            .catch(error => {
+                debugLog('error', `Failed to check API usage: ${error.message}`);
+            });
+        
         let socket;
         let gameActive = false;
         

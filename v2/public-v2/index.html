@@ -296,6 +296,31 @@
         const userId = localStorage.getItem('userId') || 'user-' + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('userId', userId);
         
+        // Check OpenAI API usage immediately on page load
+        console.log('[API] Checking OpenAI API status...');
+        fetch('/api/check-usage')
+            .then(response => response.json())
+            .then(usage => {
+                if (usage.apiKeyWorking) {
+                    console.log('[API] ✓ OpenAI API Key is WORKING (Status:', usage.statusCode + ')');
+                    if (usage.tokens) {
+                        console.log('[API] Token Usage (24h):', 
+                            'Input:', usage.tokens.input, 
+                            'Output:', usage.tokens.output,
+                            'Cached:', usage.tokens.cached,
+                            'Requests:', usage.tokens.requests);
+                    }
+                } else {
+                    console.error('[API] ✗ OpenAI API Key is NOT WORKING (Status:', usage.statusCode || 'N/A', ')');
+                    if (usage.message) {
+                        console.error('[API] Error:', usage.message);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('[API] Failed to check usage:', error);
+            });
+        
         let socket;
         let gameActive = false;
         

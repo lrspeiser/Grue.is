@@ -1,8 +1,8 @@
 // world-generator.js - Takes the AI's game plan and generates all content
 // This handles the actual content creation based on the AI's blueprint
 
-const OpenAIApi = require("openai");
-const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
+const { getOpenAILogger } = require("./openai-logger");
+const openaiLogger = getOpenAILogger();
 
 // Log API configuration on startup
 if (!process.env.OPENAI_API_KEY) {
@@ -89,12 +89,16 @@ async function generateAllRoomContent(gamePlan) {
   ];
 
   try {
-    const response = await openai.responses.create({
-      model: "gpt-5",
-      messages,
-      tools: roomTools,
-      tool_choice: { type: "function", function: { name: "generate_all_rooms" } }
-    });
+    const response = await openaiLogger.loggedRequest(
+      'responses.create',
+      {
+        model: "gpt-5",
+        messages,
+        tools: roomTools,
+        tool_choice: { type: "function", function: { name: "generate_all_rooms" } }
+      },
+      `WorldGenerator - Generating room content for ${gamePlan.world_map.rooms.length} rooms`
+    );
 
     if (response.choices[0].message.tool_calls) {
       const roomContent = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);
@@ -176,11 +180,15 @@ async function generateAllCharacters(gamePlan) {
   ];
 
   try {
-    const response = await openai.responses.create({
-      model: "gpt-5",
-      messages,
-      tools: characterTools,
-      tool_choice: { type: "function", function: { name: "generate_all_characters" } }
+    const response = await openaiLogger.loggedRequest(
+      'responses.create',
+      {
+        model: "gpt-5",
+        messages,
+        tools: characterTools,
+        tool_choice: { type: "function", function: { name: "generate_all_characters" } }
+      },
+      `WorldGenerator - Generating ${gamePlan.characters.length} characters`
     });
 
     if (response.choices[0].message.tool_calls) {
@@ -260,12 +268,16 @@ async function generateQuestContent(gamePlan) {
   ];
 
   try {
-    const response = await openai.responses.create({
-      model: "gpt-5",
-      messages,
-      tools: questTools,
-      tool_choice: { type: "function", function: { name: "generate_quest_content" } }
-    });
+    const response = await openaiLogger.loggedRequest(
+      'responses.create',
+      {
+        model: "gpt-5",
+        messages,
+        tools: questTools,
+        tool_choice: { type: "function", function: { name: "generate_quest_content" } }
+      },
+      `WorldGenerator - Generating quest content for ${gamePlan.quests.length} quests`
+    );
 
     if (response.choices[0].message.tool_calls) {
       const quests = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);

@@ -1,8 +1,8 @@
 // game-engine.js - Simplified runtime engine for pre-generated worlds
 // This handles actual gameplay with the AI as dungeon master
 
-const OpenAIApi = require("openai");
-const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
+const { getOpenAILogger } = require("./openai-logger");
+const openaiLogger = getOpenAILogger();
 const imageService = require('./image-service');
 
 // Log API configuration on startup
@@ -174,24 +174,19 @@ class GameEngine {
     ];
 
     try {
-      console.log("[GameEngine] Sending to OpenAI API...");
-      console.log("[GameEngine] Model: gpt-4-turbo-preview");
-      console.log("[GameEngine] Tool: update_game_state");
-      console.log("[GameEngine] Prompt length:", dmPrompt.length);
-      
-      const startTime = Date.now();
-      const response = await openai.responses.create({
-        model: "gpt-5",
-        messages: [
-          { role: "system", content: dmPrompt },
-          { role: "user", content: userInput }
-        ],
-        tools: gameUpdateTools,
-        tool_choice: { type: "function", function: { name: "update_game_state" } }
-      });
-      
-      const duration = Date.now() - startTime;
-      console.log(`[GameEngine] OpenAI response received in ${duration}ms`);
+      const response = await openaiLogger.loggedRequest(
+        'responses.create',
+        {
+          model: "gpt-5",
+          messages: [
+            { role: "system", content: dmPrompt },
+            { role: "user", content: userInput }
+          ],
+          tools: gameUpdateTools,
+          tool_choice: { type: "function", function: { name: "update_game_state" } }
+        },
+        `GameEngine - Processing command "${userInput}" for user ${this.userId} in room ${currentRoom.name}`
+      );
 
       if (response.choices[0].message.tool_calls) {
         console.log("[GameEngine] Tool call received from OpenAI");
