@@ -637,7 +637,7 @@
         
         // Check OpenAI API usage immediately on page load
         debugLog('api', 'Checking OpenAI API usage and status...');
-        fetch('/api/check-usage')
+        fetch('/v2/api/check-usage')
             .then(response => response.json())
             .then(usage => {
                 if (usage.apiKeyWorking) {

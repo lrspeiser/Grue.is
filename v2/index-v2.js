@@ -21,7 +21,7 @@ const openai = new OpenAIApi({
 });
 
 // Add usage check endpoint
-router.get("/api/check-usage", async (req, res) => {
+router.get("/check-usage", async (req, res) => {
   try {
     const startTime = Math.floor(Date.now() / 1000) - 86400; // Last 24 hours
     
