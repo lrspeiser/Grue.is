@@ -4,7 +4,7 @@ const OpenAIApi = require("openai");
 
 class OpenAILogger {
   constructor(apiKey) {
-    this.client = new OpenAIApi({ apiKey });
+    this.client = new OpenAIApi(apiKey);
     this.requestCount = 0;
     this.totalTokens = { input: 0, output: 0, cached: 0 };
   }
@@ -26,9 +26,8 @@ class OpenAILogger {
     try {
       // Make the actual request
       let response;
-      if (method === 'responses.create') {
-        response = await this.client.responses.create(params);
-      } else if (method === 'chat.completions.create') {
+      if (method === 'responses.create' || method === 'chat.completions.create') {
+        // OpenAI SDK uses chat.completions.create for GPT models
         response = await this.client.chat.completions.create(params);
       } else if (method === 'images.generate') {
         response = await this.client.images.generate(params);
