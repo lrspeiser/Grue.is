@@ -1,8 +1,8 @@
 // world-generator-fast.js - Faster world generation without blocking on images
 // Images are generated asynchronously after the game starts
 
-const OpenAIApi = require("openai");
-const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
+const { getOpenAILogger } = require("./openai-logger");
+const openaiLogger = getOpenAILogger();
 
 // We'll copy the needed functions here to avoid circular dependencies
 const generateAllRoomContent = require('./world-generator').generateAllRoomContent;
@@ -25,7 +25,11 @@ async function generateRoomImage(room) {
       response_format: "url"
     };
     
-    const response = await openai.images.generate(imageParams);
+    const response = await openaiLogger.loggedRequest(
+      'images.generate',
+      imageParams,
+      `WorldGeneratorFast - Generating image for room: ${room.name}`
+    );
     return response.data[0].url;
   } catch (error) {
     console.error(`[WorldGen] Failed to generate image for room ${room.id}:`, error.message);

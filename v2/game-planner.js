@@ -1,12 +1,21 @@
 // game-planner.js - AI-driven game world planning system
 // The AI plans the entire game structure, story, and progression
 
-const OpenAIApi = require("openai");
-const openai = new OpenAIApi(process.env.OPENAI_API_KEY);
+const { getOpenAILogger } = require("./openai-logger");
+const openaiLogger = getOpenAILogger();
+
+// Log API configuration on startup
+if (!process.env.OPENAI_API_KEY) {
+  console.error("[GamePlanner] WARNING: OPENAI_API_KEY not found in environment variables");
+} else {
+  console.log("[GamePlanner] OpenAI API key loaded (last 4 chars):", process.env.OPENAI_API_KEY.slice(-4));
+  console.log("[GamePlanner] Using model: gpt-5 (Released August 7, 2025)");
+  console.log("[GamePlanner] Logging wrapper initialized - All API calls will be logged");
+}
 
 /**
  * Phase 1: AI Plans the entire game structure
- * This is where GPT-5 creates the complete game blueprint
+ * This is where GPT-4 Turbo creates the complete game blueprint
  */
 async function planGameWorld(userProfile) {
   console.log("[GamePlanner] Starting AI game planning for user:", userProfile.userId);
@@ -85,23 +94,17 @@ async function planGameWorld(userProfile) {
   ];
 
   try {
-    console.log("[GamePlanner] Sending request to OpenAI API...");
-    console.log("[GamePlanner] Model: gpt-4-turbo-preview");
-    console.log("[GamePlanner] Max tokens: 4000");
-    console.log("[GamePlanner] Tool: create_game_design");
-    console.log("[GamePlanner] Prompt length:", planningPrompt.length);
-    
-    const startTime = Date.now();
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview", // Using latest available model
-      messages,
-      tools: gameDesignTools,
-      tool_choice: { type: "function", function: { name: "create_game_design" } },
-      max_tokens: 4000
-    });
-    
-    const duration = Date.now() - startTime;
-    console.log(`[GamePlanner] OpenAI API response received in ${duration}ms`);
+    const response = await openaiLogger.loggedRequest(
+      'responses.create',
+      {
+        model: "gpt-5", // Using GPT-5 (Released August 7, 2025)
+        messages,
+        tools: gameDesignTools,
+        tool_choice: { type: "function", function: { name: "create_game_design" } },
+        max_tokens: 4000
+      },
+      `GamePlanner - Creating game design for user ${userProfile.userId}`
+    );
 
     if (!response || !response.choices || !response.choices[0]) {
       console.error("[GamePlanner] Invalid response structure from OpenAI");

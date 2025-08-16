@@ -451,8 +451,8 @@ app.post("/api/chat", async (req, res) => {
 
     // console.log("[/api/chat] Total messages for OpenAI:", messagesForOpenAI.length);
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview", // Using a generally available powerful model
+    const response = await openai.responses.create({
+      model: "gpt-5", // Using GPT-5 (Released August 7, 2025)
       messages: messagesForOpenAI,
       stream: true,
     });
@@ -1023,8 +1023,8 @@ app.post("/api/chat-with-me", async (req, res) => {
       ...(Array.isArray(newMessages) ? newMessages : []), // Ensure newMessages is an array
     ];
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview", // Using gpt-4-turbo as a robust default
+    const response = await openai.responses.create({
+      model: "gpt-5", // Using GPT-5 (Released August 7, 2025)
       messages,
       stream: true,
     });

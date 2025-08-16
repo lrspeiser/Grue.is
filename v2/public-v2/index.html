@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grue v2 - AI Adventure Game</title>
+    <title>Grue v2.1 - AI Adventure Game</title>
     <style>
         * {
             margin: 0;
@@ -178,7 +178,7 @@
     <!-- Setup Screen -->
     <div id="setup-screen">
         <div id="setup-form">
-            <h1>Grue v2 - AI Adventure Generator</h1>
+            <h1>Grue v2.1 - AI Adventure Generator</h1>
             <p style="margin: 20px 0;">The AI will create a complete game world just for you!</p>
             
             <div id="profile-form">
@@ -212,6 +212,13 @@
                 <button id="start-generation" style="width: 100%; padding: 15px; background: #00ff00; color: #0a0a0a; border: none; font-size: 18px; font-weight: bold; cursor: pointer;">
                     Generate My Adventure
                 </button>
+                
+                <div style="margin-top: 20px; text-align: center;">
+                    <p style="color: #666; margin-bottom: 10px;">Having issues? Start completely fresh:</p>
+                    <button id="clear-data" style="padding: 10px 20px; background: #333; color: #ff00ff; border: 1px solid #ff00ff; cursor: pointer;">
+                        Clear All Data & Start Fresh
+                    </button>
+                </div>
             </div>
             
             <div id="generation-status">
@@ -233,7 +240,7 @@
     <div id="game-container">
         <div id="main-panel">
             <div id="narrative">
-                Welcome to Grue v2!
+                Welcome to Grue v2.1!
                 
                 This is a completely AI-generated adventure game.
                 The entire world has been pre-created for instant gameplay.
@@ -288,6 +295,31 @@
         // Generate unique user ID or get from localStorage
         const userId = localStorage.getItem('userId') || 'user-' + Math.random().toString(36).substr(2, 9);
         localStorage.setItem('userId', userId);
+        
+        // Check OpenAI API usage immediately on page load
+        console.log('[API] Checking OpenAI API status...');
+        fetch('/api/check-usage')
+            .then(response => response.json())
+            .then(usage => {
+                if (usage.apiKeyWorking) {
+                    console.log('[API] ✓ OpenAI API Key is WORKING (Status:', usage.statusCode + ')');
+                    if (usage.tokens) {
+                        console.log('[API] Token Usage (24h):', 
+                            'Input:', usage.tokens.input, 
+                            'Output:', usage.tokens.output,
+                            'Cached:', usage.tokens.cached,
+                            'Requests:', usage.tokens.requests);
+                    }
+                } else {
+                    console.error('[API] ✗ OpenAI API Key is NOT WORKING (Status:', usage.statusCode || 'N/A', ')');
+                    if (usage.message) {
+                        console.error('[API] Error:', usage.message);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('[API] Failed to check usage:', error);
+            });
         
         let socket;
         let gameActive = false;
@@ -495,6 +527,14 @@
         document.getElementById('submit-btn').addEventListener('click', submitCommand);
         document.getElementById('command-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') submitCommand();
+        });
+        
+        // Handle clear data button
+        document.getElementById('clear-data').addEventListener('click', () => {
+            if (confirm('This will delete all your game data and start completely fresh. Are you sure?')) {
+                localStorage.clear();
+                window.location.reload();
+            }
         });
         
         // Try to continue existing game with retry logic

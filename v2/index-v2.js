@@ -6,6 +6,7 @@ const http = require("http");
 const path = require("path");
 const { Server } = require("socket.io");
 const admin = require("firebase-admin");
+const OpenAIApi = require("openai");
 
 const { createCompletePlan } = require("./game-planner");
 const { generateWorldWithoutImages } = require("./world-generator-fast");
@@ -13,6 +14,63 @@ const GameEngine = require("./game-engine");
 
 const router = express.Router();
 const PORT = process.env.PORT || 3001; // Use environment port
+
+// Initialize OpenAI
+const openai = new OpenAIApi({
+  apiKey: process.env.OPENAI_API_KEY,
+});
+
+// Add usage check endpoint
+router.get("/api/check-usage", async (req, res) => {
+  try {
+    const startTime = Math.floor(Date.now() / 1000) - 86400; // Last 24 hours
+    
+    console.log("[V2] Checking OpenAI API usage...");
+    
+    // Make request to OpenAI usage endpoint
+    const response = await fetch("https://api.openai.com/v1/organization/usage/completions?" + 
+      new URLSearchParams({
+        start_time: startTime,
+        limit: 1,
+        bucket_width: "1d"
+      }), {
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    const data = await response.json();
+    
+    console.log("[V2] OpenAI Usage Response:", JSON.stringify(data, null, 2));
+    
+    // Extract token usage
+    const usage = {
+      apiKeyWorking: response.ok,
+      statusCode: response.status,
+      data: data
+    };
+    
+    if (data && data.data && data.data[0] && data.data[0].results && data.data[0].results[0]) {
+      const result = data.data[0].results[0];
+      usage.tokens = {
+        input: result.input_tokens || 0,
+        output: result.output_tokens || 0,
+        cached: result.input_cached_tokens || 0,
+        requests: result.num_model_requests || 0
+      };
+    }
+    
+    res.json(usage);
+  } catch (error) {
+    console.error("[V2] Error checking OpenAI usage:", error);
+    res.status(500).json({ 
+      error: "Failed to check usage",
+      message: error.message,
+      apiKeyWorking: false 
+    });
+  }
+});
 
 router.use(express.json());
 
@@ -140,6 +198,10 @@ router.post("/new-game", async (req, res) => {
     
     // Step 3: Initialize game engine with Socket.IO for image updates
     console.log("[Server] Step 3: Initializing game engine...");
+    console.log("[Server] Current io instance:", io ? "available" : "null");
+    if (!io) {
+      console.warn("[Server] Warning: io instance is null when creating GameEngine");
+    }
     const gameEngine = new GameEngine(world, userId, io);
     activeGames.set(userId, gameEngine);
     console.log("[Server] Game engine initialized successfully");
@@ -225,9 +287,15 @@ router.post("/continue-game", async (req, res) => {
       // Load from Firebase
       const savedGame = await loadGameFromFirebase(userId);
       if (savedGame) {
+        console.log("[V2] Loading saved game for user:", userId);
+        console.log("[V2] Current io instance:", io ? "available" : "null");
+        if (!io) {
+          console.warn("[V2] Warning: io instance is null when creating GameEngine");
+        }
         const gameEngine = new GameEngine(savedGame.world, userId, io);
         gameEngine.state = savedGame.state;
         activeGames.set(userId, gameEngine);
+        console.log("[V2] Game loaded and added to activeGames");
         
         clearTimeout(timeout);
         
@@ -288,23 +356,38 @@ function setupSocketHandlers(ioInstance) {
   
   // Handle game commands
   socket.on("gameCommand", async (data) => {
+    console.log(`[V2] gameCommand received from user ${userId}:`, data);
     const { command } = data;
+    
+    console.log(`[V2] Looking for game engine for user ${userId}`);
+    console.log(`[V2] Active games map size: ${activeGames.size}`);
+    console.log(`[V2] Active games keys:`, Array.from(activeGames.keys()));
     
     const gameEngine = activeGames.get(userId);
     if (!gameEngine) {
+      console.error(`[V2] No active game found for user ${userId}`);
       socket.emit("error", { message: "No active game found" });
       return;
     }
+    
+    console.log(`[V2] Found game engine for user ${userId}, processing command: "${command}"`);
     
     try {
       console.log("[Socket] Processing command through game engine...");
       const startTime = Date.now();
       
       // Process command with AI
+      console.log(`[V2] Calling gameEngine.processUserInput with command: "${command}"`);
       const result = await gameEngine.processUserInput(command);
+      
+      if (!result) {
+        console.error("[V2] processUserInput returned null/undefined");
+        throw new Error("Game engine returned no result");
+      }
       
       const duration = Date.now() - startTime;
       console.log(`[Socket] Command processed in ${duration}ms`);
+      console.log("[Socket] Result:", JSON.stringify(result, null, 2));
       console.log("[Socket] Action type:", result.actionType || "unknown");
       
       // Send response to client
@@ -329,8 +412,10 @@ function setupSocketHandlers(ioInstance) {
       }
       
     } catch (error) {
-      console.error("[Server] Error processing command:", error);
-      socket.emit("error", { message: "Failed to process command" });
+      console.error("[V2] Error processing command - Full error:", error);
+      console.error("[V2] Error stack:", error.stack);
+      console.error("[V2] Error message:", error.message);
+      socket.emit("error", { message: `Failed to process command: ${error.message}` });
     }
   });
   
@@ -515,6 +600,18 @@ async function saveWorldToFirebase(userId, world) {
 router.setIo = function(ioInstance) {
   io = ioInstance;
   console.log("[V2] Socket.IO instance set from parent app");
+  console.log("[V2] io is now:", io ? "available" : "still null");
+  
+  // Re-initialize any active games with the new io instance
+  if (activeGames.size > 0) {
+    console.log("[V2] Updating io instance for", activeGames.size, "active games");
+    for (const [userId, gameEngine] of activeGames.entries()) {
+      if (gameEngine && gameEngine.setIo) {
+        gameEngine.setIo(io);
+      }
+    }
+  }
+  
   setupSocketHandlers(io);
 };
 

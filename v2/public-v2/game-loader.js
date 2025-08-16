@@ -57,9 +57,9 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
     throw new Error('Game generation timed out after ' + maxRetries + ' attempts');
 }
 
-async function checkExistingGame(userId, maxRetries = 3) {
+async function checkExistingGame(userId, maxRetries = 2) {
     let retries = 0;
-    const retryDelay = 2000; // 2 seconds between retries
+    const retryDelay = 1500; // 1.5 seconds between retries
     
     console.log('[GameLoader] Checking for existing game...');
     
@@ -80,12 +80,17 @@ async function checkExistingGame(userId, maxRetries = 3) {
                 return data;
             }
             
-            // If still loading, wait and retry
+            // If still loading, only retry once
             if (data.status === 'loading') {
-                console.log('[GameLoader] Game still loading, waiting...');
-                await new Promise(resolve => setTimeout(resolve, retryDelay));
-                retries++;
-                continue;
+                if (retries === 0) {
+                    console.log('[GameLoader] Game still loading, trying once more...');
+                    await new Promise(resolve => setTimeout(resolve, retryDelay));
+                    retries++;
+                    continue;
+                } else {
+                    console.log('[GameLoader] Game still loading after retry, giving up');
+                    return null;
+                }
             }
             
             // No existing game

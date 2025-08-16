@@ -68,7 +68,7 @@ async function updateStoryContext(userId, conversationData, ioInstance) {
   const { messages, tools } = getStoryContextMessages(storyDataToUpdate, currentRoomObjectForPrompt, playerArrayForPrompt, questArrayForPrompt, formattedHistory);
   console.log("[data.js/updateStoryContext] Calling OpenAI for story update...");
   try {
-    const response = await openai.chat.completions.create({ model: "gpt-4-turbo-preview", messages, tools, tool_choice: "auto" });
+    const response = await openai.responses.create({ model: "gpt-5", messages, tools, tool_choice: "auto" });
     const responseMessage = response.choices[0].message;
     console.log("[data.js/updateStoryContext] OpenAI Response for story:", JSON.stringify(responseMessage).substring(0, 200) + "...");
     if (responseMessage && responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
@@ -249,7 +249,7 @@ async function updateRoomContext(userId, ioInstance) {
 
   console.log("[data.js/updateRoomContext] Calling OpenAI for room update...");
   try {
-    const response = await openai.chat.completions.create({ model: "gpt-4-turbo-preview", messages, tools, tool_choice: "auto" });
+    const response = await openai.responses.create({ model: "gpt-5", messages, tools, tool_choice: "auto" });
     console.log("[data.js/updateRoomContext] OpenAI response for room.");
     await processGPTResponseForRoomUpdate(response, filePaths, userId, ioInstance, targetCurrentRoomIdFromStory); // Pass target ID for validation
   } catch (error) { console.error("[data.js/updateRoomContext] Failed:", error); }
@@ -521,7 +521,7 @@ async function updatePlayerContext(userId, ioInstance) { // ioInstance kept for 
   const { messages, tools } = getPlayerContextMessages(storyDataForContext, playerArrayForContext, formattedHistory);
   console.log("[data.js/updatePlayerContext] Calling OpenAI for player update...");
   try {
-    const response = await openai.chat.completions.create({ model: "gpt-4-turbo-preview", messages, tools, tool_choice: "auto" });
+    const response = await openai.responses.create({ model: "gpt-5", messages, tools, tool_choice: "auto" });
     const responseMessage = response.choices[0].message;
     console.log("[data.js/updatePlayerContext] OpenAI response for player:", JSON.stringify(responseMessage).substring(0,200)+"...");
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
@@ -587,7 +587,7 @@ async function updateQuestContext(userId, ioInstance) { // ioInstance kept
   const { messages, tools } = getQuestContextMessages(storyDataForContext, questArrayForContext, formattedHistory);
   console.log("[data.js/updateQuestContext] Calling OpenAI for quest update...");
   try {
-    const response = await openai.chat.completions.create({ model: "gpt-4-turbo-preview", messages, tools, tool_choice: "auto" });
+    const response = await openai.responses.create({ model: "gpt-5", messages, tools, tool_choice: "auto" });
     const responseMessage = response.choices[0].message;
     console.log("[data.js/updateQuestContext] OpenAI response for quest:", JSON.stringify(responseMessage).substring(0,200)+"...");
     if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
