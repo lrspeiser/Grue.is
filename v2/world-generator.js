@@ -189,7 +189,7 @@ async function generateAllCharacters(gamePlan) {
         tool_choice: { type: "function", function: { name: "generate_all_characters" } }
       },
       `WorldGenerator - Generating ${gamePlan.characters.length} characters`
-    });
+    );
 
     if (response.choices[0].message.tool_calls) {
       const characters = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);
