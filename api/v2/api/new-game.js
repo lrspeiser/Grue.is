@@ -57,11 +57,26 @@ module.exports = async function handler(req, res) {
     return res.status(200).end();
   }
   
+  // Handle GET request for testing
+  if (req.method === 'GET') {
+    return res.status(200).json({ 
+      message: 'new-game endpoint is working! Use POST to create a game.',
+      expectedBody: {
+        userId: 'string (required)',
+        educationLevel: 'string',
+        location: 'string',
+        timePeriod: 'string',
+        characterRole: 'string',
+        storyLocation: 'string'
+      }
+    });
+  }
+  
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed', method: req.method });
   }
 
-  const { userId, ...userProfile } = req.body;
+  const { userId, ...userProfile } = req.body || {};
   
   if (!userId) {
     return res.status(400).json({ error: 'userId is required' });
