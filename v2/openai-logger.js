@@ -4,7 +4,7 @@ const OpenAIApi = require("openai");
 
 class OpenAILogger {
   constructor(apiKey) {
-    this.client = new OpenAIApi(apiKey);
+    this.client = new OpenAIApi({ apiKey: apiKey });
     this.requestCount = 0;
     this.totalTokens = { input: 0, output: 0, cached: 0 };
   }
@@ -128,6 +128,10 @@ let instance = null;
 
 function getOpenAILogger() {
   if (!instance) {
+    if (!process.env.OPENAI_API_KEY) {
+      console.error("[OpenAILogger] ERROR: OPENAI_API_KEY is not set in environment variables");
+      throw new Error("OPENAI_API_KEY is required but not set");
+    }
     instance = new OpenAILogger(process.env.OPENAI_API_KEY);
   }
   return instance;
