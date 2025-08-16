@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Panel Test</title>
+    <style>
+        body {
+            background: #1a1a1a;
+            color: #00ff00;
+            font-family: monospace;
+            padding: 20px;
+        }
+        
+        #debug-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 300px;
+            background: #000;
+            border-top: 3px solid #ff00ff;
+            padding: 20px;
+            overflow-y: auto;
+        }
+        
+        .log {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 3px solid #00ff00;
+        }
+    </style>
+</head>
+<body>
+    <h1>Debug Panel Test Page</h1>
+    <p>If you can see a purple-bordered panel at the bottom, the debug panel is working!</p>
+    
+    <div id="debug-panel">
+        <h2 style="color: #ff00ff;">DEBUG PANEL IS VISIBLE!</h2>
+        <div class="log">✓ Debug panel loaded successfully</div>
+        <div class="log">✓ This is a test message</div>
+        <div class="log">✓ If you see this, the panel is working</div>
+        <div class="log" style="color: #ffff00;">Now checking the actual game page...</div>
+    </div>
+</body>
+</html>

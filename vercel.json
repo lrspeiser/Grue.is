@@ -11,14 +11,8 @@
       "destination": "/api/v2/api/:path*"
     },
     {
-      "source": "/v2",
-      "destination": "/public/v2/index-debug.html",
-      "has": [
-        {
-          "type": "query",
-          "key": "debug"
-        }
-      ]
+      "source": "/v2-debug",
+      "destination": "/public/v2/index-debug.html"
     },
     {
       "source": "/v2",
