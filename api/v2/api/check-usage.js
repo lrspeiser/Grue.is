@@ -19,6 +19,21 @@ export default async function handler(req, res) {
     
     const data = await response.json();
     
+    // Check if it's a permission error (key works but lacks specific permission)
+    if (response.status === 401 && data?.error?.message?.includes('api.usage.read')) {
+      return res.json({
+        apiKeyWorking: true, // Key works, just lacks this specific permission
+        statusCode: response.status,
+        message: 'API key is valid but lacks usage read permissions',
+        tokens: {
+          input: 'N/A',
+          output: 'N/A',
+          cached: 'N/A',
+          requests: 'N/A'
+        }
+      });
+    }
+    
     const usage = {
       apiKeyWorking: response.ok,
       statusCode: response.status,
