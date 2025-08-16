@@ -1,5 +1,5 @@
 // Vercel function for /api/v2/api/continue-game
-import admin from 'firebase-admin';
+const admin = require('firebase-admin');
 
 // Initialize Firebase Admin if not already initialized
 const V2_APP_NAME = 'grue-v2-app';
@@ -46,7 +46,7 @@ async function loadGameFromFirebase(userId) {
   }
 }
 
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }

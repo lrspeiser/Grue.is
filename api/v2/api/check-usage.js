@@ -1,5 +1,5 @@
 // Vercel function for /api/v2/api/check-usage
-export default async function handler(req, res) {
+module.exports = async function handler(req, res) {
   try {
     const startTime = Math.floor(Date.now() / 1000) - 86400; // Last 24 hours
     
