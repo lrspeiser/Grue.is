@@ -79,12 +79,14 @@ async function generateAllRoomContent(gamePlan) {
     { role: "system", content: roomGenerationPrompt },
     { 
       role: "user", 
-      content: `Generate complete content for these rooms: ${JSON.stringify(gamePlan.world_map.locations.map(l => ({
-        id: l.id,
-        name: l.name,
-        purpose: l.purpose,
-        connections: l.connections
-      })))}`
+      content: `Generate complete content for these ${gamePlan.world_map.locations.length} rooms:
+${gamePlan.world_map.locations.map(l => `- ${l.name}: ${l.purpose || 'Main location'}`).join('\n')}
+
+Each room needs:
+1. Detailed atmospheric descriptions
+2. Interactive items with historical significance
+3. Clear navigation connections
+4. Educational elements naturally integrated`
     }
   ];
 
@@ -175,7 +177,14 @@ async function generateAllCharacters(gamePlan) {
     { role: "system", content: characterPrompt },
     { 
       role: "user", 
-      content: `Create these characters: ${JSON.stringify(gamePlan.characters)}`
+      content: `Create ${gamePlan.characters.length} characters for the game:
+${gamePlan.characters.map(c => `- ${c.name || 'Character'}: ${c.role || 'Role'}, ${c.background || 'needs background'}`).join('\n')}
+
+Each character needs:
+1. Unique personality and speaking style
+2. Historical context and motivations
+3. Quest-related dialogue and interactions
+4. Educational dialogue that teaches history naturally`
     }
   ];
 
@@ -264,7 +273,14 @@ async function generateQuestContent(gamePlan) {
 
   const messages = [
     { role: "system", content: questPrompt },
-    { role: "user", content: `Create content for these quests: ${JSON.stringify(gamePlan.quests)}` }
+    { role: "user", content: `Create content for ${gamePlan.quests.length} quests:
+${gamePlan.quests.map(q => `- ${q.name || 'Quest'}: ${q.description || 'needs description'}`).join('\n')}
+
+Each quest needs:
+1. Clear objectives and multiple solution paths
+2. Historical puzzles and educational content
+3. Hints that don't break immersion
+4. Branching choices with consequences` }
   ];
 
   try {
