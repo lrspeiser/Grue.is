@@ -101,7 +101,7 @@ async function planGameWorld(userProfile) {
         messages,
         tools: gameDesignTools,
         tool_choice: { type: "function", function: { name: "create_game_design" } },
-        max_tokens: 4000
+        max_completion_tokens: 4000
       },
       `GamePlanner - Creating game design for user ${userProfile.userId}`
     );
