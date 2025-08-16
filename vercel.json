@@ -11,14 +11,6 @@
       "destination": "/api/v2/api/:path*"
     },
     {
-      "source": "/v2-debug",
-      "destination": "/v2-index-debug.html"
-    },
-    {
-      "source": "/v2",
-      "destination": "/v2-index.html"
-    },
-    {
       "source": "/test-route",
       "destination": "/api/test"
     }
