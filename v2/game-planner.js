@@ -9,7 +9,7 @@ if (!process.env.OPENAI_API_KEY) {
   console.error("[GamePlanner] WARNING: OPENAI_API_KEY not found in environment variables");
 } else {
   console.log("[GamePlanner] OpenAI API key loaded (last 4 chars):", process.env.OPENAI_API_KEY.slice(-4));
-  console.log("[GamePlanner] Using model: gpt-4-turbo-preview (GPT-5 does not exist)");
+  console.log("[GamePlanner] Using model: gpt-5 (Released August 7, 2025)");
 }
 
 /**
@@ -94,14 +94,14 @@ async function planGameWorld(userProfile) {
 
   try {
     console.log("[GamePlanner] Sending request to OpenAI API...");
-    console.log("[GamePlanner] Model: gpt-4-turbo-preview");
+    console.log("[GamePlanner] Model: gpt-5");
     console.log("[GamePlanner] Max tokens: 4000");
     console.log("[GamePlanner] Tool: create_game_design");
     console.log("[GamePlanner] Prompt length:", planningPrompt.length);
     
     const startTime = Date.now();
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview", // Using latest available model
+    const response = await openai.responses.create({
+      model: "gpt-5", // Using GPT-5 (Released August 7, 2025)
       messages,
       tools: gameDesignTools,
       tool_choice: { type: "function", function: { name: "create_game_design" } },

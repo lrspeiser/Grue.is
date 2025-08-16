@@ -9,7 +9,7 @@ if (!process.env.OPENAI_API_KEY) {
   console.error("[WorldGenerator] WARNING: OPENAI_API_KEY not found in environment variables");
 } else {
   console.log("[WorldGenerator] OpenAI API key loaded (last 4 chars):", process.env.OPENAI_API_KEY.slice(-4));
-  console.log("[WorldGenerator] Using model: gpt-4-turbo-preview (GPT-5 does not exist)");
+  console.log("[WorldGenerator] Using model: gpt-5 (Released August 7, 2025)");
 }
 
 /**
@@ -89,8 +89,8 @@ async function generateAllRoomContent(gamePlan) {
   ];
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+    const response = await openai.responses.create({
+      model: "gpt-5",
       messages,
       tools: roomTools,
       tool_choice: { type: "function", function: { name: "generate_all_rooms" } }
@@ -176,8 +176,8 @@ async function generateAllCharacters(gamePlan) {
   ];
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+    const response = await openai.responses.create({
+      model: "gpt-5",
       messages,
       tools: characterTools,
       tool_choice: { type: "function", function: { name: "generate_all_characters" } }
@@ -260,8 +260,8 @@ async function generateQuestContent(gamePlan) {
   ];
 
   try {
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+    const response = await openai.responses.create({
+      model: "gpt-5",
       messages,
       tools: questTools,
       tool_choice: { type: "function", function: { name: "generate_quest_content" } }

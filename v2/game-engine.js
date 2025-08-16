@@ -10,7 +10,7 @@ if (!process.env.OPENAI_API_KEY) {
   console.error("[GameEngine] WARNING: OPENAI_API_KEY not found in environment variables");
 } else {
   console.log("[GameEngine] OpenAI API key loaded (last 4 chars):", process.env.OPENAI_API_KEY.slice(-4));
-  console.log("[GameEngine] Using model: gpt-4-turbo-preview (GPT-5 does not exist)");
+  console.log("[GameEngine] Using model: gpt-5 (Released August 7, 2025)");
 }
 
 class GameEngine {
@@ -180,8 +180,8 @@ class GameEngine {
       console.log("[GameEngine] Prompt length:", dmPrompt.length);
       
       const startTime = Date.now();
-      const response = await openai.chat.completions.create({
-        model: "gpt-4-turbo-preview",
+      const response = await openai.responses.create({
+        model: "gpt-5",
         messages: [
           { role: "system", content: dmPrompt },
           { role: "user", content: userInput }

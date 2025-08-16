@@ -16,8 +16,8 @@ app.post("/api/chat-with-me", async (req, res) => {
       ...newMessages,
     ];
 
-    const response = await openai.chat.completions.create({
-      model: "gpt-4-turbo-preview",
+    const response = await openai.responses.create({
+      model: "gpt-5",
       messages,
       stream: true,
     });
