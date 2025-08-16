@@ -113,11 +113,9 @@ app.use(function onError(err, req, res, next) {
 
 const usersDir = path.join(__dirname, "data", "users"); // Kept as in original
 
-// Create server and Socket.IO only if not in Vercel
-let server, io;
-if (process.env.VERCEL !== '1') {
-  server = http.createServer(app);
-  io = new Server(server, {
+// Create server and Socket.IO
+const server = http.createServer(app);
+const io = new Server(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
       ? ["https://grue.is", "https://www.grue.is", "https://grue-is.vercel.app"] 
@@ -132,16 +130,12 @@ if (process.env.VERCEL !== '1') {
   pingInterval: 25000,
   upgradeTimeout: 30000, // Timeout for upgrade from polling to websocket
   maxHttpBufferSize: 1e6 // 1MB max buffer size
-  });
-  app.set('io', io); // Store io instance on the app for access in request handlers
-  
-  // Set io instance for v2 routes after io is created
-  if (app.setupV2Io) {
-    app.setupV2Io(io);
-  }
-} else {
-  // In Vercel, io will be null but routes should still work
-  console.log('[Vercel] Running in serverless mode - Socket.IO disabled');
+});
+app.set('io', io); // Store io instance on the app for access in request handlers
+
+// Set io instance for v2 routes after io is created
+if (app.setupV2Io) {
+  app.setupV2Io(io);
 }
 
 let serviceAccount;
@@ -1123,12 +1117,12 @@ async function updateChatConversationHistory(userId, message, filePath) {
 }
 // --- End of /api/chat-with-me ---
 
-// For Vercel, export the Express app
-module.exports = app;
-
-// Only start server if not in Vercel environment
-if (process.env.VERCEL !== '1') {
+// Only start server if running locally (not in Vercel)
+if (!process.env.VERCEL) {
   server.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
   });
 }
+
+// For Vercel, export the Express app
+module.exports = app;
