@@ -615,8 +615,9 @@ router.setIo = function(ioInstance) {
   setupSocketHandlers(io);
 };
 
-// Export router for use as a module
+// Export router and setIo function for use as a module
 module.exports = router;
+module.exports.setIo = setIo;
 
 // Only start server if run directly (not imported)
 if (require.main === module) {
