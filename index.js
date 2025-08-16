@@ -53,17 +53,26 @@ app.get('/v2', (req, res) => {
 // Serve v2 static files for other resources
 app.use('/v2', express.static(path.join(__dirname, "v2/public-v2")));
 
+// Add a simple test route first
+app.get('/v2/api/test', (req, res) => {
+  console.log('[V2 Test] Test endpoint hit');
+  res.json({ status: 'ok', message: 'V2 API is working', timestamp: new Date().toISOString() });
+});
+
 // Mount v2 API routes immediately for Vercel compatibility
 try {
   const v2Routes = require("./v2/index-v2");
   console.log("[V2 Routes] Successfully loaded v2 module");
   
+  // Mount the router
   app.use('/v2/api', v2Routes);
   console.log("[V2 Routes] Mounted v2 routes at /v2/api");
   
-  // Add a test route to verify v2 is working
-  app.get('/v2/api/test', (req, res) => {
-    res.json({ status: 'ok', message: 'V2 API is working' });
+  // List all routes for debugging
+  app._router.stack.forEach((middleware) => {
+    if(middleware.route) {
+      console.log(`[Route] ${Object.keys(middleware.route.methods).join(', ').toUpperCase()} ${middleware.route.path}`);
+    }
   });
   
   // Store function to set io later
@@ -75,6 +84,7 @@ try {
   };
 } catch (error) {
   console.error("[V2 Routes] Error loading v2 module:", error);
+  console.error("[V2 Routes] Stack trace:", error.stack);
 }
 
 Sentry.init({
@@ -103,8 +113,11 @@ app.use(function onError(err, req, res, next) {
 
 const usersDir = path.join(__dirname, "data", "users"); // Kept as in original
 
-const server = http.createServer(app);
-const io = new Server(server, {
+// Create server and Socket.IO only if not in Vercel
+let server, io;
+if (process.env.VERCEL !== '1') {
+  server = http.createServer(app);
+  io = new Server(server, {
   cors: {
     origin: process.env.NODE_ENV === 'production' 
       ? ["https://grue.is", "https://www.grue.is", "https://grue-is.vercel.app"] 
@@ -119,12 +132,16 @@ const io = new Server(server, {
   pingInterval: 25000,
   upgradeTimeout: 30000, // Timeout for upgrade from polling to websocket
   maxHttpBufferSize: 1e6 // 1MB max buffer size
-});
-app.set('io', io); // Store io instance on the app for access in request handlers
-
-// Set io instance for v2 routes after io is created
-if (app.setupV2Io) {
-  app.setupV2Io(io);
+  });
+  app.set('io', io); // Store io instance on the app for access in request handlers
+  
+  // Set io instance for v2 routes after io is created
+  if (app.setupV2Io) {
+    app.setupV2Io(io);
+  }
+} else {
+  // In Vercel, io will be null but routes should still work
+  console.log('[Vercel] Running in serverless mode - Socket.IO disabled');
 }
 
 let serviceAccount;
@@ -1106,6 +1123,12 @@ async function updateChatConversationHistory(userId, message, filePath) {
 }
 // --- End of /api/chat-with-me ---
 
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+// For Vercel, export the Express app
+module.exports = app;
+
+// Only start server if not in Vercel environment
+if (process.env.VERCEL !== '1') {
+  server.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
