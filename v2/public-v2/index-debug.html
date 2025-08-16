@@ -56,7 +56,7 @@
             height: 300px;
             background: #000;
             border-top: 3px solid #ff00ff;
-            display: none;
+            display: flex; /* Changed from none to flex - always visible */
             flex-direction: column;
             z-index: 999;
         }
@@ -290,7 +290,7 @@
         }
     </style>
 </head>
-<body>
+<body class="debug-active">
     <!-- Debug Panel -->
     <div id="debug-panel">
         <div id="debug-header">
@@ -427,18 +427,16 @@
     <script src="/socket.io/socket.io.js"></script>
     <script src="/v2/game-loader.js"></script>
     <script>
-        // Debug System
-        const DEBUG_MODE = window.location.search.includes('debug');
+        // Debug System - Always enabled for debug page
+        const DEBUG_MODE = true; // Always true for index-debug.html
         let currentDebugTab = 'all';
         const debugLogs = [];
         const MAX_DEBUG_LOGS = 1000;
 
         function initDebugPanel() {
-            if (!DEBUG_MODE) return;
-            
+            // Debug panel is always initialized for index-debug.html
             const debugPanel = document.getElementById('debug-panel');
-            debugPanel.classList.add('active');
-            document.body.classList.add('debug-active');
+            // Panel is already visible via CSS and body has debug-active class
             
             // Tab switching
             document.querySelectorAll('.debug-tab').forEach(tab => {
@@ -458,8 +456,15 @@
             
             // Minimize button
             document.getElementById('debug-minimize').addEventListener('click', () => {
-                debugPanel.classList.toggle('active');
-                document.body.classList.toggle('debug-active');
+                if (debugPanel.style.display === 'none') {
+                    debugPanel.style.display = 'flex';
+                    document.body.classList.add('debug-active');
+                    document.getElementById('debug-minimize').textContent = 'Minimize';
+                } else {
+                    debugPanel.style.display = 'none';
+                    document.body.classList.remove('debug-active');
+                    document.getElementById('debug-minimize').textContent = 'Show Debug';
+                }
             });
             
             // Override console methods

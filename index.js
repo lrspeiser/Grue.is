@@ -53,29 +53,29 @@ app.get('/v2', (req, res) => {
 // Serve v2 static files for other resources
 app.use('/v2', express.static(path.join(__dirname, "v2/public-v2")));
 
-// Mount v2 API routes (must be after io is created)
-// Delay loading v2 routes until after io is created
-app.setupV2Routes = function(ioInstance) {
-  try {
-    const v2Routes = require("./v2/index-v2");
-    console.log("[V2 Routes] Successfully loaded v2 module");
-    
-    // Pass io instance to v2 routes
+// Mount v2 API routes immediately for Vercel compatibility
+try {
+  const v2Routes = require("./v2/index-v2");
+  console.log("[V2 Routes] Successfully loaded v2 module");
+  
+  app.use('/v2/api', v2Routes);
+  console.log("[V2 Routes] Mounted v2 routes at /v2/api");
+  
+  // Add a test route to verify v2 is working
+  app.get('/v2/api/test', (req, res) => {
+    res.json({ status: 'ok', message: 'V2 API is working' });
+  });
+  
+  // Store function to set io later
+  app.setupV2Io = function(ioInstance) {
     if (v2Routes.setIo) {
       v2Routes.setIo(ioInstance);
+      console.log("[V2 Routes] IO instance set for v2 routes");
     }
-    
-    app.use('/v2/api', v2Routes);
-    console.log("[V2 Routes] Mounted v2 routes at /v2/api");
-    
-    // Add a test route to verify v2 is working
-    app.get('/v2/api/test', (req, res) => {
-      res.json({ status: 'ok', message: 'V2 API is working' });
-    });
-  } catch (error) {
-    console.error("[V2 Routes] Error loading v2 module:", error);
-  }
-};
+  };
+} catch (error) {
+  console.error("[V2 Routes] Error loading v2 module:", error);
+}
 
 Sentry.init({
   dsn: "https://3df40e009cff002fcf8b9f676bddf9d5@o502926.ingest.us.sentry.io/4507164679405568",
@@ -122,8 +122,10 @@ const io = new Server(server, {
 });
 app.set('io', io); // Store io instance on the app for access in request handlers
 
-// Setup v2 routes after io is created
-app.setupV2Routes(io);
+// Set io instance for v2 routes after io is created
+if (app.setupV2Io) {
+  app.setupV2Io(io);
+}
 
 let serviceAccount;
 try {
