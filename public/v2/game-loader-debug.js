@@ -24,7 +24,8 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
             
             console.log('[GameLoader] Request body:', requestBody);
             
-            const response = await fetch('/v2/api/generate-step', {
+            // Use test endpoint for now to debug the flow
+            const response = await fetch('/v2/api/generate-test', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(requestBody)
