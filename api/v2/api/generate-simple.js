@@ -66,7 +66,7 @@ Return ONLY valid JSON with this exact structure:
 
         try {
           const completion = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo", // Faster model
+            model: "gpt-5", // Using GPT-5 as requested
             messages: [
               { role: "system", content: "You are a game world generator. Return only valid JSON." },
               { role: "user", content: prompt }
