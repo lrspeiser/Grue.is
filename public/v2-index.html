@@ -595,6 +595,7 @@
         let currentWorldId = null;
         let currentGameState = null;
         let currentWorldData = null;
+        let currentOpenAIResponseId = null;
         
         // Setup form handling
         document.getElementById('start-generation').addEventListener('click', async () => {
@@ -674,6 +675,12 @@
             currentGameState = gameData.initialState || {};
             currentWorldData = gameData.world || { rooms: [] };
             
+            // Restore OpenAI response ID if available
+            if (gameData.openaiResponseId) {
+                currentOpenAIResponseId = gameData.openaiResponseId;
+                console.log('Restored OpenAI response ID:', currentOpenAIResponseId);
+            }
+            
             // If we have a current room, add it to world data if not already there
             if (gameData.currentRoom && currentWorldData.rooms) {
                 const roomExists = currentWorldData.rooms.find(r => r.id === gameData.currentRoom.id);
@@ -749,7 +756,8 @@
                         worldId: currentWorldId,
                         command: command,
                         gameState: currentGameState,
-                        worldData: currentWorldData
+                        worldData: currentWorldData,
+                        previousResponseId: currentOpenAIResponseId
                     })
                 });
                 
@@ -758,6 +766,12 @@
                 if (result.success) {
                     // Display the response
                     appendOutput(result.message + '\n');
+                    
+                    // Update OpenAI response ID for conversation continuity
+                    if (result.newOpenAIResponseId) {
+                        currentOpenAIResponseId = result.newOpenAIResponseId;
+                        console.log('Updated OpenAI response ID:', currentOpenAIResponseId);
+                    }
                     
                     // Update game state
                     if (result.gameState) {

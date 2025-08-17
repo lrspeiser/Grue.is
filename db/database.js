@@ -67,12 +67,12 @@ const db = {
   },
   
   // Game state operations
-  async saveGameState(userId, worldId, stateData) {
+  async saveGameState(userId, worldId, stateData, responseId = null) {
     const query = `
-      INSERT INTO game_states (user_id, world_id, current_room, inventory, health, score, game_state)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)
+      INSERT INTO game_states (user_id, world_id, current_room, inventory, health, score, game_state, openai_response_id)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
       ON CONFLICT (user_id, world_id) DO UPDATE
-      SET current_room = $3, inventory = $4, health = $5, score = $6, game_state = $7, updated_at = CURRENT_TIMESTAMP
+      SET current_room = $3, inventory = $4, health = $5, score = $6, game_state = $7, openai_response_id = $8, updated_at = CURRENT_TIMESTAMP
       RETURNING *`;
     const values = [
       userId,
@@ -81,7 +81,8 @@ const db = {
       JSON.stringify(stateData.inventory || []),
       stateData.health || 100,
       stateData.score || 0,
-      JSON.stringify(stateData)
+      JSON.stringify(stateData),
+      responseId
     ];
     const result = await pool.query(query, values);
     return result.rows[0];
@@ -143,9 +144,13 @@ const db = {
             health INTEGER DEFAULT 100,
             score INTEGER DEFAULT 0,
             game_state JSONB,
+            openai_response_id VARCHAR(255),
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             UNIQUE(user_id, world_id)
         );
+        
+        -- Add column if it doesn't exist (for existing tables)
+        ALTER TABLE game_states ADD COLUMN IF NOT EXISTS openai_response_id VARCHAR(255);
 
         -- Game logs table
         CREATE TABLE IF NOT EXISTS game_logs (

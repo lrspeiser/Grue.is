@@ -20,13 +20,14 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userId, worldId, command, gameState, worldData } = req.body || {};
+  const { userId, worldId, command, gameState, worldData, previousResponseId } = req.body || {};
   
   if (!userId || !command) {
     return res.status(400).json({ error: 'userId and command are required' });
   }
 
   console.log(`[AI Command] Processing: "${command}" for user: ${userId}, world: ${worldId}`);
+  console.log(`[AI Command] Previous response ID: ${previousResponseId || 'none'}`);
 
   try {
     // Initialize database if needed
@@ -88,7 +89,7 @@ If the player tries something impossible or nonsensical, respond appropriately b
 
 Respond with the appropriate narrative and any game state changes in the JSON format specified.`;
 
-    // Create the API request
+    // Create the API request using v1/responses API
     const apiRequest = {
       model: "gpt-4o",
       messages: [
@@ -100,16 +101,26 @@ Respond with the appropriate narrative and any game state changes in the JSON fo
       response_format: { type: "json_object" }
     };
     
-    console.log('[AI Command] SENDING TO OPENAI:');
+    // Add previous_response_id if it exists to maintain conversation continuity
+    if (previousResponseId) {
+      apiRequest.previous_response_id = previousResponseId;
+    }
+    
+    console.log('[AI Command] SENDING TO OPENAI v1/responses:');
     console.log('System prompt length:', systemPrompt.length);
     console.log('User prompt:', userPrompt);
+    console.log('Using previous_response_id:', previousResponseId || 'none');
     
-    const completion = await openai.chat.completions.create(apiRequest);
+    const response = await openai.responses.create(apiRequest);
     
-    const responseText = completion.choices[0].message.content;
+    // Extract text from the new response format
+    const responseText = response.output[0].content[0].text;
+    const newResponseId = response.id;
+    
     console.log('[AI Command] RECEIVED FROM OPENAI:');
-    console.log(responseText);
-    console.log('[AI Command] Token usage:', JSON.stringify(completion.usage));
+    console.log('Response ID:', newResponseId);
+    console.log('Response text:', responseText);
+    console.log('[AI Command] Token usage:', JSON.stringify(response.usage));
     
     // Parse the AI response
     let aiResponse;
@@ -138,8 +149,8 @@ Respond with the appropriate narrative and any game state changes in the JSON fo
     const newState = aiResponse.gameState || gameState;
     if (worldId) {
       try {
-        await db.saveGameState(userId, worldId, newState);
-        console.log(`[AI Command] Game state saved for user ${userId}, world ${worldId}`);
+        await db.saveGameState(userId, worldId, newState, newResponseId);
+        console.log(`[AI Command] Game state saved for user ${userId}, world ${worldId} with response ID ${newResponseId}`);
       } catch (saveError) {
         console.error('[AI Command] Error saving game state:', saveError);
         // Continue anyway - the command was processed
@@ -150,7 +161,8 @@ Respond with the appropriate narrative and any game state changes in the JSON fo
       success: true,
       message: aiResponse.message,
       gameState: newState,
-      worldData: worldData // Return potentially modified world data
+      worldData: worldData, // Return potentially modified world data
+      newOpenAIResponseId: newResponseId // Return the new response ID for conversation continuity
     });
     
   } catch (error) {
