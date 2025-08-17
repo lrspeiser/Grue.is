@@ -355,6 +355,7 @@
                     <div id="input-container">
                         <input type="text" id="command-input" placeholder="Enter command..." disabled>
                         <button id="submit-btn" disabled>Submit</button>
+                        <button id="start-over-btn" style="background: #ff4444;">Start Over</button>
                     </div>
                 </div>
                 
@@ -797,6 +798,40 @@
         document.getElementById('submit-btn').addEventListener('click', submitCommand);
         document.getElementById('command-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') submitCommand();
+        });
+        
+        // Start Over button
+        document.getElementById('start-over-btn').addEventListener('click', () => {
+            if (confirm('Are you sure you want to start over? This will clear your current game.')) {
+                // Clear all game state
+                localStorage.removeItem('userId');
+                localStorage.removeItem('worldId');
+                localStorage.removeItem('gameState');
+                localStorage.removeItem('worldData');
+                
+                // Reset OpenAI response ID
+                currentOpenAIResponseId = null;
+                
+                // Reset UI
+                document.getElementById('game-output').innerHTML = '';
+                document.getElementById('room-name').textContent = '';
+                document.getElementById('room-description').textContent = '';
+                document.getElementById('room-exits').innerHTML = '';
+                document.getElementById('inventory-list').innerHTML = '';
+                document.getElementById('health').textContent = '100';
+                document.getElementById('score').textContent = '0';
+                
+                // Hide game screen and show setup
+                document.getElementById('game-screen').style.display = 'none';
+                document.getElementById('setup-screen').style.display = 'flex';
+                
+                // Reset game state variables
+                gameActive = false;
+                currentGameState = null;
+                worldData = null;
+                
+                consoleLog('Game reset - returning to character creation', 'system');
+            }
         });
         
         // Check for existing game
