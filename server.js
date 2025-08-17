@@ -1,36 +1,109 @@
-// server.js - Main server that routes to v1 and v2
-const express = require("express");
-const path = require("path");
+const express = require('express');
+const path = require('path');
+const db = require('./db/database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Serve v1 (existing game) at root
-app.use(express.static(path.join(__dirname, "public")));
+// Middleware
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
-// Serve v2 at /v2
-app.use('/v2', express.static(path.join(__dirname, "v2/public-v2")));
+// CORS middleware
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
 
-// Mount v1 API routes (existing game)
-const v1App = require("./index.js");
-app.use('/', v1App);
+// Serve static files
+app.use(express.static('public'));
 
-// Mount v2 API routes at /v2
-const v2App = require("./v2/index-v2.js");  
-app.use('/v2', v2App);
+// API Routes
+app.use('/v2/api/generate-render', require('./api/v2/api/generate-render'));
+app.use('/v2/api/generate-simple', require('./api/v2/api/generate-simple'));
+app.use('/v2/api/generate-test', require('./api/v2/api/generate-test'));
 
-// Catch-all to serve v1 index for root
+// Game state API endpoints
+app.post('/api/game/save', async (req, res) => {
+  try {
+    const { userId, worldId, gameState } = req.body;
+    const result = await db.saveGameState(userId, worldId, gameState);
+    res.json({ success: true, data: result });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/game/load/:userId/:worldId', async (req, res) => {
+  try {
+    const { userId, worldId } = req.params;
+    const gameState = await db.getGameState(userId, worldId);
+    res.json({ success: true, data: gameState });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/game/worlds/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const worlds = await db.getUserWorlds(userId);
+    res.json({ success: true, data: worlds });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// HTML Routes (must come after API routes)
+app.get('/v2', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'v2-index.html'));
+});
+
+app.get('/v2-debug', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'v2-index-debug.html'));
+});
+
+app.get('/test-console', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'test-console.html'));
+});
+
+// Root route
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Serve v2 index at /v2
-app.get('/v2', (req, res) => {
-  res.sendFile(path.join(__dirname, 'v2', 'public-v2', 'index.html'));
+// 404 handler
+app.use((req, res) => {
+  res.status(404).send('404 - Page not found');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`- Main game (v1): /`);
-  console.log(`- New AI version (v2): /v2`);
+// Error handler
+app.use((err, req, res, next) => {
+  console.error('Error:', err);
+  res.status(500).send('Internal Server Error');
 });
+
+// Initialize database and start server
+async function startServer() {
+  try {
+    console.log('Initializing database...');
+    await db.initialize();
+    console.log('Database initialized successfully');
+    
+    app.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+      console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`Database connected: ${process.env.DATABASE_URL ? 'Yes' : 'No'}`);
+    });
+  } catch (error) {
+    console.error('Failed to start server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();

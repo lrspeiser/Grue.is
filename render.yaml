@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: grue-is
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: grue
+          property: connectionString
+      - key: OPENAI_API_KEY
+        sync: false
+    routes:
+      - type: rewrite
+        source: /v2
+        destination: /v2-index.html
+      - type: rewrite
+        source: /v2-debug
+        destination: /v2-index-debug.html
+
+databases:
+  - name: grue
+    plan: free
+    databaseName: grue
+    user: grue_user
