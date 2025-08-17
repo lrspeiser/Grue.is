@@ -596,7 +596,7 @@
         let currentWorldId = null;
         let currentGameState = null;
         let currentWorldData = null;
-        let currentOpenAIResponseId = null;
+        let conversationHistory = [];
         
         // Setup form handling
         document.getElementById('start-generation').addEventListener('click', async () => {
@@ -758,7 +758,7 @@
                         command: command,
                         gameState: currentGameState,
                         worldData: currentWorldData,
-                        previousResponseId: currentOpenAIResponseId
+                        conversationHistory: conversationHistory
                     })
                 });
                 
@@ -768,10 +768,15 @@
                     // Display the response
                     appendOutput(result.message + '\n');
                     
-                    // Update OpenAI response ID for conversation continuity
-                    if (result.newOpenAIResponseId) {
-                        currentOpenAIResponseId = result.newOpenAIResponseId;
-                        console.log('Updated OpenAI response ID:', currentOpenAIResponseId);
+                    // Add messages to conversation history
+                    conversationHistory.push({ role: 'user', content: `Player command: "${command}"` });
+                    if (result.aiResponse) {
+                        conversationHistory.push({ role: 'assistant', content: result.aiResponse });
+                    }
+                    
+                    // Keep conversation history to last 10 exchanges (20 messages)
+                    if (conversationHistory.length > 20) {
+                        conversationHistory = conversationHistory.slice(-20);
                     }
                     
                     // Update game state
@@ -809,8 +814,8 @@
                 localStorage.removeItem('gameState');
                 localStorage.removeItem('worldData');
                 
-                // Reset OpenAI response ID
-                currentOpenAIResponseId = null;
+                // Reset conversation history
+                conversationHistory = [];
                 
                 // Reset UI
                 document.getElementById('game-output').innerHTML = '';

@@ -20,14 +20,13 @@ module.exports = async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  const { userId, worldId, command, gameState, worldData, previousResponseId } = req.body || {};
+  const { userId, worldId, command, gameState, worldData, conversationHistory } = req.body || {};
   
   if (!userId || !command) {
     return res.status(400).json({ error: 'userId and command are required' });
   }
 
   console.log(`[AI Command] Processing: "${command}" for user: ${userId}, world: ${worldId}`);
-  console.log(`[AI Command] Previous response ID: ${previousResponseId || 'none'}`);
 
   try {
     // Initialize database if needed
@@ -46,91 +45,112 @@ module.exports = async function handler(req, res) {
       });
     }
     
-    // Build the context for OpenAI
-    let systemPrompt;
-    let userPrompt;
+    // Get adjacent rooms for context
+    const adjacentRooms = {};
+    if (currentRoom.exits) {
+      for (const [direction, roomId] of Object.entries(currentRoom.exits)) {
+        const room = rooms.find(r => r.id === roomId);
+        if (room) {
+          adjacentRooms[direction] = {
+            id: room.id,
+            name: room.name,
+            brief: room.description?.substring(0, 50) + '...'
+          };
+        }
+      }
+    }
     
-    if (!previousResponseId) {
-      // First message in conversation - provide full context
-      systemPrompt = `You are a game master for a text adventure game. You must interpret player commands and respond appropriately.
+    // Build OPTIMIZED context for cheaper model
+    // Include only relevant world data instead of entire world
+    const relevantWorldData = {
+      worldName: worldData.name,
+      theme: worldData.theme,
+      currentRoom: {
+        ...currentRoom,
+        adjacentRooms
+      },
+      // Only include NPCs in current room
+      npcsInRoom: worldData.npcs?.filter(npc => npc.location === currentRoomId) || currentRoom.npcs || [],
+      // Only include items that might be referenced
+      availableItems: [
+        ...(currentRoom.items || []),
+        ...(gameState.inventory || [])
+      ],
+      // Include active missions for context
+      activeMissions: gameState.activeMissions?.map(mId => 
+        worldData.missions?.find(m => m.id === mId)
+      ).filter(Boolean) || [],
+      worldMechanics: worldData.worldMechanics
+    };
+    
+    let systemPrompt = `You are a game master for a ${worldData.theme || 'fantasy'} text adventure game. Interpret player commands and respond appropriately.
 
-WORLD CONTEXT:
-${JSON.stringify(worldData, null, 2)}
+CURRENT CONTEXT:
+World: ${worldData.name || 'Unknown World'}
+Theme: ${worldData.theme || 'fantasy'}
 
-INITIAL GAME STATE:
-- Current Room: ${currentRoomId}
-- Inventory: ${JSON.stringify(gameState.inventory || [])}
+CURRENT ROOM: ${currentRoom.name}
+Description: ${currentRoom.description}
+Exits: ${Object.keys(currentRoom.exits || {}).join(', ') || 'none'}
+Items here: ${(currentRoom.items || []).join(', ') || 'none'}
+NPCs here: ${(relevantWorldData.npcsInRoom.map(n => n.name).join(', ')) || 'none'}
+
+PLAYER STATE:
+- Inventory: ${(gameState.inventory || []).join(', ') || 'empty'}
 - Health: ${gameState.health || 100}
 - Score: ${gameState.score || 0}
+${gameState.activeMissions?.length ? `- Active Missions: ${gameState.activeMissions.join(', ')}` : ''}
 
-CURRENT ROOM DETAILS:
-${JSON.stringify(currentRoom, null, 2)}
+ADJACENT ROOMS:
+${Object.entries(adjacentRooms).map(([dir, room]) => `- ${dir}: ${room.name}`).join('\n') || 'none'}
 
-INSTRUCTIONS:
-1. Interpret the player's command in the context of the game world
-2. Generate an appropriate narrative response
-3. Update the game state if the action changes anything
-4. Return a JSON response with this EXACT structure:
-
+RESPONSE FORMAT:
+Return ONLY a JSON object with this structure:
 {
-  "message": "Your narrative response to the player's action",
+  "message": "Your narrative response",
   "gameState": {
-    "currentRoom": "room_id if player moved, otherwise same as before",
-    "inventory": ["array of items player is carrying"],
+    "currentRoom": "room_id",
+    "inventory": [],
     "health": 100,
     "score": 0
   },
-  "roomUpdates": {
-    "room_id": {
-      "items": ["updated items in the room if any were taken/dropped"]
-    }
-  }
-}
+  "roomUpdates": {}
+}`;
+    
+    let userPrompt = `Player command: "${command}"`;
 
-Be creative and descriptive in your responses. Make the game world feel alive and interactive.`;
-      
-      userPrompt = `Player command: "${command}"`;
-    } else {
-      // Continuing conversation - minimal context needed
-      systemPrompt = `Continue the text adventure game. Remember all previous context and game state from this conversation thread. Always respond with the same JSON structure.`;
-      
-      userPrompt = `Player command: "${command}"`;
-    }
-
-    // Create the API request using v1/responses API
-    const apiRequest = {
-      model: "gpt-4o",
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-      temperature: 0.8,
-      max_output_tokens: 1000,
-      text: { 
-        format: { 
-          type: "json_object" 
-        } 
-      }
-    };
+    // Prepare messages - limit conversation history for token efficiency
+    const messages = [
+      { role: "system", content: systemPrompt }
+    ];
     
-    // Add previous_response_id if it exists to maintain conversation continuity
-    if (previousResponseId) {
-      apiRequest.previous_response_id = previousResponseId;
+    // Add only recent conversation history (last 4 exchanges)
+    if (conversationHistory && Array.isArray(conversationHistory)) {
+      const recentHistory = conversationHistory.slice(-8); // Last 4 user/assistant pairs
+      messages.push(...recentHistory);
     }
     
-    console.log('[AI Command] SENDING TO OPENAI v1/responses:');
-    console.log('System prompt length:', systemPrompt.length);
-    console.log('User prompt:', userPrompt);
-    console.log('Using previous_response_id:', previousResponseId || 'none');
+    // Add current user command
+    messages.push({ role: "user", content: userPrompt });
     
-    const response = await openai.responses.create(apiRequest);
+    console.log('[AI Command] Using CHEAPER MODEL (gpt-4o-mini) for gameplay');
+    console.log('Optimized context size:', systemPrompt.length);
+    console.log('Recent history entries:', conversationHistory?.slice(-8).length || 0);
     
-    // Extract text from the new response format
-    const responseText = response.output[0].content[0].text;
-    const newResponseId = response.id;
+    // Use cheaper model for gameplay
+    const response = await openai.chat.completions.create({
+      model: "gpt-4o-mini", // Cheaper, faster model for gameplay
+      messages: messages,
+      temperature: 0.7, // Slightly less creative for consistency
+      max_tokens: 500, // Smaller response for efficiency
+      response_format: { type: "json_object" }
+    });
+    
+    // Extract text from the response
+    const responseText = response.choices[0].message.content;
+    const newResponseId = null; // No response ID with chat.completions
     
     console.log('[AI Command] RECEIVED FROM OPENAI:');
-    console.log('Response ID:', newResponseId);
     console.log('Response text:', responseText);
     console.log('[AI Command] Token usage:', JSON.stringify(response.usage));
     
@@ -161,8 +181,8 @@ Be creative and descriptive in your responses. Make the game world feel alive an
     const newState = aiResponse.gameState || gameState;
     if (worldId) {
       try {
-        await db.saveGameState(userId, worldId, newState, newResponseId);
-        console.log(`[AI Command] Game state saved for user ${userId}, world ${worldId} with response ID ${newResponseId}`);
+        await db.saveGameState(userId, worldId, newState, null);
+        console.log(`[AI Command] Game state saved for user ${userId}, world ${worldId}`);
       } catch (saveError) {
         console.error('[AI Command] Error saving game state:', saveError);
         // Continue anyway - the command was processed
@@ -174,7 +194,7 @@ Be creative and descriptive in your responses. Make the game world feel alive an
       message: aiResponse.message,
       gameState: newState,
       worldData: worldData, // Return potentially modified world data
-      newOpenAIResponseId: newResponseId // Return the new response ID for conversation continuity
+      aiResponse: responseText // Return raw response for history tracking
     });
     
   } catch (error) {

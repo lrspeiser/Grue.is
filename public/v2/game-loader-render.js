@@ -1,8 +1,9 @@
-// game-loader-render.js - Game generation for Render deployment with 10-minute timeout
-// Uses PostgreSQL database and extended timeout capability
+// game-loader-render.js - Two-phase game generation with tiered models
+// Phase 1: GPT-4o for world generation
+// Phase 2: GPT-4o-mini for gameplay
 
-async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
-    console.log('[GameLoader] Starting game generation on Render');
+async function generateGameWithRetry(userId, userProfile, maxRetries = 3) {
+    console.log('[GameLoader] Starting two-phase game generation');
     console.log('[GameLoader] User ID:', userId);
     console.log('[GameLoader] Profile:', userProfile);
     
@@ -11,144 +12,90 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
         ? '' 
         : 'https://grue-is.onrender.com';
     
-    let currentStep = 'init';
-    let stepData = {};
-    let retries = 0;
-    
-    while (currentStep !== 'complete' && retries < maxRetries) {
-        try {
-            console.log(`[GameLoader] Processing step: ${currentStep}`);
-            console.log(`[GameLoader] Attempt ${retries + 1}/${maxRetries}`);
-            
-            const requestBody = {
+    try {
+        // Phase 1: Generate world with powerful model (GPT-4o)
+        console.log('[GameLoader] Phase 1: Generating world with GPT-4o...');
+        
+        // Extract character name from profile
+        const characterName = userProfile.characterRole || 'Adventurer';
+        const theme = `${userProfile.timePeriod || 'medieval'} ${userProfile.storyLocation || 'fantasy'}`;
+        const difficulty = userProfile.educationLevel === 'elementary' ? 'easy' : 
+                          userProfile.educationLevel === 'graduate' ? 'hard' : 'medium';
+        
+        const worldResponse = await fetch(`${apiBase}/v2/api/generate-world`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
                 userId,
-                step: currentStep,
-                userProfile,
-                ...stepData
-            };
-            
-            console.log('[GameLoader] Request body:', requestBody);
-            
-            // Use Render-optimized endpoint with extended timeout
-            const response = await fetch(`${apiBase}/v2/api/generate-render`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(requestBody)
-            });
-            
-            console.log('[GameLoader] Response status:', response.status);
-            
-            if (!response.ok) {
-                const errorText = await response.text();
-                console.error('[GameLoader] Server error:', errorText);
-                
-                // Retry on server errors
-                retries++;
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                continue;
-            }
-            
-            let result;
-            try {
-                const responseText = await response.text();
-                console.log('[GameLoader] Raw response:', responseText.substring(0, 500));
-                result = JSON.parse(responseText);
-            } catch (parseError) {
-                console.error('[GameLoader] Failed to parse response:', parseError);
-                retries++;
-                await new Promise(resolve => setTimeout(resolve, 3000));
-                continue;
-            }
-            
-            console.log('[GameLoader] Step result:', result);
-            
-            if (!result.success) {
-                console.error('[GameLoader] Step failed:', result.error);
-                
-                // Retry failed steps
-                if (result.nextStep && result.nextStep.includes('retry')) {
-                    console.log('[GameLoader] Retrying step...');
-                    retries++;
-                    await new Promise(resolve => setTimeout(resolve, 5000));
-                    continue;
-                }
-                
-                throw new Error(result.error || 'Step failed');
-            }
-            
-            // Log progress
-            console.log(`[GameLoader] Progress: ${result.progress}% - ${result.message}`);
-            
-            // Store data for next step if needed
-            if (result.data) {
-                if (result.data.worldId) {
-                    stepData.worldId = result.data.worldId;
-                    console.log('[GameLoader] World saved to database, ID:', result.data.worldId);
-                }
-                
-                if (result.data.worldOverview) {
-                    console.log('[GameLoader] World overview:', result.data.worldOverview);
-                    if (result.data.worldOverview.roomCount) {
-                        console.log('[GameLoader] Total rooms generated:', result.data.worldOverview.roomCount);
-                    }
-                }
-                
-                if (result.data.initialState) {
-                    console.log('[GameLoader] Initial state:', result.data.initialState);
-                }
-                
-                if (result.data.currentRoom) {
-                    console.log('[GameLoader] Current room:', result.data.currentRoom);
-                }
-            }
-            
-            // Check if we're done
-            if (result.nextStep === 'complete' || result.progress === 100) {
-                console.log('[GameLoader] Generation complete!');
-                console.log('[GameLoader] Using GPT-5 with Render extended timeout');
-                
-                if (result.data) {
-                    // Save world data if we're on Render
-                    if (result.data.worldId && result.data.world) {
-                        console.log(`[GameLoader] World saved to database, ID: ${result.data.worldId}`);
-                        console.log(`[GameLoader] Total rooms generated: ${result.data.world.rooms?.length || 0}`);
-                    }
-                    
-                    return {
-                        success: true,
-                        gameId: `game-${userId}`,
-                        worldId: result.data.worldId,
-                        worldOverview: result.data.worldOverview,
-                        initialState: result.data.initialState,
-                        currentRoom: result.data.currentRoom,
-                        world: result.data.world
-                    };
-                }
-            }
-            
-            // Move to next step
-            currentStep = result.nextStep;
-            retries = 0; // Reset retries for new step
-            
-            // Small delay between steps
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            
-        } catch (error) {
-            console.error('[GameLoader] Error in step processing:', error);
-            console.error('[GameLoader] Error stack:', error.stack);
-            
-            retries++;
-            
-            if (retries >= maxRetries) {
-                throw new Error(`Failed after ${maxRetries} attempts: ${error.message}`);
-            }
-            
-            console.log(`[GameLoader] Retrying in 5 seconds...`);
-            await new Promise(resolve => setTimeout(resolve, 5000));
+                name: characterName,
+                theme: theme,
+                difficulty: difficulty
+            })
+        });
+        
+        console.log('[GameLoader] World generation response status:', worldResponse.status);
+        
+        if (!worldResponse.ok) {
+            const errorText = await worldResponse.text();
+            console.error('[GameLoader] World generation failed:', errorText);
+            throw new Error('World generation failed: ' + errorText);
         }
+        
+        const worldData = await worldResponse.json();
+        console.log('[GameLoader] World generated successfully');
+        console.log(`[GameLoader] World ID: ${worldData.worldId}`);
+        console.log(`[GameLoader] Rooms: ${worldData.worldData?.rooms?.length || 0}`);
+        console.log(`[GameLoader] NPCs: ${worldData.worldData?.npcs?.length || 0}`);
+        console.log(`[GameLoader] Items: ${worldData.worldData?.items?.length || 0}`);
+        console.log(`[GameLoader] Missions: ${worldData.worldData?.missions?.length || 0}`);
+        console.log(`[GameLoader] Tokens used (GPT-4o): ${worldData.tokensUsed || 'unknown'}`);
+        
+        if (!worldData.success) {
+            throw new Error(worldData.error || 'World generation failed');
+        }
+        
+        // Get the starting room details
+        const startRoomId = worldData.gameState?.currentRoom || 'start';
+        const currentRoom = worldData.worldData?.rooms?.find(r => r.id === startRoomId);
+        
+        console.log('[GameLoader] Phase 1 complete - World ready for gameplay with GPT-4o-mini');
+        
+        // Return game data in expected format
+        return {
+            success: true,
+            gameId: worldData.worldId,
+            worldId: worldData.worldId,
+            worldOverview: {
+                name: worldData.worldData.name,
+                description: worldData.worldData.description,
+                theme: worldData.worldData.theme,
+                roomCount: worldData.worldData.rooms?.length || 0,
+                npcCount: worldData.worldData.npcs?.length || 0,
+                itemCount: worldData.worldData.items?.length || 0,
+                missionCount: worldData.worldData.missions?.length || 0
+            },
+            initialState: worldData.gameState,
+            currentRoom: currentRoom,
+            world: worldData.worldData
+        };
+        
+    } catch (error) {
+        console.error('[GameLoader] Error in game generation:', error);
+        console.error('[GameLoader] Error stack:', error.stack);
+        
+        // Fallback to simple world generation if API fails
+        if (maxRetries > 0) {
+            console.log('[GameLoader] Retrying with simpler parameters...');
+            return generateGameWithRetry(userId, {
+                ...userProfile,
+                characterRole: 'Explorer',
+                timePeriod: 'fantasy',
+                storyLocation: 'dungeon'
+            }, maxRetries - 1);
+        }
+        
+        throw error;
     }
-    
-    throw new Error('Game generation did not complete');
 }
 
 async function checkExistingGame(userId, maxRetries = 2) {
