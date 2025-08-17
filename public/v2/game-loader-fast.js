@@ -7,7 +7,7 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 30) {
     try {
         // Step 1: Start game generation (returns immediately)
         console.log('[GameLoader] Initiating game generation...');
-        const startResponse = await fetch('/v2/api/start-game', {
+        const startResponse = await fetch('/v2/api/start-game-simple', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId, userProfile })
@@ -30,7 +30,7 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 30) {
             console.log(`[GameLoader] Checking status... (attempt ${attempts}/${maxRetries})`);
             
             try {
-                const statusResponse = await fetch('/v2/api/game-status', {
+                const statusResponse = await fetch('/v2/api/game-status-simple', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ userId })
@@ -134,7 +134,7 @@ async function checkExistingGame(userId, maxRetries = 3) {
     console.log('[GameLoader] Checking for existing game...');
     
     try {
-        const response = await fetch('/v2/api/game-status', {
+        const response = await fetch('/v2/api/game-status-simple', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ userId })
