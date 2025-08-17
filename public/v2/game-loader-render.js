@@ -108,13 +108,20 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
                 console.log('[GameLoader] Using GPT-5 with Render extended timeout');
                 
                 if (result.data) {
+                    // Save world data if we're on Render
+                    if (result.data.worldId && result.data.world) {
+                        console.log(`[GameLoader] World saved to database, ID: ${result.data.worldId}`);
+                        console.log(`[GameLoader] Total rooms generated: ${result.data.world.rooms?.length || 0}`);
+                    }
+                    
                     return {
                         success: true,
                         gameId: `game-${userId}`,
                         worldId: result.data.worldId,
                         worldOverview: result.data.worldOverview,
                         initialState: result.data.initialState,
-                        currentRoom: result.data.currentRoom
+                        currentRoom: result.data.currentRoom,
+                        world: result.data.world
                     };
                 }
             }

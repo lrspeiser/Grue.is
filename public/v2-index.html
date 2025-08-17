@@ -591,6 +591,10 @@
         // Game functionality
         let socket;
         let gameActive = false;
+        let currentUserId = userId;
+        let currentWorldId = null;
+        let currentGameState = null;
+        let currentWorldData = null;
         
         // Setup form handling
         document.getElementById('start-generation').addEventListener('click', async () => {
@@ -665,6 +669,19 @@
         function initializeGame(gameData) {
             console.log('Initializing game...');
             
+            // Store game data
+            currentWorldId = gameData.worldId || gameData.gameId || null;
+            currentGameState = gameData.initialState || {};
+            currentWorldData = gameData.world || { rooms: [] };
+            
+            // If we have a current room, add it to world data if not already there
+            if (gameData.currentRoom && currentWorldData.rooms) {
+                const roomExists = currentWorldData.rooms.find(r => r.id === gameData.currentRoom.id);
+                if (!roomExists) {
+                    currentWorldData.rooms.push(gameData.currentRoom);
+                }
+            }
+            
             // Update UI with initial state
             document.getElementById('game-output').textContent = 'Welcome to your adventure!\n\n';
             updateGameState(gameData.initialState);
@@ -714,7 +731,7 @@
             output.scrollTop = output.scrollHeight;
         }
         
-        function submitCommand() {
+        async function submitCommand() {
             const input = document.getElementById('command-input');
             const command = input.value.trim();
             if (!command) return;
@@ -722,9 +739,43 @@
             console.log(`Player command: ${command}`);
             appendOutput(`\n> ${command}\n`);
             
-            // Here you would send the command to the server
-            // For now, just show a response
-            appendOutput('Command processing not yet implemented.\n');
+            // Process the command
+            try {
+                const response = await fetch('/v2/api/process-command', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        userId: currentUserId,
+                        worldId: currentWorldId,
+                        command: command,
+                        gameState: currentGameState,
+                        worldData: currentWorldData
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    // Display the response
+                    appendOutput(result.message + '\n');
+                    
+                    // Update game state
+                    if (result.gameState) {
+                        currentGameState = result.gameState;
+                        updateGameState(currentGameState);
+                    }
+                    
+                    // Update world data if modified
+                    if (result.worldData) {
+                        currentWorldData = result.worldData;
+                    }
+                } else {
+                    appendOutput(`Error: ${result.error || 'Command failed'}\n`);
+                }
+            } catch (error) {
+                console.error('Command processing error:', error);
+                appendOutput(`Error processing command: ${error.message}\n`);
+            }
             
             input.value = '';
         }

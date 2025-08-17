@@ -175,7 +175,12 @@ Return ONLY valid JSON with this structure:
                 roomCount: gameData.rooms.length
               },
               initialState: initialState,
-              currentRoom: gameData.rooms[0]
+              currentRoom: gameData.rooms[0],
+              world: {
+                rooms: gameData.rooms,
+                starting_room: gameData.rooms[0].id,
+                winCondition: gameData.winCondition
+              }
             }
           });
           
