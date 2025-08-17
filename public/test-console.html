@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Grue.is - API Test Console</title>
+    <style>
+        body {
+            font-family: 'Courier New', monospace;
+            background: #000;
+            color: #0f0;
+            padding: 20px;
+            margin: 0;
+        }
+        
+        #console {
+            background: #111;
+            border: 2px solid #0f0;
+            padding: 15px;
+            height: calc(100vh - 120px);
+            overflow-y: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+        
+        .log-entry {
+            margin: 2px 0;
+            padding: 2px 0;
+            border-bottom: 1px solid #222;
+        }
+        
+        .timestamp {
+            color: #666;
+            margin-right: 10px;
+        }
+        
+        .success {
+            color: #0f0;
+        }
+        
+        .error {
+            color: #f00;
+        }
+        
+        .warning {
+            color: #ff0;
+        }
+        
+        .info {
+            color: #0ff;
+        }
+        
+        h1 {
+            color: #0f0;
+            font-size: 20px;
+            margin: 0 0 20px 0;
+        }
+        
+        button {
+            background: #0f0;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            margin: 10px 10px 10px 0;
+            cursor: pointer;
+            font-family: inherit;
+            font-weight: bold;
+        }
+        
+        button:hover {
+            background: #0a0;
+        }
+    </style>
+</head>
+<body>
+    <h1>🖥️ Grue.is API Test Console</h1>
+    <div>
+        <button onclick="runAllTests()">Run All Tests</button>
+        <button onclick="clearConsole()">Clear Console</button>
+        <button onclick="testGeneration()">Test Game Generation</button>
+    </div>
+    <div id="console"></div>
+    
+    <script>
+        const consoleDiv = document.getElementById('console');
+        
+        function log(message, type = 'info') {
+            const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span><span class="${type}">${escapeHtml(message)}</span>`;
+            consoleDiv.appendChild(entry);
+            consoleDiv.scrollTop = consoleDiv.scrollHeight;
+            
+            // Also log to browser console
+            console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+        
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        function clearConsole() {
+            consoleDiv.innerHTML = '';
+            log('Console cleared', 'info');
+        }
+        
+        async function checkEndpoint(url, method = 'GET', body = null) {
+            const startTime = Date.now();
+            log(`Testing ${method} ${url}...`, 'info');
+            
+            try {
+                const options = {
+                    method: method,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                };
+                
+                if (body) {
+                    options.body = JSON.stringify(body);
+                }
+                
+                const response = await fetch(url, options);
+                const duration = Date.now() - startTime;
+                
+                if (response.ok) {
+                    const data = await response.text();
+                    let jsonData;
+                    try {
+                        jsonData = JSON.parse(data);
+                        log(`✓ ${url} - Status: ${response.status} - Time: ${duration}ms`, 'success');
+                        log(`  Response: ${JSON.stringify(jsonData, null, 2).substring(0, 200)}...`, 'info');
+                    } catch (e) {
+                        log(`✓ ${url} - Status: ${response.status} - Time: ${duration}ms`, 'success');
+                        log(`  Response (text): ${data.substring(0, 200)}...`, 'info');
+                    }
+                } else {
+                    log(`✗ ${url} - Status: ${response.status} - Time: ${duration}ms`, 'error');
+                    const errorText = await response.text();
+                    log(`  Error: ${errorText.substring(0, 200)}`, 'error');
+                }
+                
+                return { success: response.ok, status: response.status, duration };
+            } catch (error) {
+                const duration = Date.now() - startTime;
+                log(`✗ ${url} - Network Error - Time: ${duration}ms`, 'error');
+                log(`  Error: ${error.message}`, 'error');
+                return { success: false, error: error.message, duration };
+            }
+        }
+        
+        async function runAllTests() {
+            log('=== Starting API Health Check ===', 'warning');
+            log(`Page URL: ${window.location.href}`, 'info');
+            log(`Timestamp: ${new Date().toISOString()}`, 'info');
+            log(`User Agent: ${navigator.userAgent}`, 'info');
+            
+            // Test static pages
+            log('\n=== Testing Static Pages ===', 'warning');
+            await checkEndpoint('/v2-debug');
+            await checkEndpoint('/v2');
+            await checkEndpoint('/v2-index-debug.html');
+            await checkEndpoint('/v2-index.html');
+            
+            // Test game loader scripts
+            log('\n=== Testing Game Loader Scripts ===', 'warning');
+            await checkEndpoint('/v2/game-loader.js');
+            await checkEndpoint('/v2/game-loader-debug.js');
+            await checkEndpoint('/v2/game-loader-fast.js');
+            
+            // Test API endpoints
+            log('\n=== Testing API Endpoints ===', 'warning');
+            
+            // Test endpoints with GET
+            await checkEndpoint('/v2/api/test');
+            await checkEndpoint('/v2/api/check-usage');
+            
+            // Test endpoints with POST
+            const testUserId = 'test-user-' + Date.now();
+            
+            await checkEndpoint('/v2/api/game-status-simple', 'POST', { userId: testUserId });
+            await checkEndpoint('/v2/api/start-game-simple', 'POST', { userId: testUserId });
+            await checkEndpoint('/v2/api/generate-test', 'POST', { 
+                userId: testUserId, 
+                step: 'init' 
+            });
+            
+            // Test the main endpoints (these might timeout)
+            log('\n=== Testing Main Game Endpoints (may timeout) ===', 'warning');
+            await checkEndpoint('/v2/api/new-game', 'POST', { 
+                userId: testUserId,
+                userProfile: {
+                    educationLevel: 'test',
+                    location: 'test'
+                }
+            });
+            
+            await checkEndpoint('/v2/api/continue-game', 'POST', { userId: testUserId });
+            await checkEndpoint('/v2/api/generate-step', 'POST', { 
+                userId: testUserId, 
+                step: 'init' 
+            });
+            
+            log('\n=== Health Check Complete ===', 'success');
+        }
+        
+        async function testGeneration() {
+            log('\n=== Testing Step-by-Step Generation ===', 'warning');
+            const userId = 'test-' + Date.now();
+            
+            // Step 1: Initialize
+            log('Step 1: Initialize game...', 'info');
+            const initResult = await checkEndpoint('/v2/api/generate-test', 'POST', {
+                userId: userId,
+                step: 'init',
+                userProfile: {
+                    educationLevel: 'college',
+                    location: 'USA'
+                }
+            });
+            
+            if (!initResult.success) {
+                log('Failed to initialize game', 'error');
+                return;
+            }
+            
+            // Step 2: Plan
+            log('Step 2: Create game plan...', 'info');
+            const planResult = await checkEndpoint('/v2/api/generate-test', 'POST', {
+                userId: userId,
+                step: 'plan'
+            });
+            
+            if (!planResult.success) {
+                log('Failed to create plan', 'error');
+                return;
+            }
+            
+            // Step 3: Generate
+            log('Step 3: Generate world...', 'info');
+            const generateResult = await checkEndpoint('/v2/api/generate-test', 'POST', {
+                userId: userId,
+                step: 'generate',
+                gamePlan: {
+                    title: 'Test Game',
+                    description: 'Test',
+                    setting: 'Test'
+                }
+            });
+            
+            if (!generateResult.success) {
+                log('Failed to generate world', 'error');
+                return;
+            }
+            
+            log('✓ Generation test complete!', 'success');
+        }
+        
+        // Override console methods to capture everything
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn,
+            info: console.info
+        };
+        
+        console.log = function(...args) {
+            log(args.join(' '), 'info');
+            originalConsole.log.apply(console, args);
+        };
+        
+        console.error = function(...args) {
+            log(args.join(' '), 'error');
+            originalConsole.error.apply(console, args);
+        };
+        
+        console.warn = function(...args) {
+            log(args.join(' '), 'warning');
+            originalConsole.warn.apply(console, args);
+        };
+        
+        console.info = function(...args) {
+            log(args.join(' '), 'info');
+            originalConsole.info.apply(console, args);
+        };
+        
+        // Capture uncaught errors
+        window.addEventListener('error', (event) => {
+            log(`Uncaught Error: ${event.message} at ${event.filename}:${event.lineno}:${event.colno}`, 'error');
+        });
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            log(`Unhandled Promise Rejection: ${event.reason}`, 'error');
+        });
+        
+        // Run tests on load
+        window.addEventListener('load', () => {
+            log('=== Test Console Ready ===', 'success');
+            log('Click "Run All Tests" to check all API endpoints', 'info');
+            log('Browser: ' + navigator.userAgent, 'info');
+            log('Page loaded at: ' + new Date().toISOString(), 'info');
+        });
+    </script>
+</body>
+</html>
