@@ -88,7 +88,7 @@ Return ONLY valid JSON with this structure:
 }`;
 
         try {
-          const completion = await openai.chat.completions.create({
+          const apiRequest = {
             model: "gpt-4o", // Using GPT-4o with Render's extended timeout
             messages: [
               { 
@@ -99,10 +99,16 @@ Return ONLY valid JSON with this structure:
             ],
             temperature: 0.8,
             max_tokens: 4000 // Much larger response with Render's timeout
-          });
+          };
+          
+          console.log('[Render] SENDING TO OPENAI:', JSON.stringify(apiRequest, null, 2));
+          
+          const completion = await openai.chat.completions.create(apiRequest);
           
           const responseText = completion.choices[0].message.content;
-          console.log('[Render] GPT-5 Response received, length:', responseText.length);
+          console.log('[Render] RECEIVED FROM OPENAI:');
+          console.log(responseText);
+          console.log('[Render] Token usage:', JSON.stringify(completion.usage));
           
           // Parse the AI response
           let gameData;
@@ -114,11 +120,15 @@ Return ONLY valid JSON with this structure:
               throw new Error('No JSON found in response');
             }
           } catch (parseError) {
-            console.error('[Render] Parse error:', parseError);
+            console.error('[Render] JSON Parse error:', parseError);
+            console.error('[Render] Failed to parse response:', responseText);
             await db.logAction(userId, null, 'PARSE_ERROR', { error: parseError.message });
             
-            // Generate a robust fallback world
-            gameData = generateFallbackWorld(timePeriod);
+            return res.status(500).json({
+              success: false,
+              error: `Failed to parse AI response as JSON: ${parseError.message}`,
+              rawResponse: responseText
+            });
           }
           
           // Save to database
@@ -170,46 +180,22 @@ Return ONLY valid JSON with this structure:
           });
           
         } catch (aiError) {
-          console.error('[Render] AI Error:', aiError);
+          console.error('[Render] AI Error Details:', {
+            message: aiError.message,
+            status: aiError.status,
+            code: aiError.code,
+            type: aiError.type
+          });
+          console.error('[Render] Full AI Error:', aiError);
           await db.logAction(userId, null, 'AI_ERROR', { error: aiError.message });
           
-          // Save fallback world to database
-          const fallbackData = generateFallbackWorld(timePeriod);
-          const worldRecord = await db.saveGameWorld(userId, {
-            worldOverview: {
-              title: fallbackData.title,
-              description: fallbackData.description,
-              setting: timePeriod
-            },
-            world: {
-              starting_room: fallbackData.rooms[0].id,
-              rooms: fallbackData.rooms
-            }
-          });
-          
-          const initialState = {
-            currentRoom: fallbackData.rooms[0].id,
-            inventory: fallbackData.startingInventory || [],
-            health: 100,
-            score: 0
-          };
-          
-          await db.saveGameState(userId, worldRecord.id, initialState);
-          
-          return res.json({
-            success: true,
-            nextStep: 'complete',
-            progress: 100,
-            message: 'Generated fallback world',
-            data: {
-              worldId: worldRecord.id,
-              worldOverview: {
-                title: fallbackData.title,
-                description: fallbackData.description,
-                setting: timePeriod
-              },
-              initialState: initialState,
-              currentRoom: fallbackData.rooms[0]
+          return res.status(500).json({
+            success: false,
+            error: `OpenAI API call failed: ${aiError.message}`,
+            details: {
+              status: aiError.status,
+              code: aiError.code,
+              type: aiError.type
             }
           });
         }
@@ -251,101 +237,4 @@ Return ONLY valid JSON with this structure:
       error: error.message || 'Generation failed'
     });
   }
-}
-
-function generateFallbackWorld(theme) {
-  const worlds = {
-    'Fantasy': {
-      title: "The Crystal Caverns",
-      description: "Explore mystical caverns filled with magical crystals",
-      objective: "Find the legendary Crystal of Power",
-      rooms: [
-        {
-          id: "entrance",
-          name: "Cavern Entrance",
-          description: "A dark opening in the mountainside. Faint blue light emanates from within.",
-          exits: { north: "tunnel" },
-          items: ["torch", "rope"],
-          npcs: []
-        },
-        {
-          id: "tunnel",
-          name: "Crystal Tunnel",
-          description: "The walls are lined with glowing crystals of various colors.",
-          exits: { south: "entrance", north: "chamber", east: "pool" },
-          items: ["crystal_shard"],
-          npcs: [{ name: "Crystal Guardian", dialogue: "Only the worthy may pass deeper." }]
-        },
-        {
-          id: "chamber",
-          name: "Grand Chamber",
-          description: "A massive chamber with a crystal formation at its center.",
-          exits: { south: "tunnel" },
-          items: ["crystal_of_power"],
-          npcs: []
-        },
-        {
-          id: "pool",
-          name: "Underground Pool",
-          description: "A serene pool of crystal-clear water reflects the cavern lights.",
-          exits: { west: "tunnel" },
-          items: ["healing_water"],
-          npcs: []
-        }
-      ],
-      startingInventory: ["map"],
-      winCondition: "Obtain the Crystal of Power from the Grand Chamber"
-    },
-    'Space': {
-      title: "Starship Odyssey",
-      description: "Navigate a damaged starship drifting through deep space",
-      objective: "Repair the ship and reach the nearest space station",
-      rooms: [
-        {
-          id: "bridge",
-          name: "Command Bridge",
-          description: "The ship's control center. Warning lights flash on damaged consoles.",
-          exits: { south: "corridor", east: "quarters" },
-          items: ["keycard", "datapad"],
-          npcs: [{ name: "AI Assistant", dialogue: "Warning: Multiple systems offline." }]
-        },
-        {
-          id: "corridor",
-          name: "Main Corridor",
-          description: "A long corridor with emergency lighting. Several doors line the walls.",
-          exits: { north: "bridge", south: "engineering", west: "medbay" },
-          items: [],
-          npcs: []
-        },
-        {
-          id: "engineering",
-          name: "Engineering Bay",
-          description: "The heart of the ship. Fusion reactors hum with unstable energy.",
-          exits: { north: "corridor" },
-          items: ["fusion_core", "repair_kit"],
-          npcs: [{ name: "Chief Engineer", dialogue: "We need a new fusion core to restore main power!" }]
-        },
-        {
-          id: "medbay",
-          name: "Medical Bay",
-          description: "Medical equipment and supplies line the walls.",
-          exits: { east: "corridor" },
-          items: ["medkit", "stimulant"],
-          npcs: []
-        },
-        {
-          id: "quarters",
-          name: "Crew Quarters",
-          description: "Personal quarters for the crew. Most are sealed.",
-          exits: { west: "bridge" },
-          items: ["personal_log"],
-          npcs: []
-        }
-      ],
-      startingInventory: ["scanner"],
-      winCondition: "Repair the fusion reactor and restore ship power"
-    }
-  };
-  
-  return worlds[theme] || worlds['Fantasy'];
 }

@@ -64,24 +64,28 @@ Return ONLY valid JSON with this exact structure:
   ]
 }`;
 
-        try {
-          console.log('[Simple] Calling OpenAI API with model: gpt-4o');
-          console.log('[Simple] API Key exists:', !!process.env.OPENAI_API_KEY);
-          console.log('[Simple] API Key length:', process.env.OPENAI_API_KEY?.length || 0);
-          
-          const completion = await openai.chat.completions.create({
-            model: "gpt-4o", // Using latest available model
-            messages: [
-              { role: "system", content: "You are a game world generator. Return only valid JSON." },
-              { role: "user", content: prompt }
-            ],
-            temperature: 0.7,
-            max_tokens: 500 // Limit response size
-          });
-          
-          const responseText = completion.choices[0].message.content;
-          console.log('[Simple] AI Response received successfully');
-          console.log('[Simple] Response preview:', responseText.substring(0, 200));
+        console.log('[Simple] Calling OpenAI API with model: gpt-4o');
+        console.log('[Simple] API Key exists:', !!process.env.OPENAI_API_KEY);
+        console.log('[Simple] API Key length:', process.env.OPENAI_API_KEY?.length || 0);
+        
+        const apiRequest = {
+          model: "gpt-4o",
+          messages: [
+            { role: "system", content: "You are a game world generator. Return only valid JSON." },
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.7,
+          max_tokens: 500
+        };
+        
+        console.log('[Simple] SENDING TO OPENAI:', JSON.stringify(apiRequest, null, 2));
+        
+        const completion = await openai.chat.completions.create(apiRequest);
+        
+        const responseText = completion.choices[0].message.content;
+        console.log('[Simple] RECEIVED FROM OPENAI:');
+        console.log(responseText);
+        console.log('[Simple] Token usage:', JSON.stringify(completion.usage));
           
           // Parse the AI response
           let gameData;
@@ -94,32 +98,13 @@ Return ONLY valid JSON with this exact structure:
               throw new Error('No JSON found in response');
             }
           } catch (parseError) {
-            console.error('[Simple] Parse error:', parseError);
-            // Fallback game data
-            gameData = {
-              title: "Space Explorer",
-              description: "A journey through the stars",
-              rooms: [
-                {
-                  id: "bridge",
-                  name: "Ship Bridge",
-                  description: "The command center of your spacecraft. Monitors glow with data from across the galaxy.",
-                  exits: { south: "corridor" }
-                },
-                {
-                  id: "corridor",
-                  name: "Main Corridor",
-                  description: "A long corridor with windows showing the vast expanse of space.",
-                  exits: { north: "bridge", south: "engine" }
-                },
-                {
-                  id: "engine",
-                  name: "Engine Room",
-                  description: "The heart of the ship. Fusion reactors hum with barely contained power.",
-                  exits: { north: "corridor" }
-                }
-              ]
-            };
+            console.error('[Simple] JSON Parse error:', parseError);
+            console.error('[Simple] Failed to parse response:', responseText);
+            return res.status(500).json({
+              success: false,
+              error: `Failed to parse AI response as JSON: ${parseError.message}`,
+              rawResponse: responseText
+            });
           }
           
           // Format response
@@ -153,42 +138,6 @@ Return ONLY valid JSON with this exact structure:
             }
           });
           
-        } catch (aiError) {
-          console.error('[Simple] AI Error Details:', {
-            message: aiError.message,
-            status: aiError.status,
-            code: aiError.code,
-            type: aiError.type
-          });
-          console.error('[Simple] Full AI Error:', aiError);
-          
-          // Return a working fallback game
-          return res.json({
-            success: true,
-            nextStep: 'complete',
-            progress: 100,
-            message: 'Generated fallback world (AI call failed)',
-            data: {
-              worldOverview: {
-                title: "Space Station Alpha",
-                description: "Explore a mysterious space station",
-                setting: "Space"
-              },
-              initialState: {
-                currentRoom: "bridge",
-                inventory: ["scanner", "keycard"],
-                health: 100,
-                score: 0
-              },
-              currentRoom: {
-                id: "bridge",
-                name: "Command Bridge",
-                description: "The nerve center of Space Station Alpha. Through the viewport, you see Earth slowly rotating below.",
-                exits: { east: "quarters", west: "lab" }
-              }
-            }
-          });
-        }
         
       default:
         return res.status(400).json({ 
