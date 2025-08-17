@@ -441,7 +441,60 @@
 
     <!-- Socket.io disabled - not available on Vercel static hosting
     <script src="/socket.io/socket.io.js"></script> -->
+    
+    <!-- Set up console capture BEFORE loading game-loader -->
+    <script>
+        // Early console capture setup for debugging
+        window._debugLogs = [];
+        window._originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn,
+            info: console.info
+        };
+        
+        // Capture all console messages immediately
+        console.log = function(...args) {
+            window._debugLogs.push({
+                type: 'log',
+                args: args,
+                time: Date.now()
+            });
+            window._originalConsole.log.apply(console, args);
+        };
+        
+        console.error = function(...args) {
+            window._debugLogs.push({
+                type: 'error',
+                args: args,
+                time: Date.now()
+            });
+            window._originalConsole.error.apply(console, args);
+        };
+        
+        console.warn = function(...args) {
+            window._debugLogs.push({
+                type: 'warn',
+                args: args,
+                time: Date.now()
+            });
+            window._originalConsole.warn.apply(console, args);
+        };
+        
+        console.info = function(...args) {
+            window._debugLogs.push({
+                type: 'info',
+                args: args,
+                time: Date.now()
+            });
+            window._originalConsole.info.apply(console, args);
+        };
+        
+        console.log('[EARLY DEBUG] Console capture initialized - all logs will be recorded');
+    </script>
+    
     <script src="/v2/game-loader-debug.js"></script>
+    
     <script>
         // Debug System - Always enabled for debug page
         const DEBUG_MODE = true; // Always true for index-debug.html
@@ -483,13 +536,36 @@
                 }
             });
             
-            // Override console methods
-            const originalConsole = {
-                log: console.log,
-                error: console.error,
-                warn: console.warn,
-                info: console.info
-            };
+            // Process any logs that were captured before debug panel was ready
+            debugLog('system', `Processing ${window._debugLogs.length} buffered console messages...`);
+            window._debugLogs.forEach(log => {
+                const formatted = log.args.map(a => {
+                    if (a === null) return 'null';
+                    if (a === undefined) return 'undefined';
+                    if (typeof a === 'object') {
+                        try {
+                            return JSON.stringify(a, null, 2);
+                        } catch (e) {
+                            return String(a);
+                        }
+                    }
+                    return String(a);
+                }).join(' ');
+                
+                if (formatted.includes('[GameLoader]')) {
+                    debugLog('api', formatted);
+                } else if (log.type === 'error') {
+                    debugLog('error', formatted);
+                } else if (log.type === 'warn') {
+                    debugLog('warn', formatted);
+                } else {
+                    debugLog('info', formatted);
+                }
+            });
+            window._debugLogs = []; // Clear buffer
+            
+            // Update console methods to use debugLog directly
+            const originalConsole = window._originalConsole;
             
             console.log = function(...args) {
                 const formatted = args.map(a => {
