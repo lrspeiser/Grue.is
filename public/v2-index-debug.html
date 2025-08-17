@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grue v2.1 - AI Adventure Game (Debug)</title>
+    <title>Grue v2.2 - AI Adventure Game (Debug)</title>
     <style>
         * {
             margin: 0;
@@ -310,6 +310,7 @@
     <div id="debug-panel">
         <div id="debug-header">
             <div id="debug-tabs">
+                <span style="color: #ff00ff; margin-right: 10px; font-weight: bold;">v2.2</span>
                 <button class="debug-tab active" data-tab="all">All</button>
                 <button class="debug-tab" data-tab="llm">LLM</button>
                 <button class="debug-tab" data-tab="api">API</button>
@@ -491,6 +492,7 @@
         };
         
         console.log('[EARLY DEBUG] Console capture initialized - all logs will be recorded');
+        console.log('[VERSION] Grue v2.2 Debug - Deployed at', new Date().toISOString());
     </script>
     
     <script src="/v2/game-loader-debug.js"></script>
