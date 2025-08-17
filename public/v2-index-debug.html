@@ -504,7 +504,12 @@
                     }
                     return String(a);
                 }).join(' ');
-                debugLog('info', formatted);
+                // Always log [GameLoader] messages as 'api' category for visibility
+                if (formatted.includes('[GameLoader]')) {
+                    debugLog('api', formatted);
+                } else {
+                    debugLog('info', formatted);
+                }
                 originalConsole.log.apply(console, args);
             };
             
@@ -580,6 +585,12 @@
                     document.getElementById('debug-minimize').textContent = 'Minimize';
                 }
             });
+            
+            // Log that overrides are active
+            debugLog('system', '=== DEBUG SYSTEM READY ===');
+            debugLog('system', 'Console.log override active - [GameLoader] logs will appear as API category');
+            debugLog('system', 'All fetch() calls will be logged');
+            debugLog('system', 'Debug panel will auto-open during generation');
             
             // Override fetch for API logging
             const originalFetch = window.fetch;
@@ -752,6 +763,17 @@
         
         // Setup form handling
         document.getElementById('start-generation').addEventListener('click', async () => {
+            // FIRST: Open debug panel BEFORE anything else
+            const debugPanel = document.getElementById('debug-panel');
+            if (debugPanel.classList.contains('minimized')) {
+                debugPanel.classList.remove('minimized');
+                document.body.classList.add('debug-active');
+                document.getElementById('debug-minimize').textContent = 'Minimize';
+            }
+            
+            debugLog('ui', '=== DEBUG PANEL OPENED ===');
+            debugLog('game', 'Starting game generation process...');
+            
             const profile = {
                 userId: userId,
                 educationLevel: document.getElementById('education').value,
@@ -762,17 +784,9 @@
                 storyLocation: document.getElementById('timePeriod').value.split(' - ')[0]
             };
             
-            debugLog('game', `Starting game generation with profile: ${JSON.stringify(profile, null, 2)}`);
+            debugLog('game', `User profile: ${JSON.stringify(profile, null, 2)}`);
             debugLog('llm', '=== STARTING LLM GAME GENERATION ===');
-            
-            // Auto-open debug panel during generation
-            const debugPanel = document.getElementById('debug-panel');
-            if (debugPanel.classList.contains('minimized')) {
-                debugPanel.classList.remove('minimized');
-                document.body.classList.add('debug-active');
-                document.getElementById('debug-minimize').textContent = 'Minimize';
-                debugLog('ui', 'Debug panel opened for world generation monitoring');
-            }
+            debugLog('api', 'Calling generateGameWithRetry function...');
             
             // Show generation status
             document.getElementById('profile-form').style.display = 'none';
@@ -807,12 +821,15 @@
             
             try {
                 debugLog('api', `Starting game generation with retry logic`);
-                debugLog('llm', `Sending user profile to LLM for game generation`);
+                debugLog('llm', `Preparing to send user profile to LLM`);
                 debugLog('api', `User ID: ${userId}`);
                 debugLog('api', `Profile: ${JSON.stringify(profile, null, 2)}`);
+                debugLog('api', '=== CALLING generateGameWithRetry ===');
                 
-                // Use the retry function
+                // Use the retry function - all its console.logs will appear in debug panel
                 const data = await generateGameWithRetry(userId, profile);
+                
+                debugLog('api', '=== generateGameWithRetry COMPLETED ===');
                 
                 clearInterval(progressInterval);
                 progressBar.style.width = '100%';
@@ -1109,7 +1126,10 @@
         
         // Try to continue existing game with retry logic
         debugLog('game', 'Checking for existing game session...');
+        debugLog('api', `User ID for check: ${userId}`);
+        debugLog('api', 'Calling checkExistingGame...');
         checkExistingGame(userId).then(data => {
+            debugLog('api', `checkExistingGame completed: ${data ? 'Game found' : 'No existing game'}`);
             if (data) {
                 debugLog('game', 'Found existing game session, restoring...');
                 document.getElementById('setup-screen').style.display = 'none';
