@@ -62,12 +62,18 @@
         
         /* Console Panel Styles */
         #console-panel {
+            position: fixed;
+            right: 0;
+            top: 0;
+            bottom: 0;
             width: 400px;
             background: #000;
             border-left: 2px solid #ff00ff;
             display: flex;
             flex-direction: column;
             transition: transform 0.3s ease;
+            z-index: 10000;
+            box-shadow: -5px 0 10px rgba(0,0,0,0.5);
         }
         
         #console-panel.minimized {
@@ -560,6 +566,16 @@
         
         // Process any buffered logs
         processBufferedLogs();
+        
+        // Make sure console panel is visible
+        const panel = document.getElementById('console-panel');
+        if (panel) {
+            panel.style.display = 'flex';
+            panel.style.visibility = 'visible';
+            addConsoleEntry('✓ Console panel element found and activated', 'success');
+        } else {
+            addConsoleEntry('✗ Console panel element not found in DOM!', 'error');
+        }
         
         // Log initialization
         console.log('🎮 Grue v2.3 initialized');
