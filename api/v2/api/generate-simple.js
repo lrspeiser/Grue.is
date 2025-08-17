@@ -65,6 +65,10 @@ Return ONLY valid JSON with this exact structure:
 }`;
 
         try {
+          console.log('[Simple] Calling OpenAI API with model: gpt-4o');
+          console.log('[Simple] API Key exists:', !!process.env.OPENAI_API_KEY);
+          console.log('[Simple] API Key length:', process.env.OPENAI_API_KEY?.length || 0);
+          
           const completion = await openai.chat.completions.create({
             model: "gpt-4o", // Using latest available model
             messages: [
@@ -76,7 +80,8 @@ Return ONLY valid JSON with this exact structure:
           });
           
           const responseText = completion.choices[0].message.content;
-          console.log('[Simple] AI Response received');
+          console.log('[Simple] AI Response received successfully');
+          console.log('[Simple] Response preview:', responseText.substring(0, 200));
           
           // Parse the AI response
           let gameData;
@@ -149,14 +154,20 @@ Return ONLY valid JSON with this exact structure:
           });
           
         } catch (aiError) {
-          console.error('[Simple] AI Error:', aiError);
+          console.error('[Simple] AI Error Details:', {
+            message: aiError.message,
+            status: aiError.status,
+            code: aiError.code,
+            type: aiError.type
+          });
+          console.error('[Simple] Full AI Error:', aiError);
           
           // Return a working fallback game
           return res.json({
             success: true,
             nextStep: 'complete',
             progress: 100,
-            message: 'Generated fallback world',
+            message: 'Generated fallback world (AI call failed)',
             data: {
               worldOverview: {
                 title: "Space Station Alpha",
