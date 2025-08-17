@@ -89,7 +89,7 @@ Return ONLY valid JSON with this structure:
 
         try {
           const completion = await openai.chat.completions.create({
-            model: "gpt-5", // Using GPT-5 with Render's extended timeout
+            model: "gpt-4o", // Using GPT-4o with Render's extended timeout
             messages: [
               { 
                 role: "system", 
