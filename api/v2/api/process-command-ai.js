@@ -100,13 +100,13 @@ Be creative and descriptive in your responses. Make the game world feel alive an
     // Create the API request using v1/responses API
     const apiRequest = {
       model: "gpt-4o",
-      messages: [
+      input: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
       temperature: 0.8,
-      max_tokens: 1000,
-      text: { format: "json_object" }
+      max_completion_tokens: 1000,
+      response_format: { type: "json_object" }
     };
     
     // Add previous_response_id if it exists to maintain conversation continuity
