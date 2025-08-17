@@ -63,6 +63,10 @@ app.get('/api/game/worlds/:userId', async (req, res) => {
 });
 
 // HTML Routes (must come after API routes)
+app.get('/v1', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'v1-index.html'));
+});
+
 app.get('/v2', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'v2-index.html'));
 });
