@@ -57,9 +57,14 @@
             height: 300px;
             background: #000;
             border-top: 3px solid #ff00ff;
-            display: flex !important; /* Force visible with !important */
+            display: flex;
             flex-direction: column;
-            z-index: 9999; /* Higher z-index */
+            z-index: 1000;
+            transition: transform 0.3s ease;
+        }
+        
+        #debug-panel.minimized {
+            transform: translateY(calc(100% - 40px));
         }
         
         #debug-panel.active {
@@ -164,6 +169,14 @@
             margin-bottom: 300px;
         }
         
+        body.debug-active #input-container {
+            margin-bottom: 320px;
+        }
+        
+        body:not(.debug-active) #input-container {
+            margin-bottom: 60px;
+        }
+        
         #room-image {
             width: 100%;
             height: 300px;
@@ -187,6 +200,7 @@
         #input-container {
             display: flex;
             gap: 10px;
+            margin-bottom: 320px;
         }
         
         #command-input {
@@ -457,12 +471,12 @@
             
             // Minimize button
             document.getElementById('debug-minimize').addEventListener('click', () => {
-                if (debugPanel.style.display === 'none') {
-                    debugPanel.style.display = 'flex';
+                if (debugPanel.classList.contains('minimized')) {
+                    debugPanel.classList.remove('minimized');
                     document.body.classList.add('debug-active');
                     document.getElementById('debug-minimize').textContent = 'Minimize';
                 } else {
-                    debugPanel.style.display = 'none';
+                    debugPanel.classList.add('minimized');
                     document.body.classList.remove('debug-active');
                     document.getElementById('debug-minimize').textContent = 'Show Debug';
                 }
