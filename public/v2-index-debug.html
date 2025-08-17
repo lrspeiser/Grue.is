@@ -491,12 +491,44 @@
             };
             
             console.log = function(...args) {
-                debugLog('info', args.join(' '));
+                const formatted = args.map(a => {
+                    if (a === null) return 'null';
+                    if (a === undefined) return 'undefined';
+                    if (typeof a === 'object') {
+                        try {
+                            return JSON.stringify(a, null, 2);
+                        } catch (e) {
+                            return String(a);
+                        }
+                    }
+                    return String(a);
+                }).join(' ');
+                debugLog('info', formatted);
                 originalConsole.log.apply(console, args);
             };
             
             console.error = function(...args) {
-                debugLog('error', args.join(' '));
+                const formatted = args.map(a => {
+                    if (a === null) return 'null';
+                    if (a === undefined) return 'undefined';
+                    if (typeof a === 'object') {
+                        try {
+                            // Include all properties for errors
+                            if (a instanceof Error) {
+                                return JSON.stringify({
+                                    name: a.name,
+                                    message: a.message,
+                                    stack: a.stack
+                                }, null, 2);
+                            }
+                            return JSON.stringify(a, null, 2);
+                        } catch (e) {
+                            return String(a);
+                        }
+                    }
+                    return String(a);
+                }).join(' ');
+                debugLog('error', formatted);
                 originalConsole.error.apply(console, args);
             };
             
@@ -509,6 +541,44 @@
                 debugLog('info', args.join(' '));
                 originalConsole.info.apply(console, args);
             };
+            
+            // Add global error handlers
+            window.addEventListener('error', (event) => {
+                debugLog('error', '=== UNCAUGHT ERROR ===');
+                debugLog('error', `Message: ${event.message}`);
+                debugLog('error', `File: ${event.filename}`);
+                debugLog('error', `Line: ${event.lineno}, Column: ${event.colno}`);
+                if (event.error && event.error.stack) {
+                    debugLog('error', `Stack trace:\n${event.error.stack}`);
+                }
+                
+                // Auto-open debug panel on uncaught errors
+                const debugPanel = document.getElementById('debug-panel');
+                if (debugPanel && debugPanel.classList.contains('minimized')) {
+                    debugPanel.classList.remove('minimized');
+                    document.body.classList.add('debug-active');
+                    document.getElementById('debug-minimize').textContent = 'Minimize';
+                }
+            });
+            
+            window.addEventListener('unhandledrejection', (event) => {
+                debugLog('error', '=== UNHANDLED PROMISE REJECTION ===');
+                debugLog('error', `Reason: ${event.reason}`);
+                if (event.reason && event.reason.stack) {
+                    debugLog('error', `Stack trace:\n${event.reason.stack}`);
+                }
+                if (event.reason && event.reason.message) {
+                    debugLog('error', `Message: ${event.reason.message}`);
+                }
+                
+                // Auto-open debug panel on unhandled rejections
+                const debugPanel = document.getElementById('debug-panel');
+                if (debugPanel && debugPanel.classList.contains('minimized')) {
+                    debugPanel.classList.remove('minimized');
+                    document.body.classList.add('debug-active');
+                    document.getElementById('debug-minimize').textContent = 'Minimize';
+                }
+            });
             
             // Override fetch for API logging
             const originalFetch = window.fetch;
@@ -694,6 +764,15 @@
             debugLog('game', `Starting game generation with profile: ${JSON.stringify(profile, null, 2)}`);
             debugLog('llm', '=== STARTING LLM GAME GENERATION ===');
             
+            // Auto-open debug panel during generation
+            const debugPanel = document.getElementById('debug-panel');
+            if (debugPanel.classList.contains('minimized')) {
+                debugPanel.classList.remove('minimized');
+                document.body.classList.add('debug-active');
+                document.getElementById('debug-minimize').textContent = 'Minimize';
+                debugLog('ui', 'Debug panel opened for world generation monitoring');
+            }
+            
             // Show generation status
             document.getElementById('profile-form').style.display = 'none';
             document.getElementById('generation-status').style.display = 'block';
@@ -728,6 +807,8 @@
             try {
                 debugLog('api', `Starting game generation with retry logic`);
                 debugLog('llm', `Sending user profile to LLM for game generation`);
+                debugLog('api', `User ID: ${userId}`);
+                debugLog('api', `Profile: ${JSON.stringify(profile, null, 2)}`);
                 
                 // Use the retry function
                 const data = await generateGameWithRetry(userId, profile);
@@ -747,9 +828,38 @@
                 
             } catch (error) {
                 clearInterval(progressInterval);
-                debugLog('error', `Game generation failed: ${error.message}`);
+                
+                // Enhanced error logging
+                debugLog('error', '=== GAME GENERATION ERROR ===');
+                debugLog('error', `Error message: ${error.message}`);
+                debugLog('error', `Error type: ${error.name}`);
+                debugLog('error', `Error stack:\n${error.stack}`);
+                
+                // Try to parse and log more error details
+                try {
+                    debugLog('error', `Full error object: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`);
+                } catch (e) {
+                    debugLog('error', `Could not stringify error object: ${e.message}`);
+                }
+                
+                // Log response details if available
+                if (error.response) {
+                    debugLog('error', `Response status: ${error.response.status}`);
+                    debugLog('error', `Response data: ${JSON.stringify(error.response.data)}`);
+                }
+                
                 debugLog('llm', `LLM generation error: ${error.message}`);
-                alert('Failed to generate game: ' + error.message);
+                
+                // Keep debug panel open on error
+                const debugPanel = document.getElementById('debug-panel');
+                if (debugPanel.classList.contains('minimized')) {
+                    debugPanel.classList.remove('minimized');
+                    document.body.classList.add('debug-active');
+                    document.getElementById('debug-minimize').textContent = 'Minimize';
+                    debugLog('ui', 'Debug panel opened to show error details');
+                }
+                
+                alert('Failed to generate game: ' + error.message + '\n\nCheck the debug console for full details.');
                 document.getElementById('profile-form').style.display = 'block';
                 document.getElementById('generation-status').style.display = 'none';
             }
