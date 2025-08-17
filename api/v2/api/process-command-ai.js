@@ -47,12 +47,17 @@ module.exports = async function handler(req, res) {
     }
     
     // Build the context for OpenAI
-    const systemPrompt = `You are a game master for a text adventure game. You must interpret player commands and respond appropriately.
+    let systemPrompt;
+    let userPrompt;
+    
+    if (!previousResponseId) {
+      // First message in conversation - provide full context
+      systemPrompt = `You are a game master for a text adventure game. You must interpret player commands and respond appropriately.
 
 WORLD CONTEXT:
 ${JSON.stringify(worldData, null, 2)}
 
-CURRENT GAME STATE:
+INITIAL GAME STATE:
 - Current Room: ${currentRoomId}
 - Inventory: ${JSON.stringify(gameState.inventory || [])}
 - Health: ${gameState.health || 100}
@@ -82,12 +87,15 @@ INSTRUCTIONS:
   }
 }
 
-Be creative and descriptive in your responses. Make the game world feel alive and interactive.
-If the player tries something impossible or nonsensical, respond appropriately but stay in character.`;
-
-    const userPrompt = `Player command: "${command}"
-
-Respond with the appropriate narrative and any game state changes in the JSON format specified.`;
+Be creative and descriptive in your responses. Make the game world feel alive and interactive.`;
+      
+      userPrompt = `Player command: "${command}"`;
+    } else {
+      // Continuing conversation - minimal context needed
+      systemPrompt = `Continue the text adventure game. Remember all previous context and game state from this conversation thread. Always respond with the same JSON structure.`;
+      
+      userPrompt = `Player command: "${command}"`;
+    }
 
     // Create the API request using v1/responses API
     const apiRequest = {

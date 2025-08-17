@@ -75,9 +75,9 @@ app.get('/test-console', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'test-console.html'));
 });
 
-// Root route
+// Root route - serve v2 as the main game
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  res.sendFile(path.join(__dirname, 'public', 'v2-index.html'));
 });
 
 // 404 handler
