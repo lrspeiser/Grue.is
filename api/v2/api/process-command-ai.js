@@ -106,7 +106,7 @@ Be creative and descriptive in your responses. Make the game world feel alive an
       ],
       temperature: 0.8,
       max_tokens: 1000,
-      response_format: { type: "json_object" }
+      text: { format: "json_object" }
     };
     
     // Add previous_response_id if it exists to maintain conversation continuity
