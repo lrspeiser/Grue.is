@@ -26,7 +26,7 @@ app.use(express.static('public'));
 // API Routes
 app.use('/v2/api/check-usage', require('./api/v2/api/check-usage'));
 app.use('/v2/api/test-openai', require('./api/v2/api/test-openai'));
-app.use('/v2/api/process-command', require('./api/v2/api/process-command'));
+app.use('/v2/api/process-command', require('./api/v2/api/process-command-ai')); // Using AI processor
 app.use('/v2/api/generate-render', require('./api/v2/api/generate-render'));
 app.use('/v2/api/generate-simple', require('./api/v2/api/generate-simple'));
 app.use('/v2/api/generate-test', require('./api/v2/api/generate-test'));
