@@ -439,7 +439,8 @@
         </div>
     </div>
 
-    <script src="/socket.io/socket.io.js"></script>
+    <!-- Socket.io disabled - not available on Vercel static hosting
+    <script src="/socket.io/socket.io.js"></script> -->
     <script src="/v2/game-loader.js"></script>
     <script>
         // Debug System - Always enabled for debug page
@@ -876,17 +877,41 @@
             updateRoom(gameData.currentRoom);
             
             // Connect socket with Vercel-compatible configuration (polling only)
-            debugLog('socket', `Connecting Socket.IO with userId: ${userId}`);
-            socket = io({
-                query: { userId },
-                transports: ['polling'], // Force polling for Vercel compatibility
-                reconnection: true,
-                reconnectionAttempts: 10,
-                reconnectionDelay: 1000,
-                reconnectionDelayMax: 5000,
-                timeout: 20000,
-                upgrade: false // Don't try to upgrade to websocket
-            });
+            try {
+                if (typeof io !== 'undefined') {
+                    debugLog('socket', `Connecting Socket.IO with userId: ${userId}`);
+                    socket = io({
+                        query: { userId },
+                        transports: ['polling'], // Force polling for Vercel compatibility
+                        reconnection: true,
+                        reconnectionAttempts: 10,
+                        reconnectionDelay: 1000,
+                        reconnectionDelayMax: 5000,
+                        timeout: 20000,
+                        upgrade: false // Don't try to upgrade to websocket
+                    });
+                } else {
+                    debugLog('socket', 'Socket.IO library not loaded - real-time features disabled');
+                    // Create a mock socket object to prevent errors
+                    socket = {
+                        on: () => {},
+                        emit: () => {},
+                        connect: () => {},
+                        disconnect: () => {},
+                        connected: false
+                    };
+                }
+            } catch (socketError) {
+                debugLog('error', `Failed to initialize socket: ${socketError.message}`);
+                // Create a mock socket object to prevent errors
+                socket = {
+                    on: () => {},
+                    emit: () => {},
+                    connect: () => {},
+                    disconnect: () => {},
+                    connected: false
+                };
+            }
             
             socket.on('connect', () => {
                 debugLog('socket', 'Socket.IO connected successfully');
@@ -1056,7 +1081,14 @@
             
             // Send to server
             debugLog('socket', `Emitting gameCommand: ${command}`);
-            socket.emit('gameCommand', { command });
+            // Send command via socket if available
+            if (socket && socket.connected) {
+                socket.emit('gameCommand', { command });
+            } else {
+                debugLog('error', 'Socket not connected - command cannot be sent');
+                appendNarrative('\n[Error: Real-time connection not available. Commands cannot be processed.]\n');
+                document.getElementById('submit-btn').disabled = false;
+            }
             
             input.value = '';
         }

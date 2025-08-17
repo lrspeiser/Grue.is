@@ -16,7 +16,32 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
                 body: JSON.stringify({ userId, userProfile })
             });
             
-            const data = await response.json();
+            // Check for timeout or server errors
+            if (response.status === 504) {
+                console.error('[GameLoader] Request timed out (504 Gateway Timeout)');
+                console.log('[GameLoader] Retrying in', retryDelay, 'ms...');
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                retries++;
+                continue;
+            }
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[GameLoader] Server error:', response.status, errorText);
+                throw new Error(`Server error ${response.status}: ${errorText}`);
+            }
+            
+            // Parse JSON response
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                console.error('[GameLoader] Failed to parse JSON response:', jsonError);
+                const responseText = await response.text();
+                console.error('[GameLoader] Response text:', responseText);
+                throw new Error('Invalid JSON response from server');
+            }
+            
             console.log('[GameLoader] Response:', data);
             
             // Check if game is ready
@@ -41,9 +66,17 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
         } catch (error) {
             console.error('[GameLoader] Error during generation:', error);
             
-            // If it's a network error, retry
-            if (error.message.includes('fetch')) {
-                console.log('[GameLoader] Network error, retrying...');
+            // If it's a network or timeout error, retry
+            if (error.message.includes('fetch') || error.message.includes('timeout') || error.message.includes('504')) {
+                console.log('[GameLoader] Network/timeout error, retrying...');
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                retries++;
+                continue;
+            }
+            
+            // For other errors, retry a few times before giving up
+            if (retries < 3) {
+                console.log('[GameLoader] Error occurred, retrying...');
                 await new Promise(resolve => setTimeout(resolve, retryDelay));
                 retries++;
                 continue;
@@ -71,7 +104,32 @@ async function checkExistingGame(userId, maxRetries = 2) {
                 body: JSON.stringify({ userId })
             });
             
-            const data = await response.json();
+            // Check for timeout or server errors
+            if (response.status === 504) {
+                console.error('[GameLoader] Request timed out (504 Gateway Timeout)');
+                console.log('[GameLoader] Retrying check for existing game...');
+                await new Promise(resolve => setTimeout(resolve, retryDelay));
+                retries++;
+                continue;
+            }
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.error('[GameLoader] Server error:', response.status, errorText);
+                // Don't throw here, just return null (no existing game)
+                return null;
+            }
+            
+            // Parse JSON response
+            let data;
+            try {
+                data = await response.json();
+            } catch (jsonError) {
+                console.error('[GameLoader] Failed to parse JSON response:', jsonError);
+                // Don't throw here, just return null (no existing game)
+                return null;
+            }
+            
             console.log('[GameLoader] Continue game response:', data);
             
             // Check if game is ready
