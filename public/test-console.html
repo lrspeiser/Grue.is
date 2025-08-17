@@ -84,6 +84,14 @@
     <script>
         const consoleDiv = document.getElementById('console');
         
+        // Store original console BEFORE any overrides
+        const originalConsole = {
+            log: console.log,
+            error: console.error,
+            warn: console.warn,
+            info: console.info
+        };
+        
         function log(message, type = 'info') {
             const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
             const entry = document.createElement('div');
@@ -92,8 +100,8 @@
             consoleDiv.appendChild(entry);
             consoleDiv.scrollTop = consoleDiv.scrollHeight;
             
-            // Also log to browser console
-            console.log(`[${type.toUpperCase()}] ${message}`);
+            // Use ORIGINAL console to avoid recursion
+            originalConsole.log(`[${type.toUpperCase()}] ${message}`);
         }
         
         function escapeHtml(text) {
@@ -260,31 +268,42 @@
         }
         
         // Override console methods to capture everything
-        const originalConsole = {
-            log: console.log,
-            error: console.error,
-            warn: console.warn,
-            info: console.info
-        };
-        
         console.log = function(...args) {
-            log(args.join(' '), 'info');
-            originalConsole.log.apply(console, args);
+            const message = args.map(a => {
+                if (typeof a === 'object') {
+                    try {
+                        return JSON.stringify(a);
+                    } catch (e) {
+                        return String(a);
+                    }
+                }
+                return String(a);
+            }).join(' ');
+            log(message, 'info');
         };
         
         console.error = function(...args) {
-            log(args.join(' '), 'error');
-            originalConsole.error.apply(console, args);
+            const message = args.map(a => {
+                if (typeof a === 'object') {
+                    try {
+                        return JSON.stringify(a);
+                    } catch (e) {
+                        return String(a);
+                    }
+                }
+                return String(a);
+            }).join(' ');
+            log(message, 'error');
         };
         
         console.warn = function(...args) {
-            log(args.join(' '), 'warning');
-            originalConsole.warn.apply(console, args);
+            const message = args.map(a => String(a)).join(' ');
+            log(message, 'warning');
         };
         
         console.info = function(...args) {
-            log(args.join(' '), 'info');
-            originalConsole.info.apply(console, args);
+            const message = args.map(a => String(a)).join(' ');
+            log(message, 'info');
         };
         
         // Capture uncaught errors
