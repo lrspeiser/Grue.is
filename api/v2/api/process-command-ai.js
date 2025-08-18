@@ -143,7 +143,7 @@ Return ONLY a JSON object with this structure:
       model: PROMPT_MODEL, // Default to nano-tier model
       input: messages,
       temperature: 0.7, // Slightly less creative for consistency
-      max_completion_tokens: 500, // Smaller response for efficiency
+max_output_tokens: 500, // Smaller response for efficiency
       text: { format: "json_object" }
     });
     

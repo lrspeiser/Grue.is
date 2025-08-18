@@ -98,7 +98,8 @@ Return ONLY valid JSON with this structure:
               { role: "user", content: prompt }
             ],
             temperature: 0.8,
-            max_completion_tokens: 4000
+max_output_tokens: 4000,
+            text: { format: "json_object" }
           };
           
           console.log('[Render] SENDING TO OPENAI (Responses API):', JSON.stringify(apiRequest, null, 2));

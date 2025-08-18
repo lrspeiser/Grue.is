@@ -138,7 +138,7 @@ Requirements:
         { role: "user", content: userPrompt }
       ],
       temperature: 0.9, // Higher creativity for world building
-      max_completion_tokens: 4000,
+max_output_tokens: 4000,
       text: { format: "json_object" }
     });
 

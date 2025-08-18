@@ -75,7 +75,7 @@ Return ONLY valid JSON with this exact structure:
             { role: "user", content: prompt }
           ],
           temperature: 0.7,
-          max_completion_tokens: 500,
+max_output_tokens: 500,
           text: { format: "json_object" }
         };
         
