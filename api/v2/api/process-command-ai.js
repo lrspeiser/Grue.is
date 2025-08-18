@@ -144,7 +144,7 @@ Return ONLY a JSON object with this structure:
       input: messages,
       temperature: 0.7, // Slightly less creative for consistency
 max_output_tokens: 500, // Smaller response for efficiency
-text: { format: { type: "json_object" } }
+response_format: { type: "json_object" }
     });
     
     // Extract text from the response

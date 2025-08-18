@@ -99,7 +99,7 @@ Return ONLY valid JSON with this structure:
             ],
             temperature: 0.8,
 max_output_tokens: 4000,
-text: { format: { type: "json_object" } }
+response_format: { type: "json_object" }
           };
           
           console.log('[Render] SENDING TO OPENAI (Responses API):', JSON.stringify(apiRequest, null, 2));
