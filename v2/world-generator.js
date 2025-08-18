@@ -92,7 +92,7 @@ async function generateAllRoomContent(gamePlan) {
     const response = await openaiLogger.loggedRequest(
       'chat.completions.create',
       {
-        model: "gpt-5",
+        model: process.env.WORLD_MODEL || "gpt-5",
         messages,
         tools: roomTools,
         tool_choice: { type: "function", function: { name: "generate_all_rooms" } }
@@ -184,7 +184,7 @@ async function generateAllCharacters(gamePlan) {
     const response = await openaiLogger.loggedRequest(
       'chat.completions.create',
       {
-        model: "gpt-5",
+        model: process.env.WORLD_MODEL || "gpt-5",
         messages,
         tools: characterTools,
         tool_choice: { type: "function", function: { name: "generate_all_characters" } }
@@ -272,7 +272,7 @@ async function generateQuestContent(gamePlan) {
     const response = await openaiLogger.loggedRequest(
       'chat.completions.create',
       {
-        model: "gpt-5",
+        model: process.env.WORLD_MODEL || "gpt-5",
         messages,
         tools: questTools,
         tool_choice: { type: "function", function: { name: "generate_quest_content" } }

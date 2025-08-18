@@ -29,30 +29,8 @@ module.exports = async function handler(req, res) {
 
   console.log(`[World Generation] (Phased) Creating world for user: ${userId}, theme: ${theme}, name: ${name}`);
 
-  // Helper: build a minimal safe fallback plan to avoid hard failures
-  function buildFallbackPlan(profile) {
-    const startId = 'start';
-    const secondId = 'path_north';
-    return {
-      metadata: { seed: Date.now(), fallback: true },
-      game_overview: {
-        title: `${profile.storyLocation || 'Adventure'} - Quickstart`,
-        setting: profile.timePeriod || theme,
-        main_story: `A short ${theme} adventure for ${profile.characterRole}.`
-      },
-      world_map: {
-        starting_location: startId,
-        locations: [
-          { id: startId, name: 'Campfire Clearing', purpose: 'start', connections: [`north-${secondId}`] },
-          { id: secondId, name: 'Northern Path', purpose: 'path', connections: [] }
-        ]
-      },
-      characters: [],
-      quests: [],
-      items: [],
-      challenges: []
-    };
-  }
+  // IMPORTANT: Do NOT create any fallback worlds. If planning or generation fails,
+  // we must return an error so we can diagnose and fix the root cause.
 
   try {
     // Initialize database if needed
@@ -75,25 +53,36 @@ module.exports = async function handler(req, res) {
 
     let gamePlan;
     let planningError;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    const planningAttempts = [];
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
+        console.log(`[World Generation] Planning attempt ${attempt}...`);
         gamePlan = await createCompletePlan(userProfile);
         if (gamePlan && gamePlan.world_map && Array.isArray(gamePlan.world_map.locations) && gamePlan.world_map.locations.length > 0) {
+          console.log('[World Generation] Planning succeeded with', gamePlan.world_map.locations.length, 'locations');
           break; // valid
         }
         throw new Error('Planner returned empty or invalid locations array');
       } catch (e) {
         planningError = e;
+        planningAttempts.push({ attempt, error: e.message || String(e) });
         console.warn(`[World Generation] Planning attempt ${attempt} failed:`, e.message || e);
-        if (attempt < 2) {
-          await new Promise(r => setTimeout(r, 800)); // brief backoff
+        if (attempt < 3) {
+          await new Promise(r => setTimeout(r, 800 * attempt));
         }
       }
     }
 
     if (!gamePlan || !gamePlan.world_map || !Array.isArray(gamePlan.world_map.locations) || gamePlan.world_map.locations.length === 0) {
-      console.warn('[World Generation] Using minimal fallback plan due to planning failures');
-      gamePlan = buildFallbackPlan(userProfile);
+      // NO FALLBACK: Fail loudly with diagnostics
+      console.error('[World Generation] Planning failed after retries; NO FALLBACK WILL BE USED');
+      return res.status(500).json({
+        success: false,
+        phase: 'planning',
+        error: planningError?.message || 'Planning failed',
+        attempts: planningAttempts,
+        message: 'World planning failed. No fallback world is created by design. Fix the root cause.'
+      });
     }
 
     // Ensure defaults
@@ -110,27 +99,45 @@ module.exports = async function handler(req, res) {
     let roomsGenerated = [];
     try {
       roomsGenerated = await generateAllRoomContent(gamePlan);
+      console.log('[World Generation] Rooms generated:', roomsGenerated?.length || 0);
     } catch (e) {
-      console.warn('[World Generation] Room generation failed, continuing with empty rooms:', e.message || e);
-      roomsGenerated = gamePlan.world_map.locations.map(l => ({ id: l.id, name: l.name, description: '' }));
+      console.error('[World Generation] Room generation failed:', e.message || e);
+      return res.status(500).json({
+        success: false,
+        phase: 'rooms',
+        error: e.message || String(e),
+        message: 'Room generation failed. No fallback will be used.'
+      });
     }
 
     console.log('[World Generation] Phase 2b: Generating characters');
     let charactersGenerated = [];
     try {
       charactersGenerated = await generateAllCharacters(gamePlan);
+      console.log('[World Generation] Characters generated:', charactersGenerated?.length || 0);
     } catch (e) {
-      console.warn('[World Generation] Character generation failed, continuing with zero characters:', e.message || e);
-      charactersGenerated = [];
+      console.error('[World Generation] Character generation failed:', e.message || e);
+      return res.status(500).json({
+        success: false,
+        phase: 'characters',
+        error: e.message || String(e),
+        message: 'Character generation failed. No fallback will be used.'
+      });
     }
 
     console.log('[World Generation] Phase 2c: Generating quests');
     let questsGenerated = [];
     try {
       questsGenerated = await generateQuestContent(gamePlan);
+      console.log('[World Generation] Quests generated:', questsGenerated?.length || 0);
     } catch (e) {
-      console.warn('[World Generation] Quest generation failed, continuing with zero quests:', e.message || e);
-      questsGenerated = [];
+      console.error('[World Generation] Quest generation failed:', e.message || e);
+      return res.status(500).json({
+        success: false,
+        phase: 'quests',
+        error: e.message || String(e),
+        message: 'Quest generation failed. No fallback will be used.'
+      });
     }
 
     // 4) Assemble final worldData in the schema expected by the client
@@ -249,6 +256,7 @@ module.exports = async function handler(req, res) {
       tokensUsed: undefined,
       debug: {
         phased: true,
+        note: 'No fallback paths exist in this endpoint. All failures are fatal by design.',
         planLocations: gamePlan.world_map?.locations?.length,
         generated: {
           rooms: roomsGenerated?.length,

@@ -97,7 +97,7 @@ async function planGameWorld(userProfile) {
     const response = await openaiLogger.loggedRequest(
       'chat.completions.create',
       {
-        model: "gpt-5", // Using GPT-5 (Released August 7, 2025)
+        model: process.env.WORLD_MODEL || "gpt-5", // Using GPT-5 by default; override with WORLD_MODEL
         messages,
         tools: gameDesignTools,
         tool_choice: { type: "function", function: { name: "create_game_design" } },
