@@ -26,111 +26,107 @@ async function planGameWorld(userProfile) {
   
   Create 10-12 locations, 5-8 characters, and 3 main quests. Make it educational and engaging.`;
 
-  const gameDesignTools = [
-    {
-      type: "function",
-      function: {
-        name: "create_game_design",
-        description: "Creates game design with locations, characters, and quests",
-        parameters: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            setting: { type: "string" },
-            main_story: { type: "string" },
-            starting_location: { type: "string" },
-            locations: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  name: { type: "string" },
-                  description: { type: "string" },
-                  connections: { type: "array", items: { type: "string" } }
-                }
-              }
+  // Define a strict JSON schema so Responses API returns valid JSON directly
+  const gameDesignSchema = {
+    name: "create_game_design",
+    schema: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        setting: { type: "string" },
+        main_story: { type: "string" },
+        starting_location: { type: "string" },
+        locations: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              description: { type: "string" },
+              connections: { type: "array", items: { type: "string" } }
             },
-            characters: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  name: { type: "string" },
-                  location: { type: "string" },
-                  role: { type: "string" }
-                }
-              }
+            required: ["id", "name"]
+          }
+        },
+        characters: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              location: { type: "string" },
+              role: { type: "string" }
             },
-            quests: {
-              type: "array",
-              items: {
-                type: "object",
-                properties: {
-                  id: { type: "string" },
-                  name: { type: "string" },
-                  description: { type: "string" },
-                  steps: { type: "array", items: { type: "string" } }
-                }
-              }
-            }
-          },
-          required: ["title", "setting", "main_story", "starting_location", "locations", "characters", "quests"]
+            required: ["id", "name"]
+          }
+        },
+        quests: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              id: { type: "string" },
+              name: { type: "string" },
+              description: { type: "string" },
+              steps: { type: "array", items: { type: "string" } }
+            },
+            required: ["id", "name"]
+          }
         }
-      }
-    }
-  ];
-
-  const messages = [
-    {
-      role: "system",
-      content: planningPrompt
+      },
+      required: ["title", "setting", "main_story", "starting_location", "locations", "characters", "quests"]
     },
-    {
-      role: "user",
-      content: `Create the game now.`
-    }
+    strict: true
+  };
+
+  const input = [
+    { role: "system", content: planningPrompt },
+    { role: "user", content: "Create the game now." }
   ];
 
   try {
     const response = await openaiLogger.loggedRequest(
-      'chat.completions.create',
+      'responses.create',
       {
         model: process.env.WORLD_MODEL || "gpt-5", // Using GPT-5 by default; override with WORLD_MODEL
-        messages,
-        tools: gameDesignTools,
-        tool_choice: { type: "function", function: { name: "create_game_design" } },
-        max_completion_tokens: 4000
+        input,
+        response_format: { type: "json_schema", json_schema: gameDesignSchema },
+        max_output_tokens: 4000
       },
       `GamePlanner - Creating game design for user ${userProfile.userId}`
     );
 
-    if (!response || !response.choices || !response.choices[0]) {
-      console.error("[GamePlanner] Invalid response structure from OpenAI");
-      throw new Error("Invalid response from AI service");
+    // The Responses API exposes output_text for easy JSON parsing when using json_schema
+    const rawText = response.output_text || "";
+    if (!rawText) {
+      console.error("[GamePlanner] Empty output_text from Responses API");
+      throw new Error("Empty response from AI service");
     }
 
-    if (response.choices[0].message.tool_calls && response.choices[0].message.tool_calls.length > 0) {
-      try {
-        const gameDesign = JSON.parse(response.choices[0].message.tool_calls[0].function.arguments);
-        console.log("[GamePlanner] Successfully parsed game design JSON");
-        console.log("[GamePlanner] Game title:", gameDesign.title);
-        console.log("[GamePlanner] Number of locations:", gameDesign.locations?.length || 0);
-        console.log("[GamePlanner] Number of characters:", gameDesign.characters?.length || 0);
-        console.log("[GamePlanner] Number of quests:", gameDesign.quests?.length || 0);
-        console.log("[GamePlanner] Starting location:", gameDesign.starting_location);
-        return gameDesign;
-      } catch (parseError) {
-        console.error("[GamePlanner] Failed to parse game design JSON:", parseError);
-        console.error("[GamePlanner] Raw response:", response.choices[0].message.tool_calls[0].function.arguments?.substring(0, 500));
+    let gameDesign;
+    try {
+      gameDesign = JSON.parse(rawText);
+    } catch (e) {
+      console.error("[GamePlanner] Failed to parse JSON from output_text");
+      // Fallback: attempt to extract first JSON object
+      const match = rawText.match(/\{[\s\S]*\}/);
+      if (match) {
+        gameDesign = JSON.parse(match[0]);
+      } else {
         throw new Error("Failed to parse game design from AI response");
       }
-    } else {
-      console.error("[GamePlanner] No tool calls in response");
-      console.error("[GamePlanner] Response content:", response.choices[0].message.content);
-      throw new Error("AI did not generate a proper game design");
     }
+
+    console.log("[GamePlanner] Successfully parsed game design JSON");
+    console.log("[GamePlanner] Game title:", gameDesign.title);
+    console.log("[GamePlanner] Number of locations:", gameDesign.locations?.length || 0);
+    console.log("[GamePlanner] Number of characters:", gameDesign.characters?.length || 0);
+    console.log("[GamePlanner] Number of quests:", gameDesign.quests?.length || 0);
+    console.log("[GamePlanner] Starting location:", gameDesign.starting_location);
+
+    return gameDesign;
   } catch (error) {
     console.error("[GamePlanner] Error planning game:", error.message);
     console.error("[GamePlanner] Error type:", error.constructor.name);
