@@ -137,9 +137,10 @@ Return ONLY a JSON object with this structure:
     console.log('Optimized context size:', systemPrompt.length);
     console.log('Recent history entries:', conversationHistory?.slice(-8).length || 0);
     
-    // Use cheaper model for gameplay
+    // Use configurable lightweight model ("nano") for gameplay prompts
+    const PROMPT_MODEL = process.env.PROMPT_MODEL || "gpt-4o-mini";
     const response = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Cheaper, faster model for gameplay
+      model: PROMPT_MODEL, // Default to nano-tier model
       messages: messages,
       temperature: 0.7, // Slightly less creative for consistency
       max_tokens: 500, // Smaller response for efficiency

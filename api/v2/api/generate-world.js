@@ -128,9 +128,10 @@ Requirements:
 
     console.log('[World Generation] Calling OpenAI with powerful model...');
     
-    // Use the most powerful model for world generation
+// Use configurable model for world generation (default gpt-5)
+    const WORLD_MODEL = process.env.WORLD_MODEL || "gpt-5";
     const response = await openai.chat.completions.create({
-      model: "gpt-4o", // Use gpt-4o or gpt-4-turbo for best world generation
+      model: WORLD_MODEL, // Default to gpt-5 for high-quality planning/worldbuilding
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }

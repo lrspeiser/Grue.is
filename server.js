@@ -23,6 +23,11 @@ app.use((req, res, next) => {
 // Serve static files
 app.use(express.static('public'));
 
+// Health check
+app.get('/healthz', (req, res) => {
+  res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
 // API Routes
 app.use('/v2/api/check-usage', require('./api/v2/api/check-usage'));
 app.use('/v2/api/test-openai', require('./api/v2/api/test-openai'));
