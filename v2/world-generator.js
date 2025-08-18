@@ -97,7 +97,7 @@ async function generateAllRoomContent(gamePlan) {
         tools: roomTools,
         tool_choice: { type: "function", function: { name: "generate_all_rooms" } }
       },
-      `WorldGenerator - Generating room content for ${gamePlan.world_map.rooms.length} rooms`
+      `WorldGenerator - Generating room content for ${gamePlan.world_map.locations.length} rooms`
     );
 
     if (response.choices[0].message.tool_calls) {
