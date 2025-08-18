@@ -149,26 +149,38 @@ Requirements:
     // Generate a unique world ID
     const worldId = `world_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
     
-    // Save the world to database
-    await db.saveWorld(userId, worldId, worldData);
-    
+// Persist world using existing DB helper (returns numeric world id)
+    const worldRecord = await db.saveGameWorld(userId, {
+      worldOverview: {
+        title: worldData.name,
+        description: worldData.description,
+        setting: worldData.theme,
+        objective: worldData.objective
+      },
+      world: {
+        starting_room: worldData.worldMechanics?.startingRoom || (worldData.rooms?.[0]?.id || 'start'),
+        rooms: worldData.rooms,
+        winCondition: worldData.winCondition || worldData.objective || ''
+      }
+    });
+
     // Create initial game state
     const initialGameState = {
-      currentRoom: worldData.worldMechanics?.startingRoom || 'start',
-      inventory: [],
+      currentRoom: worldData.worldMechanics?.startingRoom || worldData.rooms?.[0]?.id || 'start',
+      inventory: worldData.startingInventory || [],
       health: worldData.worldMechanics?.startingHealth || 100,
       score: 0,
       activeMissions: [],
       completedMissions: [],
       flags: {}
     };
-    
-    // Save initial game state
-    await db.saveGameState(userId, worldId, initialGameState);
-    
+
+    // Save initial game state using DB world id
+    await db.saveGameState(userId, worldRecord.id, initialGameState);
+
     return res.json({
       success: true,
-      worldId,
+      worldId: worldRecord.id,
       worldData,
       gameState: initialGameState,
       tokensUsed: response.usage?.total_tokens

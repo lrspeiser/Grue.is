@@ -30,6 +30,7 @@ app.use('/v2/api/process-command', require('./api/v2/api/process-command-ai')); 
 app.use('/v2/api/generate-render', require('./api/v2/api/generate-render'));
 app.use('/v2/api/generate-simple', require('./api/v2/api/generate-simple'));
 app.use('/v2/api/generate-test', require('./api/v2/api/generate-test'));
+app.use('/v2/api/generate-world', require('./api/v2/api/generate-world'));
 
 // Game state API endpoints
 app.post('/api/game/save', async (req, res) => {
