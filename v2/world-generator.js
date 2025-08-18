@@ -90,7 +90,7 @@ async function generateAllRoomContent(gamePlan) {
 
   try {
     const response = await openaiLogger.loggedRequest(
-      'responses.create',
+      'chat.completions.create',
       {
         model: "gpt-5",
         messages,
@@ -182,7 +182,7 @@ async function generateAllCharacters(gamePlan) {
 
   try {
     const response = await openaiLogger.loggedRequest(
-      'responses.create',
+      'chat.completions.create',
       {
         model: "gpt-5",
         messages,
@@ -270,7 +270,7 @@ async function generateQuestContent(gamePlan) {
 
   try {
     const response = await openaiLogger.loggedRequest(
-      'responses.create',
+      'chat.completions.create',
       {
         model: "gpt-5",
         messages,

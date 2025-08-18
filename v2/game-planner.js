@@ -95,7 +95,7 @@ async function planGameWorld(userProfile) {
 
   try {
     const response = await openaiLogger.loggedRequest(
-      'responses.create',
+      'chat.completions.create',
       {
         model: "gpt-5", // Using GPT-5 (Released August 7, 2025)
         messages,
