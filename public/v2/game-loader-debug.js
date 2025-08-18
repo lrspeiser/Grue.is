@@ -78,7 +78,14 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
             if (result.debug && result.debug.rawResponseText) {
                 const raw = result.debug.rawResponseText;
                 const snippet = (text, len = 600) => String(text).substring(0, len) + (String(text).length > len ? '...' : '');
-                console.log('[GameLoader] LLM Output (Planning phase preview):', snippet(raw, 400));
+                const logBoth = (category, msg) => {
+                    console.log(msg);
+                    if (typeof window !== 'undefined' && typeof window.debugLog === 'function') {
+                        window.debugLog(category, msg);
+                    }
+                };
+
+                logBoth('llm', '[GameLoader] LLM Output (Planning phase preview): ' + snippet(raw, 400));
 
                 // Try to extract rooms and npcs for phase previews
                 try {
@@ -86,17 +93,17 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
                     if (jsonMatch) {
                         const parsed = JSON.parse(jsonMatch[0]);
                         if (parsed.rooms) {
-                            console.log('[GameLoader] LLM Output (Locations - rooms json preview):', snippet(JSON.stringify(parsed.rooms, null, 2), 600));
+                            logBoth('llm', '[GameLoader] LLM Output (Locations - rooms json preview): ' + snippet(JSON.stringify(parsed.rooms, null, 2), 600));
                         }
                         if (parsed.npcs) {
-                            console.log('[GameLoader] LLM Output (Characters - npcs json preview):', snippet(JSON.stringify(parsed.npcs, null, 2), 600));
+                            logBoth('llm', '[GameLoader] LLM Output (Characters - npcs json preview): ' + snippet(JSON.stringify(parsed.npcs, null, 2), 600));
                         }
                     }
                 } catch (e) {
-                    console.log('[GameLoader] Note: Could not parse raw LLM response as JSON for phase-specific previews.');
+                    logBoth('llm', '[GameLoader] Note: Could not parse raw LLM response as JSON for phase-specific previews.');
                 }
 
-                console.log('[GameLoader] LLM Output (Finalizing - full preview):', snippet(raw, 1000));
+                logBoth('llm', '[GameLoader] LLM Output (Finalizing - full preview): ' + snippet(raw, 1000));
             }
             
             // Store data for next step if needed
