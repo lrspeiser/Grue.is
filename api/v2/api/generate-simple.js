@@ -69,7 +69,7 @@ Return ONLY valid JSON with this exact structure:
         console.log('[Simple] API Key length:', process.env.OPENAI_API_KEY?.length || 0);
         
         const apiRequest = {
-          model: process.env.WORLD_MODEL || "gpt-5",
+model: process.env.WORLD_MODEL || "gpt-5", // DO NOT CHANGE MODEL DEFAULTS: world building = gpt-5
           input: [
             { role: "system", content: "You are a game world generator. Return only valid JSON." },
             { role: "user", content: prompt }

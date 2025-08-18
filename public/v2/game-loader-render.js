@@ -14,7 +14,7 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 3) {
     
     try {
         // Phase 1: Generate world with powerful model (GPT-4o)
-        console.log('[GameLoader] Phase 1: Generating world with GPT-4o...');
+        console.log('[GameLoader] Phase 1: Generating world with GPT-5...'); // DO NOT CHANGE MODEL: world gen uses GPT-5 by default
         
         // Extract character name from profile
         const characterName = userProfile.characterRole || 'Adventurer';
@@ -48,7 +48,7 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 3) {
         console.log(`[GameLoader] NPCs: ${worldData.worldData?.npcs?.length || 0}`);
         console.log(`[GameLoader] Items: ${worldData.worldData?.items?.length || 0}`);
         console.log(`[GameLoader] Missions: ${worldData.worldData?.missions?.length || 0}`);
-        console.log(`[GameLoader] Tokens used (GPT-4o): ${worldData.tokensUsed || 'unknown'}`);
+        console.log(`[GameLoader] Tokens used (GPT-5): ${worldData.tokensUsed || 'unknown'}`);
         
         if (!worldData.success) {
             throw new Error(worldData.error || 'World generation failed');
@@ -58,7 +58,7 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 3) {
         const startRoomId = worldData.gameState?.currentRoom || 'start';
         const currentRoom = worldData.worldData?.rooms?.find(r => r.id === startRoomId);
         
-        console.log('[GameLoader] Phase 1 complete - World ready for gameplay with GPT-4o-mini');
+        console.log('[GameLoader] Phase 1 complete - World ready for gameplay with GPT-5-nano'); // DO NOT CHANGE MODEL: gameplay uses GPT-5-nano by default
         
         // Return game data in expected format
         return {

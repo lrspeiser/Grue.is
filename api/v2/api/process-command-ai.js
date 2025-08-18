@@ -138,7 +138,7 @@ Return ONLY a JSON object with this structure:
     console.log('Recent history entries:', conversationHistory?.slice(-8).length || 0);
     
     // Use configurable lightweight model ("nano") for gameplay prompts
-    const PROMPT_MODEL = process.env.PROMPT_MODEL || "gpt-5-nano";
+const PROMPT_MODEL = process.env.PROMPT_MODEL || "gpt-5-nano"; // DO NOT CHANGE MODEL DEFAULTS: gameplay prompts = gpt-5-nano
     const response = await openai.responses.create({
       model: PROMPT_MODEL, // Default to nano-tier model
       input: messages,
@@ -159,10 +159,23 @@ max_output_tokens: 500, // Smaller response for efficiency
       aiResponse = JSON.parse(responseText);
     } catch (parseError) {
       console.error('[AI Command] Failed to parse AI response:', parseError);
+      // Safe fallback: no-op state change, short narrative
       return res.json({
-        success: false,
-        message: "I understood your command but had trouble processing it. Please try again.",
-        gameState
+        success: true,
+        message: "You look around, but the scene remains unclear. Try a simpler action (e.g., 'look', 'go north').",
+        gameState,
+        worldData
+      });
+    }
+
+    // Validate essential fields
+    if (!aiResponse.message || !aiResponse.gameState) {
+      console.warn('[AI Command] Missing required fields in AI response. Returning fallback.');
+      return res.json({
+        success: true,
+        message: "You look around, but nothing obvious stands out. Try 'examine items' or 'talk to someone'.",
+        gameState,
+        worldData
       });
     }
     

@@ -130,7 +130,7 @@ Requirements:
 console.log('[World Generation] Using Responses API with text.format=json_object and max_output_tokens');
     
 // Use configurable model for world generation (default gpt-5)
-    const WORLD_MODEL = process.env.WORLD_MODEL || "gpt-5";
+const WORLD_MODEL = process.env.WORLD_MODEL || "gpt-5"; // DO NOT CHANGE MODEL DEFAULTS: world building = gpt-5
     const response = await openai.responses.create({
       model: WORLD_MODEL, // Default to GPT-5 (latest) for high-quality planning/worldbuilding
       input: [
@@ -142,8 +142,29 @@ max_output_tokens: 4000,
 
     // Extract JSON text depending on Responses API structure
     const textOut = response.output_text || response.choices?.[0]?.message?.content || "{}";
-    const worldData = JSON.parse(textOut);
-    
+    let worldData;
+    try {
+      worldData = JSON.parse(textOut);
+    } catch (e) {
+      worldData = {};
+    }
+
+    // Validate output and retry once if invalid
+    if (!worldData.rooms || !Array.isArray(worldData.rooms) || worldData.rooms.length === 0) {
+      console.warn('[World Generation] Invalid or empty rooms from model. Retrying with simplified prompt...');
+      const retryInput = [
+        { role: 'system', content: 'Return ONLY valid JSON for a small world with at least 2 rooms connected by exits. No prose.' },
+        { role: 'user', content: 'Create a minimal valid world JSON now.' }
+      ];
+      const retryResp = await openai.responses.create({ model: WORLD_MODEL, input: retryInput, max_output_tokens: 1500 });
+      const retryText = retryResp.output_text || retryResp.choices?.[0]?.message?.content || '{}';
+      try {
+        worldData = JSON.parse(retryText);
+      } catch (_) {
+        worldData = {};
+      }
+    }
+
     console.log('[World Generation] World created successfully');
     console.log(`[World Generation] Rooms: ${worldData.rooms?.length}, Items: ${worldData.items?.length}, NPCs: ${worldData.npcs?.length}`);
     console.log('[World Generation] Token usage:', JSON.stringify(response.usage));
