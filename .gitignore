@@ -134,3 +134,6 @@ dist
 
 # Sentry Config File
 .sentryclirc
+
+# Local-only server guide
+README-SERVER-SETUP-LOCAL.md
