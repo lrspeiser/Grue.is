@@ -54,6 +54,10 @@ module.exports = async function handler(req, res) {
       throw new Error('Invalid game plan structure from planner');
     }
 
+    // Ensure arrays exist to prevent crashes in generation helpers
+    gamePlan.characters = Array.isArray(gamePlan.characters) ? gamePlan.characters : [];
+    gamePlan.quests = Array.isArray(gamePlan.quests) ? gamePlan.quests : [];
+
     // 3) Phase 2: Generation calls (rooms, characters, quests)
     console.log('[World Generation] Phase 2a: Generating room content');
     const roomsGenerated = await generateAllRoomContent(gamePlan);

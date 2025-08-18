@@ -114,7 +114,8 @@ async function generateAllRoomContent(gamePlan) {
  * Generate all character dialogues and personalities
  */
 async function generateAllCharacters(gamePlan) {
-  console.log("[WorldGen] Generating", gamePlan.characters.length, "characters");
+  const charCount = Array.isArray(gamePlan.characters) ? gamePlan.characters.length : 0;
+  console.log("[WorldGen] Generating", charCount, "characters");
   
   const characterPrompt = `Create rich, memorable characters for this historical adventure.
   
@@ -205,7 +206,7 @@ async function generateAllCharacters(gamePlan) {
  * Generate detailed quest content and branching paths
  */
 async function generateQuestContent(gamePlan) {
-  console.log("[WorldGen] Generating quest content");
+  console.log("[WorldGen] Generating quest content (quests:", Array.isArray(gamePlan.quests) ? gamePlan.quests.length : 0, ")");
   
   const questPrompt = `Create engaging quests that teach history through gameplay.
   
