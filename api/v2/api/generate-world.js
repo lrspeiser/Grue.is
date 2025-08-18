@@ -139,7 +139,7 @@ console.log('[World Generation] Using Responses API with text.format=json_object
       ],
       temperature: 0.9, // Higher creativity for world building
 max_output_tokens: 4000,
-      text: { format: "json_object" }
+text: { format: { type: "json_object" } }
     });
 
     // Extract JSON text depending on Responses API structure
