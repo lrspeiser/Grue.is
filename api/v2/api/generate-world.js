@@ -143,6 +143,7 @@ max_output_tokens: 4000,
     // Extract JSON text depending on Responses API structure
     const textOut = response.output_text || response.choices?.[0]?.message?.content || "{}";
     let worldData;
+    let retryTextCaptured = null;
     try {
       worldData = JSON.parse(textOut);
     } catch (e) {
@@ -158,6 +159,7 @@ max_output_tokens: 4000,
       ];
       const retryResp = await openai.responses.create({ model: WORLD_MODEL, input: retryInput, max_output_tokens: 1500 });
       const retryText = retryResp.output_text || retryResp.choices?.[0]?.message?.content || '{}';
+      retryTextCaptured = retryText;
       try {
         worldData = JSON.parse(retryText);
       } catch (_) {
@@ -206,7 +208,11 @@ max_output_tokens: 4000,
       worldId: worldRecord.id,
       worldData,
       gameState: initialGameState,
-      tokensUsed: response.usage?.total_tokens
+      tokensUsed: response.usage?.total_tokens,
+      debug: {
+        rawResponseText: textOut,
+        retryRawResponseText: retryTextCaptured || undefined
+      }
     });
     
   } catch (error) {
