@@ -136,6 +136,9 @@ max_output_tokens: 500,
               },
               initialState: gameState,
               currentRoom: gameData.rooms[0]
+            },
+            debug: {
+              rawResponseText: responseText
             }
           });
           

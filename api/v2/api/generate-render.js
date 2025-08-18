@@ -182,6 +182,9 @@ max_output_tokens: 4000,
                 starting_room: gameData.rooms[0].id,
                 winCondition: gameData.winCondition
               }
+            },
+            debug: {
+              rawResponseText: responseText
             }
           });
           

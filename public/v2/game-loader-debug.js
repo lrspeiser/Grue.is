@@ -74,6 +74,31 @@ async function generateGameWithRetry(userId, userProfile, maxRetries = 10) {
             // Log progress
             console.log(`[GameLoader] Progress: ${result.progress}% - ${result.message}`);
             
+            // If backend provided raw LLM response text, log structured snippets for each phase
+            if (result.debug && result.debug.rawResponseText) {
+                const raw = result.debug.rawResponseText;
+                const snippet = (text, len = 600) => String(text).substring(0, len) + (String(text).length > len ? '...' : '');
+                console.log('[GameLoader] LLM Output (Planning phase preview):', snippet(raw, 400));
+
+                // Try to extract rooms and npcs for phase previews
+                try {
+                    const jsonMatch = raw.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        const parsed = JSON.parse(jsonMatch[0]);
+                        if (parsed.rooms) {
+                            console.log('[GameLoader] LLM Output (Locations - rooms json preview):', snippet(JSON.stringify(parsed.rooms, null, 2), 600));
+                        }
+                        if (parsed.npcs) {
+                            console.log('[GameLoader] LLM Output (Characters - npcs json preview):', snippet(JSON.stringify(parsed.npcs, null, 2), 600));
+                        }
+                    }
+                } catch (e) {
+                    console.log('[GameLoader] Note: Could not parse raw LLM response as JSON for phase-specific previews.');
+                }
+
+                console.log('[GameLoader] LLM Output (Finalizing - full preview):', snippet(raw, 1000));
+            }
+            
             // Store data for next step if needed
             if (result.data) {
                 if (result.data.gamePlan) {
