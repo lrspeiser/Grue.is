@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js",
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "node scripts/test-world-and-commands.js",
+    "test:world": "node scripts/test-world-and-commands.js",
     "sentry:sourcemaps": "sentry-cli sourcemaps inject --org mariana-rt --project node ./ && sentry-cli sourcemaps upload --org mariana-rt --project node ./"
   },
   "keywords": [],
