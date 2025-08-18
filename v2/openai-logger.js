@@ -7,7 +7,7 @@ class OpenAILogger {
     this.client = new OpenAI({ apiKey });
     this.requestCount = 0;
     this.totalTokens = { input: 0, output: 0, cached: 0 };
-    this.timeoutMs = parseInt(process.env.OPENAI_TIMEOUT_MS || '90000', 10); // default 90s
+    this.timeoutMs = parseInt(process.env.OPENAI_TIMEOUT_MS || '240000', 10); // default 240s (4 minutes)
     this.logFull = process.env.LOG_OPENAI_FULL === '1' || process.env.VERBOSE_LOGGING === 'true';
   }
 
