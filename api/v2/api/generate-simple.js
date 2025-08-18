@@ -70,22 +70,25 @@ Return ONLY valid JSON with this exact structure:
         
         const apiRequest = {
           model: process.env.WORLD_MODEL || "gpt-5",
-          messages: [
+          input: [
             { role: "system", content: "You are a game world generator. Return only valid JSON." },
             { role: "user", content: prompt }
           ],
           temperature: 0.7,
-          max_tokens: 500
+          max_completion_tokens: 500,
+          text: { format: "json_object" }
         };
         
-        console.log('[Simple] SENDING TO OPENAI:', JSON.stringify(apiRequest, null, 2));
+        console.log('[Simple] SENDING TO OPENAI (Responses API):', JSON.stringify(apiRequest, null, 2));
         
-        const completion = await openai.chat.completions.create(apiRequest);
+        const completion = await openai.responses.create(apiRequest);
         
-        const responseText = completion.choices[0].message.content;
+        const responseText = completion.output_text || completion.choices?.[0]?.message?.content || '';
         console.log('[Simple] RECEIVED FROM OPENAI:');
         console.log(responseText);
-        console.log('[Simple] Token usage:', JSON.stringify(completion.usage));
+        if (completion.usage) {
+          console.log('[Simple] Token usage:', JSON.stringify(completion.usage));
+        }
           
           // Parse the AI response
           let gameData;

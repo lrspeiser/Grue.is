@@ -139,16 +139,16 @@ Return ONLY a JSON object with this structure:
     
     // Use configurable lightweight model ("nano") for gameplay prompts
     const PROMPT_MODEL = process.env.PROMPT_MODEL || "gpt-5-nano";
-    const response = await openai.chat.completions.create({
+    const response = await openai.responses.create({
       model: PROMPT_MODEL, // Default to nano-tier model
-      messages: messages,
+      input: messages,
       temperature: 0.7, // Slightly less creative for consistency
-      max_tokens: 500, // Smaller response for efficiency
-      response_format: { type: "json_object" }
+      max_completion_tokens: 500, // Smaller response for efficiency
+      text: { format: "json_object" }
     });
     
     // Extract text from the response
-    const responseText = response.choices[0].message.content;
+    const responseText = response.output_text || response.choices?.[0]?.message?.content || "";
     const newResponseId = null; // No response ID with chat.completions
     
     console.log('[AI Command] RECEIVED FROM OPENAI:');
