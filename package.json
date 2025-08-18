@@ -8,6 +8,8 @@
     "dev": "node server.js",
     "test": "node scripts/test-world-and-commands.js",
     "test:world": "node scripts/test-world-and-commands.js",
+    "predeploy:check": "tsc --noEmit",
+    "smoke:deploy": "node scripts/smoke-deploy.js",
     "sentry:sourcemaps": "sentry-cli sourcemaps inject --org mariana-rt --project node ./ && sentry-cli sourcemaps upload --org mariana-rt --project node ./"
   },
   "keywords": [],
@@ -19,5 +21,8 @@
     "express": "^4.21.2",
     "openai": "^4.50.0",
     "pg": "^8.16.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.3"
   }
 }
