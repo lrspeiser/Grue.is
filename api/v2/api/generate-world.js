@@ -127,7 +127,7 @@ Requirements:
     const userPrompt = `Create a ${theme} themed world for a character named ${name}. Make it engaging, detailed, and full of adventure opportunities.`;
 
     console.log('[World Generation] Calling OpenAI with powerful model...');
-    console.log('[World Generation] Using Responses API with text.format=json_object and max_completion_tokens');
+console.log('[World Generation] Using Responses API with text.format=json_object and max_output_tokens');
     
 // Use configurable model for world generation (default gpt-5)
     const WORLD_MODEL = process.env.WORLD_MODEL || "gpt-5";
