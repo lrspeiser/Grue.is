@@ -90,7 +90,7 @@ Return ONLY valid JSON with this structure:
         try {
           const apiRequest = {
             model: process.env.WORLD_MODEL || "gpt-5", // Default to GPT-5 with Render's extended timeout
-            messages: [
+            input: [
               { 
                 role: "system", 
                 content: "You are an expert game designer creating immersive text adventure worlds. Generate detailed, engaging content with rich descriptions." 
@@ -98,17 +98,19 @@ Return ONLY valid JSON with this structure:
               { role: "user", content: prompt }
             ],
             temperature: 0.8,
-            max_tokens: 4000 // Much larger response with Render's timeout
+            max_completion_tokens: 4000
           };
           
-          console.log('[Render] SENDING TO OPENAI:', JSON.stringify(apiRequest, null, 2));
+          console.log('[Render] SENDING TO OPENAI (Responses API):', JSON.stringify(apiRequest, null, 2));
           
-          const completion = await openai.chat.completions.create(apiRequest);
+          const completion = await openai.responses.create(apiRequest);
           
-          const responseText = completion.choices[0].message.content;
+          const responseText = completion.output_text || completion.choices?.[0]?.message?.content || '';
           console.log('[Render] RECEIVED FROM OPENAI:');
           console.log(responseText);
-          console.log('[Render] Token usage:', JSON.stringify(completion.usage));
+          if (completion.usage) {
+            console.log('[Render] Token usage:', JSON.stringify(completion.usage));
+          }
           
           // Parse the AI response
           let gameData;

@@ -130,18 +130,20 @@ Requirements:
     
 // Use configurable model for world generation (default gpt-5)
     const WORLD_MODEL = process.env.WORLD_MODEL || "gpt-5";
-    const response = await openai.chat.completions.create({
-      model: WORLD_MODEL, // Default to gpt-5 for high-quality planning/worldbuilding
-      messages: [
+    const response = await openai.responses.create({
+      model: WORLD_MODEL, // Default to GPT-5 (latest) for high-quality planning/worldbuilding
+      input: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
       temperature: 0.9, // Higher creativity for world building
-      max_tokens: 4000, // Allow for detailed world generation
+      max_completion_tokens: 4000,
       response_format: { type: "json_object" }
     });
-    
-    const worldData = JSON.parse(response.choices[0].message.content);
+
+    // Extract JSON text depending on Responses API structure
+    const textOut = response.output_text || response.choices?.[0]?.message?.content || "{}";
+    const worldData = JSON.parse(textOut);
     
     console.log('[World Generation] World created successfully');
     console.log(`[World Generation] Rooms: ${worldData.rooms?.length}, Items: ${worldData.items?.length}, NPCs: ${worldData.npcs?.length}`);
