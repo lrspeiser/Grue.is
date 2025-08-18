@@ -64,12 +64,12 @@ Return ONLY valid JSON with this exact structure:
   ]
 }`;
 
-        console.log('[Simple] Calling OpenAI API with model: gpt-4o');
+        console.log('[Simple] Calling OpenAI API with model from WORLD_MODEL (default gpt-5)');
         console.log('[Simple] API Key exists:', !!process.env.OPENAI_API_KEY);
         console.log('[Simple] API Key length:', process.env.OPENAI_API_KEY?.length || 0);
         
         const apiRequest = {
-          model: "gpt-4o",
+          model: process.env.WORLD_MODEL || "gpt-5",
           messages: [
             { role: "system", content: "You are a game world generator. Return only valid JSON." },
             { role: "user", content: prompt }

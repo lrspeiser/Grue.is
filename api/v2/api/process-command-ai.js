@@ -133,12 +133,12 @@ Return ONLY a JSON object with this structure:
     // Add current user command
     messages.push({ role: "user", content: userPrompt });
     
-    console.log('[AI Command] Using CHEAPER MODEL (gpt-4o-mini) for gameplay');
+    console.log('[AI Command] Using PROMPT MODEL for gameplay');
     console.log('Optimized context size:', systemPrompt.length);
     console.log('Recent history entries:', conversationHistory?.slice(-8).length || 0);
     
     // Use configurable lightweight model ("nano") for gameplay prompts
-    const PROMPT_MODEL = process.env.PROMPT_MODEL || "gpt-4o-mini";
+    const PROMPT_MODEL = process.env.PROMPT_MODEL || "gpt-5-nano";
     const response = await openai.chat.completions.create({
       model: PROMPT_MODEL, // Default to nano-tier model
       messages: messages,

@@ -28,7 +28,7 @@ module.exports = async function handler(req, res) {
     // Try a simple completion
     console.log('[Test] Attempting OpenAI API call...');
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini", // Use mini model for testing
+      model: process.env.PROMPT_MODEL || "gpt-5-nano", // Use nano-tier model for testing
       messages: [
         { role: "system", content: "You are a helpful assistant." },
         { role: "user", content: "Say 'API is working!' in 3 words exactly." }

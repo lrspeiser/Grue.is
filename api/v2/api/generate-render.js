@@ -89,7 +89,7 @@ Return ONLY valid JSON with this structure:
 
         try {
           const apiRequest = {
-            model: "gpt-4o", // Using GPT-4o with Render's extended timeout
+            model: process.env.WORLD_MODEL || "gpt-5", // Default to GPT-5 with Render's extended timeout
             messages: [
               { 
                 role: "system", 

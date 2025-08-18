@@ -29,11 +29,11 @@ Model tiers (from the provided comparison)
 Grue configuration
 - Environment variables (read by the API):
   - WORLD_MODEL: defaults to gpt-5
-  - PROMPT_MODEL: defaults to a lightweight model (currently gpt-4o-mini); set this to the fastest, most cost-efficient GPT-5 variant when available in your account.
+- PROMPT_MODEL: defaults to gpt-5-nano (latest nano-tier); fastest, most cost-efficient GPT-5 variant for gameplay.
 
 Recommended settings (Render → Environment)
-- WORLD_MODEL=gpt-5
-- PROMPT_MODEL=<fastest GPT-5 cost-efficient model identifier>
+- WORLD_MODEL=gpt-5  (latest)
+- PROMPT_MODEL=gpt-5-nano  (latest nano-tier)
 
 Notes on identifiers
 - The comparison provided lists capabilities and pricing but not the exact model IDs. Use the official identifier for the "Fastest, most cost-efficient version of GPT-5" from your API provider. Examples (these are placeholders; choose the exact name from your account’s Models page):
@@ -44,7 +44,7 @@ How the server uses them
 - World generation endpoint (POST /v2/api/generate-world)
   - Uses WORLD_MODEL (default gpt-5) for planning and world creation.
 - Gameplay command endpoint (POST /v2/api/process-command)
-  - Uses PROMPT_MODEL (default gpt-4o-mini); set this to the nano-tier GPT-5 model for best latency/cost.
+  - Uses PROMPT_MODEL (default gpt-5-nano, latest nano-tier) for best latency/cost.
 
 Context strategy at runtime
 - We pass only the relevant subset of worldData to the gameplay model each turn:

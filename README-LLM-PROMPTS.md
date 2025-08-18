@@ -12,7 +12,7 @@ Scope covers the current v2 architecture:
 1) High-level flow
 - Plan: AI designs the full world structure (locations, characters, quests) using a tool-call schema.
 - Generate: AI produces rich content for rooms, characters, quests; batch image generation for rooms.
-- Play: A single DM prompt + a structured tool schema updates the game state every user turn.
+- Play: A single DM prompt + a structured tool schema updates the game state every user turn. Gameplay prompts use gpt-5-nano (latest nano-tier) by default.
 - Persist: Worlds, states, and logs stored in PostgreSQL as JSONB and columns.
 
 2) Planning phase (v2/game-planner.js)

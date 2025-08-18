@@ -238,7 +238,7 @@ async function createCompletePlan(userProfile) {
       createdAt: new Date().toISOString(),
       userId: userProfile.userId,
       version: "2.0",
-      planningModel: "gpt-4-turbo-preview",
+      planningModel: process.env.WORLD_MODEL || "gpt-5",
       estimatedGenerationTime: calculateGenerationTime(validatedDesign)
     }
   };
