@@ -127,6 +127,7 @@ Requirements:
     const userPrompt = `Create a ${theme} themed world for a character named ${name}. Make it engaging, detailed, and full of adventure opportunities.`;
 
     console.log('[World Generation] Calling OpenAI with powerful model...');
+    console.log('[World Generation] Using Responses API with text.format=json_object and max_completion_tokens');
     
 // Use configurable model for world generation (default gpt-5)
     const WORLD_MODEL = process.env.WORLD_MODEL || "gpt-5";
@@ -138,7 +139,7 @@ Requirements:
       ],
       temperature: 0.9, // Higher creativity for world building
       max_completion_tokens: 4000,
-      response_format: { type: "json_object" }
+      text: { format: "json_object" }
     });
 
     // Extract JSON text depending on Responses API structure

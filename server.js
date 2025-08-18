@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const db = require('./db/database');
+const { execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -24,8 +25,24 @@ app.use((req, res, next) => {
 app.use(express.static('public'));
 
 // Health check
-app.get('/healthz', (req, res) => {
+app.get('/healthz', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });
+});
+
+// Version info (commit SHA and model settings)
+let COMMIT_SHA = 'unknown';
+try {
+  COMMIT_SHA = execSync('git rev-parse HEAD').toString().trim();
+} catch (e) {
+  // likely not available in container, ignore
+}
+app.get('/version', (req, res) => {
+  res.json({
+    commit: COMMIT_SHA,
+    worldModel: process.env.WORLD_MODEL || 'gpt-5',
+    promptModel: process.env.PROMPT_MODEL || 'gpt-5-nano',
+    time: new Date().toISOString()
+  });
 });
 
 // API Routes
