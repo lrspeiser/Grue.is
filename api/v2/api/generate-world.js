@@ -1,10 +1,11 @@
-// Generate a complete game world using a powerful AI model
-const OpenAI = require('openai');
+// Generate a complete game world using a phased pipeline: plan -> rooms -> characters -> quests
 const db = require('../../../db/database');
-
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const { createCompletePlan } = require('../../../v2/game-planner');
+const {
+  generateAllRoomContent,
+  generateAllCharacters,
+  generateQuestContent
+} = require('../../../v2/world-generator');
 
 module.exports = async function handler(req, res) {
   // Set CORS headers
@@ -26,174 +27,142 @@ module.exports = async function handler(req, res) {
     return res.status(400).json({ error: 'userId, name, and theme are required' });
   }
 
-  console.log(`[World Generation] Creating world for user: ${userId}, theme: ${theme}`);
+  console.log(`[World Generation] (Phased) Creating world for user: ${userId}, theme: ${theme}`);
 
   try {
     // Initialize database if needed
     await db.initialize();
-    
-    // Create a detailed prompt for world generation
-    const systemPrompt = `You are a master world builder for text adventure games. Create a rich, detailed game world.
 
-TASK: Generate a complete text adventure game world with the following requirements:
-- Theme: ${theme}
-- Player character name: ${name}
-- Difficulty: ${difficulty || 'medium'}
+    // 1) Build a user profile for the planner from incoming params
+    const edu = (difficulty || 'medium').toLowerCase();
+    const educationLevel = edu === 'easy' ? 'elementary' : edu === 'hard' ? 'graduate' : 'high';
+    const userProfile = {
+      userId,
+      educationLevel,
+      location: 'USA',
+      timePeriod: theme,
+      characterRole: name,
+      storyLocation: theme
+    };
 
-Create a JSON response with this EXACT structure:
-{
-  "name": "Name of the world",
-  "description": "Brief description of the world setting",
-  "theme": "${theme}",
-  "difficulty": "${difficulty || 'medium'}",
-  "rooms": [
-    {
-      "id": "unique_room_id",
-      "name": "Room Name",
-      "description": "Detailed room description",
-      "exits": {
-        "north": "connected_room_id",
-        "south": "connected_room_id",
-        "east": "connected_room_id",
-        "west": "connected_room_id"
-      },
-      "items": ["item1", "item2"],
-      "npcs": [
-        {
-          "name": "NPC Name",
-          "description": "NPC description",
-          "dialogue": "What they say when encountered"
-        }
-      ],
-      "puzzles": [
-        {
-          "description": "Puzzle description",
-          "solution": "How to solve it",
-          "reward": "What you get for solving"
-        }
-      ]
+    // 2) Phase 1: Planning
+    console.log('[World Generation] Phase 1: Planning world structure with', process.env.WORLD_MODEL || 'gpt-5');
+    const gamePlan = await createCompletePlan(userProfile);
+
+    // Basic validation
+    if (!gamePlan || !gamePlan.world_map || !Array.isArray(gamePlan.world_map.locations)) {
+      throw new Error('Invalid game plan structure from planner');
     }
-  ],
-  "items": [
-    {
-      "id": "item_id",
-      "name": "Item Name",
-      "description": "Item description",
-      "usable": true,
-      "effect": "What happens when used"
-    }
-  ],
-  "missions": [
-    {
-      "id": "mission_id",
-      "name": "Mission Name",
-      "description": "Mission description",
-      "objectives": ["objective1", "objective2"],
-      "rewards": {
-        "score": 100,
-        "items": ["reward_item"]
+
+    // 3) Phase 2: Generation calls (rooms, characters, quests)
+    console.log('[World Generation] Phase 2a: Generating room content');
+    const roomsGenerated = await generateAllRoomContent(gamePlan);
+
+    console.log('[World Generation] Phase 2b: Generating characters');
+    const charactersGenerated = await generateAllCharacters(gamePlan);
+
+    console.log('[World Generation] Phase 2c: Generating quests');
+    const questsGenerated = await generateQuestContent(gamePlan);
+
+    // 4) Assemble final worldData in the schema expected by the client
+    // Map planning connections to exits object
+    const exitsFromConnections = (connections = []) => {
+      const out = {};
+      for (const c of connections) {
+        if (typeof c !== 'string') continue;
+        const [dir, id] = c.split('-');
+        if (dir && id) out[dir] = id;
       }
+      return out;
+    };
+
+    const roomMap = new Map();
+    for (const loc of gamePlan.world_map.locations) {
+      roomMap.set(loc.id, loc);
     }
-  ],
-  "npcs": [
-    {
-      "id": "npc_id",
-      "name": "Character Name",
-      "description": "Character description",
-      "location": "room_id",
-      "personality": "Brief personality traits",
-      "questGiver": true
-    }
-  ],
-  "worldMechanics": {
-    "combatEnabled": true,
-    "inventoryLimit": 10,
-    "startingHealth": 100,
-    "startingRoom": "start"
-  }
-}
 
-Requirements:
-1. Create at least 10 interconnected rooms
-2. Include at least 5 unique items
-3. Add at least 3 NPCs with distinct personalities
-4. Create 2-3 missions or quests
-5. Include puzzles or challenges appropriate to the difficulty
-6. Ensure all room exits connect to valid rooms
-7. Make the world feel cohesive and thematically consistent
-8. Add rich descriptions that create atmosphere
-9. Include secrets and hidden elements for exploration`;
-
-    const userPrompt = `Create a ${theme} themed world for a character named ${name}. Make it engaging, detailed, and full of adventure opportunities.`;
-
-    console.log('[World Generation] Calling OpenAI with powerful model...');
-console.log('[World Generation] Using Responses API with text.format=json_object and max_output_tokens');
-    
-// Use configurable model for world generation (default gpt-5)
-const WORLD_MODEL = process.env.WORLD_MODEL || "gpt-5"; // DO NOT CHANGE MODEL DEFAULTS: world building = gpt-5
-    const response = await openai.responses.create({
-      model: WORLD_MODEL, // Default to GPT-5 (latest) for high-quality planning/worldbuilding
-      input: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt }
-      ],
-max_output_tokens: 4000,
+    const rooms = (roomsGenerated || []).map(r => {
+      const plan = roomMap.get(r.id) || {};
+      return {
+        id: r.id,
+        name: r.name || plan.name || r.id,
+        description: r.description || plan.description || '',
+        exits: exitsFromConnections(plan.connections || []),
+        items: [],
+        npcs: [],
+        puzzles: []
+      };
     });
 
-    // Extract JSON text depending on Responses API structure
-    const textOut = response.output_text || response.choices?.[0]?.message?.content || "{}";
-    let worldData;
-    let retryTextCaptured = null;
-    try {
-      worldData = JSON.parse(textOut);
-    } catch (e) {
-      worldData = {};
-    }
+    // Attach NPCs into rooms when locations match
+    const npcs = (charactersGenerated || []).map((c, idx) => ({
+      id: c.id || `npc_${idx}`,
+      name: c.name || `NPC ${idx + 1}`,
+      description: `${c.appearance || ''} ${c.personality || ''}`.trim(),
+      location: c.location || gamePlan.world_map.starting_location || (rooms[0]?.id || 'start'),
+      personality: c.personality || '',
+      questGiver: false
+    }));
 
-    // Validate output and retry once if invalid
-    if (!worldData.rooms || !Array.isArray(worldData.rooms) || worldData.rooms.length === 0) {
-      console.warn('[World Generation] Invalid or empty rooms from model. Retrying with simplified prompt...');
-      const retryInput = [
-        { role: 'system', content: 'Return ONLY valid JSON for a small world with at least 2 rooms connected by exits. No prose.' },
-        { role: 'user', content: 'Create a minimal valid world JSON now.' }
-      ];
-      const retryResp = await openai.responses.create({ model: WORLD_MODEL, input: retryInput, max_output_tokens: 1500 });
-      const retryText = retryResp.output_text || retryResp.choices?.[0]?.message?.content || '{}';
-      retryTextCaptured = retryText;
-      try {
-        worldData = JSON.parse(retryText);
-      } catch (_) {
-        worldData = {};
+    // Place each NPC into its room's list for convenience
+    const roomById = Object.fromEntries(rooms.map(r => [r.id, r]));
+    for (const n of npcs) {
+      const target = roomById[n.location] || rooms[0];
+      if (target) {
+        target.npcs = target.npcs || [];
+        target.npcs.push({ name: n.name, description: n.description });
       }
     }
 
-    console.log('[World Generation] World created successfully');
-    console.log(`[World Generation] Rooms: ${worldData.rooms?.length}, Items: ${worldData.items?.length}, NPCs: ${worldData.npcs?.length}`);
-    console.log('[World Generation] Token usage:', JSON.stringify(response.usage));
-    
-    // Generate a unique world ID
-    const worldId = `world_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    
-// Persist world using existing DB helper (returns numeric world id)
+    const missions = (questsGenerated || []).map((q, idx) => ({
+      id: q.id || `mission_${idx}`,
+      name: q.name || `Mission ${idx + 1}`,
+      description: q.introduction_text || '',
+      objectives: Array.isArray(q.objectives) ? q.objectives : [],
+      rewards: { score: 100 + idx * 10, items: [] }
+    }));
+
+    const items = []; // Placeholder: future step can generate via a dedicated items call
+
+    const worldData = {
+      name: gamePlan.game_overview?.title || `${theme} adventure`,
+      description: gamePlan.game_overview?.main_story || `An adventure in ${theme}.`,
+      theme,
+      difficulty: difficulty || 'medium',
+      rooms,
+      items,
+      missions,
+      npcs,
+      worldMechanics: {
+        combatEnabled: true,
+        inventoryLimit: 10,
+        startingHealth: 100,
+        startingRoom: gamePlan.world_map?.starting_location || (rooms[0]?.id || 'start')
+      }
+    };
+
+    console.log('[World Generation] Phased world assembled successfully');
+
+    // Persist world using existing DB helper (returns numeric world id)
     const worldRecord = await db.saveGameWorld(userId, {
       worldOverview: {
         title: worldData.name,
         description: worldData.description,
         setting: worldData.theme,
-        objective: worldData.objective
+        objective: missions[0]?.name || 'Explore and learn'
       },
       world: {
-        starting_room: worldData.worldMechanics?.startingRoom || (worldData.rooms?.[0]?.id || 'start'),
+        starting_room: worldData.worldMechanics.startingRoom,
         rooms: worldData.rooms,
-        winCondition: worldData.winCondition || worldData.objective || ''
+        winCondition: missions[0]?.name || ''
       }
     });
 
     // Create initial game state
     const initialGameState = {
-      currentRoom: worldData.worldMechanics?.startingRoom || worldData.rooms?.[0]?.id || 'start',
-      inventory: worldData.startingInventory || [],
-      health: worldData.worldMechanics?.startingHealth || 100,
+      currentRoom: worldData.worldMechanics.startingRoom,
+      inventory: [],
+      health: worldData.worldMechanics.startingHealth,
       score: 0,
       activeMissions: [],
       completedMissions: [],
@@ -208,26 +177,24 @@ max_output_tokens: 4000,
       worldId: worldRecord.id,
       worldData,
       gameState: initialGameState,
-      tokensUsed: response.usage?.total_tokens,
+      tokensUsed: undefined,
       debug: {
-        rawResponseText: textOut,
-        retryRawResponseText: retryTextCaptured || undefined
+        phased: true,
+        planLocations: gamePlan.world_map?.locations?.length,
+        generated: {
+          rooms: roomsGenerated?.length,
+          characters: charactersGenerated?.length,
+          quests: questsGenerated?.length
+        }
       }
     });
-    
+
   } catch (error) {
-    console.error('[World Generation] Error:', error);
-    console.error('[World Generation] Error details:', {
-      message: error.message,
-      status: error.status,
-      code: error.code,
-      type: error.type
-    });
-    
+    console.error('[World Generation] Error (phased):', error);
     res.status(500).json({
       success: false,
       error: error.message || 'World generation failed',
-      message: "Failed to generate world. Please try again."
+      message: 'Failed to generate world. Please try again.'
     });
   }
 };
