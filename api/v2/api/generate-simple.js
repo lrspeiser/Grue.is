@@ -75,7 +75,6 @@ Return ONLY valid JSON with this exact structure:
             { role: "user", content: prompt }
           ],
 max_output_tokens: 500,
-response_format: { type: "json_object" }
         };
         
         console.log('[Simple] SENDING TO OPENAI (Responses API):', JSON.stringify(apiRequest, null, 2));

@@ -138,7 +138,6 @@ console.log('[World Generation] Using Responses API with text.format=json_object
         { role: "user", content: userPrompt }
       ],
 max_output_tokens: 4000,
-response_format: { type: "json_object" }
     });
 
     // Extract JSON text depending on Responses API structure
