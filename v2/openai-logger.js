@@ -39,11 +39,11 @@ class OpenAILogger {
 
       let response;
       if (method === 'chat.completions.create') {
-        response = await this.client.chat.completions.create({ ...params, signal: controller.signal });
+        response = await this.client.chat.completions.create(params, { signal: controller.signal });
       } else if (method === 'responses.create') {
-        response = await this.client.responses.create({ ...params, signal: controller.signal });
+        response = await this.client.responses.create(params, { signal: controller.signal });
       } else if (method === 'images.generate') {
-        response = await this.client.images.generate({ ...params, signal: controller.signal });
+        response = await this.client.images.generate(params, { signal: controller.signal });
       } else {
         throw new Error(`Unsupported method: ${method}`);
       }
