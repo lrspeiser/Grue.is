@@ -74,7 +74,6 @@ Return ONLY valid JSON with this exact structure:
             { role: "system", content: "You are a game world generator. Return only valid JSON." },
             { role: "user", content: prompt }
           ],
-          temperature: 0.7,
 max_output_tokens: 500,
 response_format: { type: "json_object" }
         };

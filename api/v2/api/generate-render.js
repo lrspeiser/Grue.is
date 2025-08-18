@@ -97,7 +97,6 @@ Return ONLY valid JSON with this structure:
               },
               { role: "user", content: prompt }
             ],
-            temperature: 0.8,
 max_output_tokens: 4000,
 response_format: { type: "json_object" }
           };

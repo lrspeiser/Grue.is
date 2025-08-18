@@ -137,7 +137,6 @@ console.log('[World Generation] Using Responses API with text.format=json_object
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt }
       ],
-      temperature: 0.9, // Higher creativity for world building
 max_output_tokens: 4000,
 response_format: { type: "json_object" }
     });

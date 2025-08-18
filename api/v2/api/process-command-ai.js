@@ -142,7 +142,6 @@ Return ONLY a JSON object with this structure:
     const response = await openai.responses.create({
       model: PROMPT_MODEL, // Default to nano-tier model
       input: messages,
-      temperature: 0.7, // Slightly less creative for consistency
 max_output_tokens: 500, // Smaller response for efficiency
 response_format: { type: "json_object" }
     });
