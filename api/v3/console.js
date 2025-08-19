@@ -76,8 +76,15 @@ router.post('/start', async (req, res) => {
   console.log(`[v3/start] corr=${corr} incoming`);
   await logEvent(null, corr, 'info', 'v3/start', 'incoming', null);
   try {
-    const id = randomUUID();
-    const seed = randomUUID();
+    const requestedId = req.body?.session_id;
+    let id = requestedId || randomUUID();
+    // Reuse existing session created by start-stream if present
+    let sess = sessions.get(id);
+    if (!sess) {
+      sess = { id, seed: randomUUID(), state: { room: null, inventory: [] }, history: [], stats: {}, logs: [] };
+      sessions.set(id, sess);
+    }
+    const seed = sess.seed;
 
     const payload = {
       kind: 'start_room',
@@ -105,11 +112,21 @@ router.post('/start', async (req, res) => {
       return res.status(502).json({ success: false, correlation_id: corr, error: 'Schema validation failed: ' + err, raw: json });
     }
 
-    const session = { id, seed, state: { room: json, inventory: [] }, history: [], stats: { first_latency_ms: duration_ms, usage }, logs: [] };
-    sessions.set(id, session);
-    await logEvent(id, corr, 'success', 'v3/start', 'session created', { session_id: id });
+    // Ensure numeric keywords 1..5 for five-entrance start rooms
+    if (Array.isArray(json.exits) && json.exits.length === 5) {
+      json.exits = json.exits.map((ex, idx) => {
+        const k = new Set([...(ex.keywords || [])]);
+        k.add(String(idx + 1));
+        return { ...ex, keywords: Array.from(k) };
+      });
+    }
 
-    return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: session.state });
+    sess.state.room = json;
+    sess.stats.first_latency_ms = duration_ms;
+    sess.stats.usage = usage;
+    await logEvent(id, corr, 'success', 'v3/start', 'session initialized', { session_id: id });
+
+    return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state });
   } catch (e) {
     await logEvent(null, corr, 'error', 'v3/start', 'unhandled error', { error: e.message });
     return res.status(500).json({ success: false, correlation_id: corr, error: e.message });
@@ -173,15 +190,18 @@ router.post('/command', async (req, res) => {
     if (lower.startsWith('go ')) {
       console.log(`[v3/command] corr=${corr} action=go`);
       await logEvent(session_id, corr, 'info', 'v3/command', 'go', null);
-      const arg = lower.replace('go ', '').trim();
+      let arg = lower.replace(/^go\s+/, '').trim();
       const exits = s.state.room.exits || [];
       let target = null;
-      // number 1..5 or keyword match
-      if (/^\d+$/.test(arg)) {
-        const i = parseInt(arg,10)-1; if (exits[i]) target = exits[i];
+      // Extract number from phrases like "door number 3" or "3"
+      const numMatch = arg.match(/\b([1-9])\b/);
+      if (numMatch) {
+        const i = parseInt(numMatch[1], 10) - 1;
+        if (exits[i]) target = exits[i];
       }
-      if (!target) target = exits.find(e => (e.keywords||[]).some(k => k.toLowerCase() === arg) || e.label.toLowerCase().includes(arg));
-      if (!target) return res.json({ success: true, correlation_id: corr, message: 'Which way? Match a number, color, direction, or part of a label.', state: s.state });
+      // Fallback: keyword includes
+      if (!target) target = exits.find(e => (e.keywords||[]).some(k => arg.includes(k.toLowerCase())) || e.label.toLowerCase().includes(arg));
+      if (!target) return res.json({ success: true, correlation_id: corr, message: 'Which way? Match a number 1-5, a theme keyword, direction, or part of a portal label.', state: s.state });
 
       // Request next room from model given chosen exit
       const payload = {

@@ -124,7 +124,8 @@
       try {
         append('POST /v3/api/console/start', 'dim');
         const t0 = performance.now();
-        res = await fetch('/v3/api/console/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+        const startBody = sessionFromStream ? { session_id: sessionFromStream } : {};
+        res = await fetch('/v3/api/console/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(startBody) });
         const t1 = performance.now();
         append(`Response ${res.status} in ${Math.round(t1 - t0)}ms`, 'dim');
       } catch (e) {
