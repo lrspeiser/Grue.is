@@ -21,10 +21,66 @@ async function planGameWorld(userProfile) {
   console.log("[GamePlanner] Starting AI game planning for user:", userProfile.userId);
   console.log("[GamePlanner] User profile:", JSON.stringify(userProfile, null, 2));
   
-  const planningPrompt = `Design a text adventure game set in ${userProfile.timePeriod} at ${userProfile.storyLocation}.
-  Player role: ${userProfile.characterRole}
-  
-  Create 10-12 locations, 5-8 characters, and 3 main quests. Make it educational and engaging.`;
+  const planningPrompt = `You are an expert game designer creating immersive, educational text adventure worlds.
+
+Design a text adventure game set in ${userProfile.timePeriod} at ${userProfile.storyLocation}.
+Player role: ${userProfile.characterRole}
+
+Requirements:
+- Create 10-12 locations, 5-8 characters, and 3 main quests.
+- Make it educational and engaging with accurate historical/scientific context.
+- Ensure connections between locations form a valid navigable graph using direction-id strings like "north-hall", "east-lab".
+- Ensure starting_location matches one of the locations' id fields.
+
+Return ONLY a single JSON object with this exact structure and field names:
+{
+  "title": string,
+  "setting": string,
+  "main_story": string,
+  "starting_location": string,
+  "locations": [
+    {
+      "id": string,
+      "name": string,
+      "description": string,
+      "connections": [string]  // e.g., ["north-bridge", "east-hangar"]
+    }
+  ],
+  "characters": [
+    {
+      "id": string,
+      "name": string,
+      "location": string,   // must be an existing location id
+      "role": string
+    }
+  ],
+  "quests": [
+    {
+      "id": string,
+      "name": string,
+      "description": string,
+      "steps": [string]
+    }
+  ]
+}
+
+Example (shortened):
+{
+  "title": "Echoes Among the Stars",
+  "setting": "SciFi - Space exploration",
+  "main_story": "Investigate a derelict station broadcasting an ancient signal.",
+  "starting_location": "airlock",
+  "locations": [
+    {"id": "airlock", "name": "Primary Airlock", "description": "A cramped chamber...", "connections": ["north-hub"]},
+    {"id": "hub", "name": "Operations Hub", "description": "Status panels flicker...", "connections": ["south-airlock", "east-lab", "west-hangar"]}
+  ],
+  "characters": [
+    {"id": "ai_core", "name": "Station AI", "location": "hub", "role": "Guide"}
+  ],
+  "quests": [
+    {"id": "q1", "name": "Decode the Signal", "description": "Trace the source...", "steps": ["Reach the hub", "Access comms console", "Align antenna"]}
+  ]
+}`;
 
   // Define a strict JSON schema so Responses API returns valid JSON directly
   const gameDesignJsonSchema = {
@@ -88,6 +144,7 @@ async function planGameWorld(userProfile) {
       {
         model: process.env.WORLD_MODEL || "gpt-5", // Using GPT-5 by default; override with WORLD_MODEL
         input,
+        text: { format: "json_object" },
         max_output_tokens: 4000
       },
       `GamePlanner - Creating game design for user ${userProfile.userId}`
