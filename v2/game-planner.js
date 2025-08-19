@@ -88,7 +88,6 @@ async function planGameWorld(userProfile) {
       {
         model: process.env.WORLD_MODEL || "gpt-5", // Using GPT-5 by default; override with WORLD_MODEL
         input,
-        text: { format: { type: "json_schema", name: "create_game_design", schema: gameDesignJsonSchema, strict: true } },
         max_output_tokens: 4000
       },
       `GamePlanner - Creating game design for user ${userProfile.userId}`
