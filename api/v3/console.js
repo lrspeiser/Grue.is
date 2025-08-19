@@ -235,5 +235,124 @@ router.get('/logs', async (req, res) => {
   return res.json({ success: true, session_id, count: logs.length, logs });
 });
 
+// POST /v3/api/console/start-stream (SSE-like via chunked fetch)
+router.post('/start-stream', async (req, res) => {
+  const corr = correlation();
+  console.log(`[v3/start-stream] corr=${corr} incoming`);
+  await logEvent(null, corr, 'info', 'v3/start-stream', 'incoming', null);
+
+  // Create session ID immediately so client can attach it to the JSON call after streaming
+  const id = randomUUID();
+  const seed = randomUUID();
+
+  // Wire response headers for streaming
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  function sse(obj) {
+    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
+  }
+
+  // Emit session event first
+  sse({ type: 'session', session_id: id, correlation_id: corr });
+
+  try {
+    const system = `You are a vivid narrator for a text adventure. The user awakens in a cave with five glowing entrances. Keep it concise (2 short paragraphs max). Encourage the player to choose an entrance.`;
+    const user = `Describe the starting cave and the five glowing entrances with these themes: space/sci-fi, historic, scary, travel mystery, fantasy. Each entrance should hint its theme. End with a short prompt (e.g., 'Choose an entrance (1-5) or say a theme').`;
+
+    const model = process.env.PROMPT_MODEL || 'gpt-5-nano';
+    const start = Date.now();
+    const stream = await (async () => {
+      try {
+        const resp = await openai.responses.create({
+          model,
+          input: [
+            { role: 'system', content: system },
+            { role: 'user', content: user }
+          ],
+          stream: true,
+        });
+        return resp;
+      } catch (e) {
+        throw e;
+      }
+    })();
+
+    let text = '';
+    for await (const part of stream) {
+      const chunk = part?.choices?.[0]?.delta?.content || '';
+      if (chunk) {
+        text += chunk;
+        sse({ type: 'message', content: chunk });
+      }
+    }
+
+    const latency = Date.now() - start;
+    await logEvent(id, corr, 'success', 'v3/start-stream', 'stream completed', { latency_ms: latency, length: text.length });
+  } catch (e) {
+    await logEvent(null, corr, 'error', 'v3/start-stream', 'stream error', { error: e.message });
+    sse({ type: 'error', message: e.message });
+  } finally {
+    sse({ type: 'done', correlation_id: corr });
+    try { res.end(); } catch {}
+  }
+});
+
+// POST /v3/api/console/command-stream
+router.post('/command-stream', async (req, res) => {
+  const corr = correlation();
+  console.log(`[v3/command-stream] corr=${corr} incoming`);
+  await logEvent(null, corr, 'info', 'v3/command-stream', 'incoming', null);
+
+  const { session_id, command } = req.body || {};
+  if (!session_id || !command) {
+    res.status(400).json({ success: false, correlation_id: corr, error: 'session_id and command required' });
+    return;
+  }
+
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+
+  function sse(obj) {
+    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
+  }
+
+  sse({ type: 'session', session_id, correlation_id: corr });
+
+  try {
+    const s = sessions.get(session_id);
+    const current = s?.state?.room;
+    const system = `You are the narrator for a text adventure. Stream only narrative text, no JSON. Keep 2 short paragraphs. Maintain continuity with the current room.`;
+    const user = `Player command: ${command}. Current room title: ${current?.title || 'Unknown'}. Brief: ${current?.description?.slice(0, 200) || ''}`;
+    const model = process.env.PROMPT_MODEL || 'gpt-5-nano';
+
+    const start = Date.now();
+    const stream = await openai.responses.create({
+      model,
+      input: [
+        { role: 'system', content: system },
+        { role: 'user', content: user }
+      ],
+      stream: true,
+    });
+
+    let text = '';
+    for await (const part of stream) {
+      const chunk = part?.choices?.[0]?.delta?.content || '';
+      if (chunk) { text += chunk; sse({ type: 'message', content: chunk }); }
+    }
+    const latency = Date.now() - start;
+    await logEvent(session_id, corr, 'success', 'v3/command-stream', 'stream completed', { latency_ms: latency, length: text.length });
+  } catch (e) {
+    await logEvent(session_id, corr, 'error', 'v3/command-stream', 'stream error', { error: e.message });
+    sse({ type: 'error', message: e.message });
+  } finally {
+    sse({ type: 'done', correlation_id: corr });
+    try { res.end(); } catch {}
+  }
+});
+
 module.exports = router;
 

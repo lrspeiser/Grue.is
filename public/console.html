@@ -89,17 +89,42 @@
       append('Starting new session...', 'dim');
       cmdEl.disabled = true; sendEl.disabled = true;
       statusEl.style.display = 'block'; statusEl.textContent = 'Starting session...';
+
+      // 1) Stream narrative first
+      let sessionFromStream = null;
+      try {
+        append('POST /v3/api/console/start-stream', 'dim');
+        const resp = await fetch('/v3/api/console/start-stream', { method: 'POST' });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop() || '';
+          for (const p of parts) {
+            if (!p.startsWith('data:')) continue;
+            const json = p.slice(5).trim();
+            try {
+              const msg = JSON.parse(json);
+              if (msg.type === 'session') { sessionFromStream = msg.session_id; append(`[session ${msg.session_id}]`, 'dim'); }
+              if (msg.type === 'message') { append(msg.content); }
+              if (msg.type === 'error') { append('Stream error: ' + msg.message, 'err'); }
+            } catch {}
+          }
+        }
+      } catch (e) {
+        append('Stream failed: ' + e.message, 'err');
+      }
+
+      // 2) Fetch JSON state
       let res;
       try {
         append('POST /v3/api/console/start', 'dim');
         const t0 = performance.now();
-        startController = new AbortController();
-        const timeout = setTimeout(() => { try { startController.abort(); } catch {} }, 25000);
-        res = await fetch('/v3/api/console/start', {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({}), signal: startController.signal
-        });
-        clearTimeout(timeout);
+        res = await fetch('/v3/api/console/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
         const t1 = performance.now();
         append(`Response ${res.status} in ${Math.round(t1 - t0)}ms`, 'dim');
       } catch (e) {
@@ -120,7 +145,7 @@
         if (data.raw) append('Raw: ' + (typeof data.raw === 'string' ? data.raw.substring(0,200) : JSON.stringify(data.raw).substring(0,200)) + '...', 'err');
         return;
       }
-      sessionId = data.session_id;
+      sessionId = data.session_id || sessionFromStream;
       append('Session: ' + sessionId, 'dim');
       if (data.message) append(data.message, '');
       lastState = data.state;
@@ -133,6 +158,35 @@
 
     async function sendCommand(text) {
       if (!sessionId) { pendingCommand = text; append('No session yet; wait for start to complete.', 'err'); return; }
+
+      // 1) Stream narrative for the command
+      try {
+        append('POST /v3/api/console/command-stream', 'dim');
+        const resp = await fetch('/v3/api/console/command-stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId, command: text }) });
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = '';
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const parts = buf.split('\n\n');
+          buf = parts.pop() || '';
+          for (const p of parts) {
+            if (!p.startsWith('data:')) continue;
+            const json = p.slice(5).trim();
+            try {
+              const msg = JSON.parse(json);
+              if (msg.type === 'message') append(msg.content);
+              if (msg.type === 'error') append('Stream error: ' + msg.message, 'err');
+            } catch {}
+          }
+        }
+      } catch (e) {
+        append('Stream failed: ' + e.message, 'err');
+      }
+
+      // 2) Fetch JSON update for state
       append(`POST /v3/api/console/command ${JSON.stringify({ session_id: sessionId, command: text })}`, 'dim');
       let res;
       try {
