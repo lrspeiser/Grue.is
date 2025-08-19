@@ -739,7 +739,7 @@
             output.scrollTop = output.scrollHeight;
         }
         
-        async function submitCommand() {
+async function submitCommand() {
             const input = document.getElementById('command-input');
             const command = input.value.trim();
             if (!command) return;
@@ -747,9 +747,9 @@
             console.log(`Player command: ${command}`);
             appendOutput(`\n> ${command}\n`);
             
-            // Process the command
+            // Prefer streaming endpoint for faster feedback
             try {
-                const response = await fetch('/v2/api/process-command', {
+                const response = await fetch('/v2/api/process-command-stream', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -761,36 +761,34 @@
                         conversationHistory: conversationHistory
                     })
                 });
-                
-                const result = await response.json();
-                
-                if (result.success) {
-                    // Display the response
-                    appendOutput(result.message + '\n');
-                    
-                    // Add messages to conversation history
-                    conversationHistory.push({ role: 'user', content: `Player command: "${command}"` });
-                    if (result.aiResponse) {
-                        conversationHistory.push({ role: 'assistant', content: result.aiResponse });
+
+                const reader = response.body
+                  .pipeThrough(new TextDecoderStream())
+                  .getReader();
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+                    const lines = value.split('\n');
+                    for (const line of lines) {
+                        if (!line.startsWith('data:')) continue;
+                        const payload = line.slice(5).trim();
+                        if (!payload) continue;
+                        if (payload === '[DONE]') {
+                            appendOutput('\n');
+                            break;
+                        }
+                        try {
+                            const obj = JSON.parse(payload);
+                            if (obj.content !== undefined) {
+                                appendOutput(obj.content);
+                            } else if (obj.error) {
+                                appendOutput(`\nError: ${obj.error}\n`);
+                            }
+                        } catch (e) {
+                            // ignore malformed lines
+                        }
                     }
-                    
-                    // Keep conversation history to last 10 exchanges (20 messages)
-                    if (conversationHistory.length > 20) {
-                        conversationHistory = conversationHistory.slice(-20);
-                    }
-                    
-                    // Update game state
-                    if (result.gameState) {
-                        currentGameState = result.gameState;
-                        updateGameState(currentGameState);
-                    }
-                    
-                    // Update world data if modified
-                    if (result.worldData) {
-                        currentWorldData = result.worldData;
-                    }
-                } else {
-                    appendOutput(`Error: ${result.error || 'Command failed'}\n`);
                 }
             } catch (error) {
                 console.error('Command processing error:', error);
