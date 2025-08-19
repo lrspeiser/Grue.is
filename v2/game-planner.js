@@ -142,11 +142,9 @@ Example (shortened):
   const tools = [
     {
       type: "function",
-      function: {
-        name: "create_game_design",
-        description: "Creates game design with locations, characters, and quests",
-        parameters: gameDesignJsonSchema
-      }
+      name: "create_game_design",
+      description: "Creates game design with locations, characters, and quests",
+      parameters: gameDesignJsonSchema
     }
   ];
 
@@ -157,7 +155,7 @@ Example (shortened):
         model: process.env.WORLD_MODEL || "gpt-5", // Using GPT-5 by default; override with WORLD_MODEL
         input,
         tools,
-        tool_choice: { type: "function", function: { name: "create_game_design" } },
+        tool_choice: { type: "function", name: "create_game_design" },
         max_output_tokens: 4000
       },
       `GamePlanner - Creating game design for user ${userProfile.userId}`
