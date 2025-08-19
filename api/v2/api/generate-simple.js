@@ -74,7 +74,6 @@ model: process.env.WORLD_MODEL || "gpt-5", // DO NOT CHANGE MODEL DEFAULTS: worl
             { role: "system", content: "You are a game world generator. Return only valid JSON." },
             { role: "user", content: prompt }
           ],
-max_output_tokens: 500,
         };
         
         console.log('[Simple] SENDING TO OPENAI (Responses API):', JSON.stringify(apiRequest, null, 2));

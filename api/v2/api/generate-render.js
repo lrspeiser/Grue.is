@@ -97,7 +97,6 @@ model: process.env.WORLD_MODEL || "gpt-5", // DO NOT CHANGE MODEL DEFAULTS: worl
               },
               { role: "user", content: prompt }
             ],
-max_output_tokens: 4000,
           };
           
           console.log('[Render] SENDING TO OPENAI (Responses API):', JSON.stringify(apiRequest, null, 2));

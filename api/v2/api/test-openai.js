@@ -25,28 +25,28 @@ module.exports = async function handler(req, res) {
   try {
     const openai = new OpenAI({ apiKey });
     
-    // Try a simple completion
-    console.log('[Test] Attempting OpenAI API call...');
-    const completion = await openai.chat.completions.create({
-      model: process.env.PROMPT_MODEL || "gpt-5-nano", // Use nano-tier model for testing
-      messages: [
-        { role: "system", content: "You are a helpful assistant." },
-        { role: "user", content: "Say 'API is working!' in 3 words exactly." }
-      ],
-      max_tokens: 10
+    // Use Responses API for compatibility with gpt-5/gpt-5-nano
+    console.log('[Test] Attempting OpenAI Responses API call...');
+    const resp = await openai.responses.create({
+      model: process.env.PROMPT_MODEL || 'gpt-5-nano',
+      input: "Say 'API is working!' in 3 words exactly."
     });
-    
-    const response = completion.choices[0].message.content;
-    console.log('[Test] OpenAI responded:', response);
-    
+
+    let text = '';
+    if (typeof resp.output_text === 'string' && resp.output_text.trim()) {
+      text = resp.output_text.trim();
+    } else if (Array.isArray(resp.output)) {
+      text = resp.output.flatMap(p => (p.content || []).filter(c => c.type === 'output_text').map(c => c.text)).join('').trim();
+    }
+
     return res.json({
       success: true,
       keyExists: true,
       keyLength: apiKey.length,
       keyPrefix: apiKey.substring(0, 7) + '...',
-      apiResponse: response,
-      model: completion.model,
-      usage: completion.usage
+      apiResponse: text,
+      model: resp.model,
+      usage: resp.usage
     });
     
   } catch (error) {

@@ -71,13 +71,20 @@ if (DISABLE_DB) {
 
   module.exports = db;
 } else {
-  // Use internal URL when deployed on Render, external URL for local development
-  const connectionString = process.env.DATABASE_URL || 
-    'postgresql://grue_user:SI58siege5HyvawSdWbTHRTTUFUshOMj@dpg-d2h1hmqdbo4c73akshkg-a/grue';
+  // Require DATABASE_URL for Postgres mode to avoid hardcoding secrets
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) {
+    throw new Error('[DB] DATABASE_URL is not set. Set DISABLE_DB=true for in-memory mode or provide a Postgres connection string.');
+  }
+
+  // Enable SSL for Render and production by default; allow override via DB_SSL
+  const needSSL = String(process.env.DB_SSL || '').toLowerCase() === 'true'
+    || /render\.com/i.test(connectionString)
+    || String(process.env.NODE_ENV || '').toLowerCase() === 'production';
 
   const pool = new Pool({
     connectionString,
-    ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+    ssl: needSSL ? { rejectUnauthorized: false } : false,
     max: 20,
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,

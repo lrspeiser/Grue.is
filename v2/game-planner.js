@@ -133,85 +133,57 @@ Example (shortened):
     required: ["title", "setting", "main_story", "starting_location", "locations", "characters", "quests"]
   };
 
-  const input = [
-    { role: "system", content: planningPrompt },
-    { role: "user", content: "Create the game now." }
-  ];
+  // For Structured Outputs we can pass the composed prompt directly as a single input string
+  const inputMessage = planningPrompt;
 
-  // Define a function tool for structured output via the Responses API
-  const tools = [
-    {
-      type: "function",
-      name: "create_game_design",
-      description: "Creates game design with locations, characters, and quests",
-      parameters: gameDesignJsonSchema
-    }
-  ];
-
+  // Use Chat Completions with JSON mode for strict JSON output
   try {
     const response = await openaiLogger.loggedRequest(
-      'responses.create',
+      'chat.completions.create',
       {
-        model: process.env.WORLD_MODEL || "gpt-5", // Using GPT-5 by default; override with WORLD_MODEL
-        input,
-        tools,
-        tool_choice: { type: "function", name: "create_game_design" },
-        max_output_tokens: 4000
+        model: process.env.WORLD_MODEL || "gpt-5", // Default; override with WORLD_MODEL
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'You are a careful planner that outputs strictly valid JSON matching the requested schema. Do not include any extra text.' },
+          { role: 'user', content: planningPrompt }
+        ]
       },
       `GamePlanner - Creating game design for user ${userProfile.userId}`
     );
 
-    // Try to extract structured tool arguments from Responses API output
+    // Extract JSON text from chat completion
+    let rawJsonText = '';
+    const choice = response.choices && response.choices[0];
+    if (choice && choice.message && typeof choice.message.content === 'string') {
+      rawJsonText = choice.message.content;
+    }
+
+    // Log content types to aid debugging
+    try {
+      const types = (response.output || []).flatMap(o => (o?.content || []).map(c => c?.type || typeof c));
+      console.log('[GamePlanner] Responses content types:', JSON.stringify(types));
+    } catch {}
+
+    if (!rawJsonText || !rawJsonText.trim()) {
+      throw new Error('Empty output_text from model');
+    }
+
+    // Parse and validate
     let gameDesign;
     try {
-      const out = Array.isArray(response.output) ? response.output : [];
-      // Log content types to aid debugging
-      try {
-        const types = out.flatMap(o => (o?.content || []).map(c => c?.type || typeof c));
-        console.log('[GamePlanner] Responses content types:', JSON.stringify(types));
-      } catch {}
-
-      // Find first content block that carries function arguments
-      let argsJson = null;
-      outer: for (const o of out) {
-        const content = o?.content || [];
-        for (const c of content) {
-          // 1) Tool/function call variants
-          if ((c?.type === 'tool' || c?.type === 'tool_call' || c?.type === 'function_call' || c?.type === 'function') && (c?.name === 'create_game_design' || c?.tool_name === 'create_game_design')) {
-            if (c?.arguments) { argsJson = c.arguments; break outer; }
-            if (c?.function?.arguments) { argsJson = c.function.arguments; break outer; }
-            if (c?.input_json) { argsJson = JSON.stringify(c.input_json); break outer; }
-          }
-          // 2) Direct input_json item
-          if (c?.input_json) { argsJson = JSON.stringify(c.input_json); break outer; }
-          // 3) Text fallback with embedded JSON
-          if ((c?.type === 'output_text' || c?.type === 'message' || typeof c?.text === 'string') && typeof c.text === 'string') {
-            try { const m = c.text.match(/\{[\s\S]*\}/); if (m) { argsJson = m[0]; break outer; } } catch {}
-          }
-        }
-      }
-
-      // 4) Final fallback: use output_text
-      if (!argsJson) {
-        const rawText = response.output_text || '';
-        const m = rawText && rawText.match(/\{[\s\S]*\}/);
-        if (m) argsJson = m[0];
-      }
-
-      if (!argsJson) {
-        console.error('[GamePlanner] Could not locate tool arguments in Responses output. Keys:', Object.keys(response || {}));
-        throw new Error('AI did not generate a proper game design');
-      }
-
-      gameDesign = typeof argsJson === 'string' ? JSON.parse(argsJson) : argsJson;
-
-      // Basic structural validation before returning
-      if (!gameDesign || !Array.isArray(gameDesign.locations) || gameDesign.locations.length === 0) {
-        throw new Error('Planner returned empty or invalid locations array');
-      }
+      gameDesign = JSON.parse(rawJsonText);
     } catch (e) {
-      console.error('[GamePlanner] Failed extracting tool args:', e.message);
-      throw new Error('Failed to parse game design from AI response');
+      // Try extracting the first JSON object as a fallback
+      const m = rawJsonText.match(/\{[\s\S]*\}/);
+      if (!m) {
+        throw new Error('Failed to locate JSON in model output');
+      }
+      gameDesign = JSON.parse(m[0]);
+    }
+
+    // Basic structural validation before returning
+    if (!gameDesign || !Array.isArray(gameDesign.locations) || gameDesign.locations.length === 0) {
+      throw new Error('Planner returned empty or invalid locations array');
     }
 
     console.log("[GamePlanner] Successfully parsed game design JSON");

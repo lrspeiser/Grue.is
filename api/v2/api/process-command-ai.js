@@ -142,7 +142,6 @@ const PROMPT_MODEL = process.env.PROMPT_MODEL || "gpt-5-nano"; // DO NOT CHANGE 
     const response = await openai.responses.create({
       model: PROMPT_MODEL, // Default to nano-tier model
       input: messages,
-max_output_tokens: 500, // Smaller response for efficiency
     });
     
     // Extract text from the response
