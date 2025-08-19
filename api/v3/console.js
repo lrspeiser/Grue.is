@@ -1,7 +1,7 @@
 const express = require('express');
 const { randomUUID } = require('crypto');
 const OpenAI = require('openai');
-const db = require('../../../db/database');
+const db = require('../../db/database');
 
 // In-memory sessions for v3 console-first prototype
 // Each session: { id, seed, state: { room, inventory: [] }, history: [], logs: [] }
