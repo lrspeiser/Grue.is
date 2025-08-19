@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Grue Console</title>
+  <style>
+    body { background: #000; color: #0f0; font-family: 'Courier New', monospace; margin: 0; }
+    #wrap { display: flex; height: 100vh; }
+    #console { flex: 2; display: flex; flex-direction: column; }
+    #log { flex: 1; padding: 16px; white-space: pre-wrap; overflow-y: auto; border-right: 2px solid #060; }
+    #input { display: flex; border-top: 2px solid #060; }
+    #cmd { flex: 1; padding: 12px; background: #020; color: #0f0; border: none; outline: none; font-family: inherit; font-size: 16px; }
+    #send { padding: 12px 16px; background: #0f0; color: #020; border: none; font-weight: bold; cursor: pointer; }
+    #sidebar { width: 360px; padding: 16px; background: #010; border-left: 2px solid #060; overflow-y: auto; }
+    h2 { margin: 0 0 8px 0; color: #0f0; }
+    .dim { color: #6f6; }
+    .err { color: #f66; }
+    .btn { background: #0f0; color: #020; border: none; padding: 8px 10px; cursor: pointer; font-weight: bold; margin-right: 8px; }
+    .exit { margin: 4px 0; }
+    .mono { font-family: 'Courier New', monospace; }
+    .faint { color: #7f7; }
+  </style>
+</head>
+<body>
+  <div id="wrap">
+    <div id="console">
+      <div id="log"></div>
+      <div id="input">
+        <input id="cmd" placeholder="Type a command (e.g., 'look', 'go 1', 'go east', 'help')" />
+        <button id="send">Send</button>
+      </div>
+    </div>
+    <div id="sidebar">
+      <h2>Room</h2>
+      <div id="roomTitle" class="mono"></div>
+      <div id="roomDesc" class="mono" style="margin-top:8px"></div>
+      <h2 style="margin-top:16px">Exits</h2>
+      <div id="exits"></div>
+      <h2 style="margin-top:16px">Inventory</h2>
+      <div id="inventory" class="mono faint">empty</div>
+    </div>
+  </div>
+  <script>
+    const logEl = document.getElementById('log');
+    const cmdEl = document.getElementById('cmd');
+    const sendEl = document.getElementById('send');
+    const roomTitle = document.getElementById('roomTitle');
+    const roomDesc = document.getElementById('roomDesc');
+    const exitsEl = document.getElementById('exits');
+    const inventoryEl = document.getElementById('inventory');
+
+    let sessionId = null;
+    let lastState = null;
+
+    function append(text, cls) {
+      const div = document.createElement('div');
+      if (cls) div.className = cls;
+      div.textContent = text;
+      logEl.appendChild(div);
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function renderState(state) {
+      if (!state) return;
+      const room = state.room;
+      roomTitle.textContent = room?.title || '';
+      roomDesc.textContent = room?.description || '';
+      exitsEl.innerHTML = '';
+      (room?.exits || []).forEach((ex, idx) => {
+        const p = document.createElement('div');
+        p.className = 'exit mono';
+        p.textContent = `${idx+1}. ${ex.label}`;
+        exitsEl.appendChild(p);
+      });
+      const inv = (state.inventory || []);
+      inventoryEl.textContent = inv.length ? inv.map(i => i.name || i).join(', ') : 'empty';
+    }
+
+    async function startSession() {
+      append('Starting new session...', 'dim');
+      const res = await fetch('/v3/api/console/start', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({})
+      });
+      const data = await res.json();
+      if (!data.success) {
+        append('Failed to start: ' + (data.error || 'unknown'), 'err');
+        return;
+      }
+      sessionId = data.session_id;
+      append('Session: ' + sessionId, 'dim');
+      append(data.message || 'Welcome.', '');
+      lastState = data.state;
+      renderState(lastState);
+      append('Type help for available commands.', 'dim');
+    }
+
+    async function sendCommand(text) {
+      if (!sessionId) return;
+      const res = await fetch('/v3/api/console/command', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, command: text })
+      });
+      const data = await res.json();
+      if (!data.success) {
+        append((data.message || 'Error') + (data.correlation_id ? ' ['+data.correlation_id+']' : ''), 'err');
+        return;
+      }
+      if (data.message) append(data.message, '');
+      lastState = data.state || lastState;
+      renderState(lastState);
+    }
+
+    sendEl.addEventListener('click', () => {
+      const text = cmdEl.value.trim();
+      if (!text) return;
+      append('> ' + text);
+      cmdEl.value = '';
+      sendCommand(text);
+    });
+
+    cmdEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendEl.click();
+    });
+
+    startSession();
+  </script>
+</body>
+</html>
+

@@ -56,6 +56,9 @@ app.use('/v2/api/generate-simple', require('./api/v2/api/generate-simple'));
 app.use('/v2/api/generate-test', require('./api/v2/api/generate-test'));
 app.use('/v2/api/generate-world', require('./api/v2/api/generate-world'));
 
+// New console-first API
+app.use('/v3/api/console', require('./api/v3/console'));
+
 // Game state API endpoints
 app.post('/api/game/save', async (req, res) => {
   try {
@@ -104,9 +107,14 @@ app.get('/test-console', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'test-console.html'));
 });
 
-// Root route - serve v2 as the main game
+// Console-first page
+app.get('/console', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'console.html'));
+});
+
+// Root route - go to console-first experience
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'v2-index.html'));
+  res.redirect('/console');
 });
 
 // 404 handler
