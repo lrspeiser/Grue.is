@@ -138,39 +138,76 @@ Example (shortened):
     { role: "user", content: "Create the game now." }
   ];
 
+  // Define a function tool for structured output via the Responses API
+  const tools = [
+    {
+      type: "function",
+      function: {
+        name: "create_game_design",
+        description: "Creates game design with locations, characters, and quests",
+        parameters: gameDesignJsonSchema
+      }
+    }
+  ];
+
   try {
     const response = await openaiLogger.loggedRequest(
       'responses.create',
       {
         model: process.env.WORLD_MODEL || "gpt-5", // Using GPT-5 by default; override with WORLD_MODEL
         input,
-        text: { format: "json_object" },
+        tools,
+        tool_choice: { type: "function", function: { name: "create_game_design" } },
         max_output_tokens: 4000
       },
       `GamePlanner - Creating game design for user ${userProfile.userId}`
     );
 
-    // The Responses API exposes output_text for easy JSON parsing when using json_schema
-    const rawText = response.output_text || "";
-    if (!rawText) {
-      console.error("[GamePlanner] Empty output_text from Responses API");
-      throw new Error("Empty response from AI service");
-    }
-    const preview = String(rawText).slice(0, 1000);
-    console.log("[GamePlanner] Raw planning output preview:", preview);
-
+    // Try to extract structured tool arguments from Responses API output
     let gameDesign;
     try {
-      gameDesign = JSON.parse(rawText);
-    } catch (e) {
-      console.error("[GamePlanner] Failed to parse JSON from output_text");
-      // Fallback: attempt to extract first JSON object
-      const match = rawText.match(/\{[\s\S]*\}/);
-      if (match) {
-        gameDesign = JSON.parse(match[0]);
-      } else {
-        throw new Error("Failed to parse game design from AI response");
+      const out = response.output || [];
+      // Find first content block that carries function arguments
+      let argsJson = null;
+      for (const o of out) {
+        const content = o?.content || [];
+        for (const c of content) {
+          // Common shapes observed: { type: 'tool', name, arguments }, or input_json
+          if (c?.type === 'tool' && c?.name === 'create_game_design' && c?.arguments) {
+            argsJson = c.arguments;
+            break;
+          }
+          if (c?.type === 'output_text' && typeof c.text === 'string') {
+            // Fallback if the SDK placed JSON as text
+            try {
+              const m = c.text.match(/\{[\s\S]*\}/);
+              if (m) argsJson = m[0];
+            } catch (_) {}
+          }
+          if (c?.input_json) {
+            argsJson = JSON.stringify(c.input_json);
+            break;
+          }
+        }
+        if (argsJson) break;
       }
+
+      if (!argsJson) {
+        // Final fallback: use output_text
+        const rawText = response.output_text || '';
+        const m = rawText && rawText.match(/\{[\s\S]*\}/);
+        if (m) argsJson = m[0];
+      }
+
+      if (!argsJson) {
+        console.error('[GamePlanner] Could not locate tool arguments in Responses output. Keys:', Object.keys(response || {}));
+        throw new Error('AI did not generate a proper game design');
+      }
+
+      gameDesign = typeof argsJson === 'string' ? JSON.parse(argsJson) : argsJson;
+    } catch (e) {
+      console.error('[GamePlanner] Failed extracting tool args:', e.message);
+      throw new Error('Failed to parse game design from AI response');
     }
 
     console.log("[GamePlanner] Successfully parsed game design JSON");
