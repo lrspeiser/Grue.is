@@ -166,34 +166,35 @@ Example (shortened):
     // Try to extract structured tool arguments from Responses API output
     let gameDesign;
     try {
-      const out = response.output || [];
+      const out = Array.isArray(response.output) ? response.output : [];
+      // Log content types to aid debugging
+      try {
+        const types = out.flatMap(o => (o?.content || []).map(c => c?.type || typeof c));
+        console.log('[GamePlanner] Responses content types:', JSON.stringify(types));
+      } catch {}
+
       // Find first content block that carries function arguments
       let argsJson = null;
-      for (const o of out) {
+      outer: for (const o of out) {
         const content = o?.content || [];
         for (const c of content) {
-          // Common shapes observed: { type: 'tool', name, arguments }, or input_json
-          if (c?.type === 'tool' && c?.name === 'create_game_design' && c?.arguments) {
-            argsJson = c.arguments;
-            break;
+          // 1) Tool/function call variants
+          if ((c?.type === 'tool' || c?.type === 'tool_call' || c?.type === 'function_call' || c?.type === 'function') && (c?.name === 'create_game_design' || c?.tool_name === 'create_game_design')) {
+            if (c?.arguments) { argsJson = c.arguments; break outer; }
+            if (c?.function?.arguments) { argsJson = c.function.arguments; break outer; }
+            if (c?.input_json) { argsJson = JSON.stringify(c.input_json); break outer; }
           }
-          if (c?.type === 'output_text' && typeof c.text === 'string') {
-            // Fallback if the SDK placed JSON as text
-            try {
-              const m = c.text.match(/\{[\s\S]*\}/);
-              if (m) argsJson = m[0];
-            } catch (_) {}
-          }
-          if (c?.input_json) {
-            argsJson = JSON.stringify(c.input_json);
-            break;
+          // 2) Direct input_json item
+          if (c?.input_json) { argsJson = JSON.stringify(c.input_json); break outer; }
+          // 3) Text fallback with embedded JSON
+          if ((c?.type === 'output_text' || c?.type === 'message' || typeof c?.text === 'string') && typeof c.text === 'string') {
+            try { const m = c.text.match(/\{[\s\S]*\}/); if (m) { argsJson = m[0]; break outer; } } catch {}
           }
         }
-        if (argsJson) break;
       }
 
+      // 4) Final fallback: use output_text
       if (!argsJson) {
-        // Final fallback: use output_text
         const rawText = response.output_text || '';
         const m = rawText && rawText.match(/\{[\s\S]*\}/);
         if (m) argsJson = m[0];
@@ -205,6 +206,11 @@ Example (shortened):
       }
 
       gameDesign = typeof argsJson === 'string' ? JSON.parse(argsJson) : argsJson;
+
+      // Basic structural validation before returning
+      if (!gameDesign || !Array.isArray(gameDesign.locations) || gameDesign.locations.length === 0) {
+        throw new Error('Planner returned empty or invalid locations array');
+      }
     } catch (e) {
       console.error('[GamePlanner] Failed extracting tool args:', e.message);
       throw new Error('Failed to parse game design from AI response');
