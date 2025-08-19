@@ -71,7 +71,7 @@ async function callModelForRoom(payload, description) {
 }
 
 // POST /v3/api/console/start
-router.post('/start', async (req, res) =[0m> {
+router.post('/start', async (req, res) => {
   const corr = correlation();
   console.log(`[v3/start] corr=${corr} incoming`);
   await logEvent(null, corr, 'info', 'v3/start', 'incoming', null);
@@ -111,15 +111,13 @@ router.post('/start', async (req, res) =[0m> {
 
     return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: session.state });
   } catch (e) {
-    await logEvent(null, corr, 'error', 'v3/command', 'unhandled error', { error: e.message });
-    return res.status(500).json({ success: false, correlation_id: corr, error: e.message });
-
+    await logEvent(null, corr, 'error', 'v3/start', 'unhandled error', { error: e.message });
     return res.status(500).json({ success: false, correlation_id: corr, error: e.message });
   }
 });
 
 // POST /v3/api/console/command
-router.post('/command', async (req, res) =[0m> {
+router.post('/command', async (req, res) => {
   const corr = correlation();
   console.log(`[v3/command] corr=${corr} incoming`);
   await logEvent(null, corr, 'info', 'v3/command', 'incoming', null);
@@ -227,7 +225,7 @@ router.post('/command', async (req, res) =[0m> {
 });
 
 // GET /v3/api/console/logs?session_id=...&limit=100
-router.get('/logs', async (req, res) =[0m 3e {
+router.get('/logs', async (req, res) => {
   const session_id = req.query.session_id;
   const limit = parseInt(req.query.limit || '100', 10);
   if (!session_id) return res.status(400).json({ success: false, error: 'session_id required' });
