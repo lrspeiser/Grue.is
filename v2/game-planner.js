@@ -27,58 +27,54 @@ async function planGameWorld(userProfile) {
   Create 10-12 locations, 5-8 characters, and 3 main quests. Make it educational and engaging.`;
 
   // Define a strict JSON schema so Responses API returns valid JSON directly
-  const gameDesignSchema = {
-    name: "create_game_design",
-    schema: {
-      type: "object",
-      properties: {
-        title: { type: "string" },
-        setting: { type: "string" },
-        main_story: { type: "string" },
-        starting_location: { type: "string" },
-        locations: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              name: { type: "string" },
-              description: { type: "string" },
-              connections: { type: "array", items: { type: "string" } }
-            },
-            required: ["id", "name"]
-          }
-        },
-        characters: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              name: { type: "string" },
-              location: { type: "string" },
-              role: { type: "string" }
-            },
-            required: ["id", "name"]
-          }
-        },
-        quests: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              id: { type: "string" },
-              name: { type: "string" },
-              description: { type: "string" },
-              steps: { type: "array", items: { type: "string" } }
-            },
-            required: ["id", "name"]
-          }
+  const gameDesignJsonSchema = {
+    type: "object",
+    properties: {
+      title: { type: "string" },
+      setting: { type: "string" },
+      main_story: { type: "string" },
+      starting_location: { type: "string" },
+      locations: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            description: { type: "string" },
+            connections: { type: "array", items: { type: "string" } }
+          },
+          required: ["id", "name"]
         }
       },
-      required: ["title", "setting", "main_story", "starting_location", "locations", "characters", "quests"]
+      characters: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            location: { type: "string" },
+            role: { type: "string" }
+          },
+          required: ["id", "name"]
+        }
+      },
+      quests: {
+        type: "array",
+        items: {
+          type: "object",
+          properties: {
+            id: { type: "string" },
+            name: { type: "string" },
+            description: { type: "string" },
+            steps: { type: "array", items: { type: "string" } }
+          },
+          required: ["id", "name"]
+        }
+      }
     },
-    strict: true
+    required: ["title", "setting", "main_story", "starting_location", "locations", "characters", "quests"]
   };
 
   const input = [
@@ -92,7 +88,7 @@ async function planGameWorld(userProfile) {
       {
         model: process.env.WORLD_MODEL || "gpt-5", // Using GPT-5 by default; override with WORLD_MODEL
         input,
-        text: { format: { type: "json_schema", json_schema: gameDesignSchema } },
+        text: { format: { type: "json_schema", name: "create_game_design", schema: gameDesignJsonSchema, strict: true } },
         max_output_tokens: 4000
       },
       `GamePlanner - Creating game design for user ${userProfile.userId}`
