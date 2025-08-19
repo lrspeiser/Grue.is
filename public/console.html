@@ -59,6 +59,7 @@
       div.textContent = text;
       logEl.appendChild(div);
       logEl.scrollTop = logEl.scrollHeight;
+      try { console.log(`[UI] ${text}`); } catch {}
     }
 
     function renderState(state) {
@@ -79,32 +80,65 @@
 
     async function startSession() {
       append('Starting new session...', 'dim');
-      const res = await fetch('/v3/api/console/start', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-      const data = await res.json();
+      let res;
+      try {
+        append('POST /v3/api/console/start', 'dim');
+        const t0 = performance.now();
+        res = await fetch('/v3/api/console/start', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const t1 = performance.now();
+        append(`Response ${res.status} in ${Math.round(t1 - t0)}ms`, 'dim');
+      } catch (e) {
+        append('Network error starting session: ' + e.message, 'err');
+        return;
+      }
+      let data;
+      try {
+        data = await res.json();
+      } catch (e) {
+        append('Failed to parse JSON from start: ' + e.message, 'err');
+        return;
+      }
+      append('Start payload: ' + JSON.stringify({ success: data.success, correlation_id: data.correlation_id, hasState: !!data.state }), 'dim');
       if (!data.success) {
-        append('Failed to start: ' + (data.error || 'unknown'), 'err');
+        append('Failed to start: ' + (data.error || data.message || 'unknown'), 'err');
+        if (data.raw) append('Raw: ' + (typeof data.raw === 'string' ? data.raw.substring(0,200) : JSON.stringify(data.raw).substring(0,200)) + '...', 'err');
         return;
       }
       sessionId = data.session_id;
       append('Session: ' + sessionId, 'dim');
-      append(data.message || 'Welcome.', '');
+      if (data.message) append(data.message, '');
       lastState = data.state;
       renderState(lastState);
       append('Type help for available commands.', 'dim');
     }
 
     async function sendCommand(text) {
-      if (!sessionId) return;
-      const res = await fetch('/v3/api/console/command', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, command: text })
-      });
-      const data = await res.json();
+      if (!sessionId) { append('No session yet; wait for start to complete.', 'err'); return; }
+      append(`POST /v3/api/console/command ${JSON.stringify({ session_id: sessionId, command: text })}`, 'dim');
+      let res;
+      try {
+        const t0 = performance.now();
+        res = await fetch('/v3/api/console/command', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ session_id: sessionId, command: text })
+        });
+        const t1 = performance.now();
+        append(`Command response ${res.status} in ${Math.round(t1 - t0)}ms`, 'dim');
+      } catch (e) {
+        append('Network error sending command: ' + e.message, 'err');
+        return;
+      }
+      let data;
+      try { data = await res.json(); } catch (e) {
+        append('Failed to parse JSON from command: ' + e.message, 'err');
+        return;
+      }
+      append('Command payload: ' + JSON.stringify({ success: data.success, correlation_id: data.correlation_id, hasState: !!data.state }), 'dim');
       if (!data.success) {
-        append((data.message || 'Error') + (data.correlation_id ? ' ['+data.correlation_id+']' : ''), 'err');
+        append((data.message || data.error || 'Error') + (data.correlation_id ? ' ['+data.correlation_id+']' : ''), 'err');
         return;
       }
       if (data.message) append(data.message, '');

@@ -49,8 +49,9 @@ async function callModelForRoom(payload, description) {
 }
 
 // POST /v3/api/console/start
-router.post('/start', async (req, res) => {
+router.post('/start', async (req, res) =[0m> {
   const corr = correlation();
+  console.log(`[v3/start] corr=${corr} incoming`);
   try {
     const id = randomUUID();
     const seed = randomUUID();
@@ -61,13 +62,19 @@ router.post('/start', async (req, res) => {
       instruction: 'Create the starting cave room with five glowing entrances (space/sci-fi, historic, scary, travel mystery, fantasy). Provide 3-5 suggested commands in a top-level field suggestions (array of strings).',
     };
 
+    console.log(`[v3/start] corr=${corr} calling model (start room)`);
     const { text, usage, duration_ms } = await callModelForRoom(payload, 'start room');
+    console.log(`[v3/start] corr=${corr} model returned in ${duration_ms}ms, usage=${JSON.stringify(usage||{})}`);
+    // Debug: truncate long text
+    console.log(`[v3/start] corr=${corr} raw length=${(text||'').length}`);
     let json;
     try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
+      console.error(`[v3/start] corr=${corr} parse error: ${e.message}`);
       return res.status(502).json({ success: false, correlation_id: corr, error: 'Invalid JSON from model', raw: text });
     }
     const err = validateRoomJson(json);
     if (err) {
+      console.error(`[v3/start] corr=${corr} schema error: ${err}`);
       return res.status(502).json({ success: false, correlation_id: corr, error: 'Schema validation failed: ' + err, raw: json });
     }
 
@@ -81,10 +88,12 @@ router.post('/start', async (req, res) => {
 });
 
 // POST /v3/api/console/command
-router.post('/command', async (req, res) => {
+router.post('/command', async (req, res) =[0m> {
   const corr = correlation();
+  console.log(`[v3/command] corr=${corr} incoming`);
   try {
     const { session_id, command } = req.body || {};
+    console.log(`[v3/command] corr=${corr} payload session_id=${session_id} command=${JSON.stringify(command)}`);
     if (!session_id || !command) return res.status(400).json({ success: false, correlation_id: corr, error: 'session_id and command are required' });
     const s = sessions.get(session_id);
     if (!s) return res.status(404).json({ success: false, correlation_id: corr, error: 'Session not found' });
@@ -101,6 +110,7 @@ router.post('/command', async (req, res) => {
       return res.json({ success: true, correlation_id: corr, message: inv.length ? inv.map(i => i.name || i).join(', ') : 'Inventory is empty.', state: s.state });
     }
     if (lower.startsWith('try again')) {
+      console.log(`[v3/command] corr=${corr} action=try-again`);
       // allow reroll of a specific exit label by index or keyword
       const arg = lower.replace('try again', '').trim();
       const exits = s.state.room.exits || [];
@@ -112,9 +122,12 @@ router.post('/command', async (req, res) => {
       }
       // Ask model to re-suggest just that exit label
       const payload = { kind: 'reroll_exit_label', seed: s.seed, current_room: s.state.room, exit_index: idx };
+      console.log(`[v3/command] corr=${corr} calling model (reroll exit) idx=${idx}`);
       const { text } = await callModelForRoom(payload, 'reroll exit');
+      console.log(`[v3/command] corr=${corr} model returned (reroll), raw length=${(text||'').length}`);
       let json; try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch { json = null; }
       if (!json || !json.exits || !json.exits[idx]) {
+        console.error(`[v3/command] corr=${corr} reroll parse/shape error`);
         return res.status(502).json({ success: false, correlation_id: corr, message: 'Model failed to reroll exit label. Please retry.' });
       }
       // Only replace the chosen exit label and keywords if provided
@@ -124,6 +137,7 @@ router.post('/command', async (req, res) => {
     }
 
     if (lower.startsWith('go ')) {
+      console.log(`[v3/command] corr=${corr} action=go`);
       const arg = lower.replace('go ', '').trim();
       const exits = s.state.room.exits || [];
       let target = null;
@@ -141,12 +155,18 @@ router.post('/command', async (req, res) => {
         chosen_exit_id: target.exit_id,
         instruction: 'Generate the next room entered via the chosen exit. Include a short challenge the player must overcome. Ensure exits provided, items/NPCs if any. Do not generate rooms beyond one hop.'
       };
+      console.log(`[v3/command] corr=${corr} calling model (next room)`);
       const { text } = await callModelForRoom(payload, 'next room');
+      console.log(`[v3/command] corr=${corr} model returned (next), raw length=${(text||'').length}`);
       let json; try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
+        console.error(`[v3/command] corr=${corr} next-room parse error: ${e.message}`);
         return res.status(502).json({ success: false, correlation_id: corr, message: 'Invalid JSON from model. Try the command again.' });
       }
       const err = validateRoomJson(json);
-      if (err) return res.status(502).json({ success: false, correlation_id: corr, message: 'Schema validation failed: ' + err });
+      if (err) {
+        console.error(`[v3/command] corr=${corr} schema error: ${err}`);
+        return res.status(502).json({ success: false, correlation_id: corr, message: 'Schema validation failed: ' + err });
+      }
 
       s.history.push({ from: s.state.room.room_id, to: json.room_id, command });
       s.state.room = json;
