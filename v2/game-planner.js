@@ -99,6 +99,8 @@ async function planGameWorld(userProfile) {
       console.error("[GamePlanner] Empty output_text from Responses API");
       throw new Error("Empty response from AI service");
     }
+    const preview = String(rawText).slice(0, 1000);
+    console.log("[GamePlanner] Raw planning output preview:", preview);
 
     let gameDesign;
     try {
