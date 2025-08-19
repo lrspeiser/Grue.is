@@ -14,6 +14,7 @@
     #send { padding: 12px 16px; background: #0f0; color: #020; border: none; font-weight: bold; cursor: pointer; }
     #sidebar { width: 360px; padding: 16px; background: #010; border-left: 2px solid #060; overflow-y: auto; }
     h2 { margin: 0 0 8px 0; color: #0f0; }
+    #status { position: absolute; top: 8px; right: 380px; background: #020; border: 1px solid #060; padding: 6px 10px; color: #7f7; font-size: 12px; }
     .dim { color: #6f6; }
     .err { color: #f66; }
     .btn { background: #0f0; color: #020; border: none; padding: 8px 10px; cursor: pointer; font-weight: bold; margin-right: 8px; }
@@ -24,13 +25,15 @@
 </head>
 <body>
   <div id="wrap">
-    <div id="console">
-      <div id="log"></div>
-      <div id="input">
-        <input id="cmd" placeholder="Type a command (e.g., 'look', 'go 1', 'go east', 'help')" />
-        <button id="send">Send</button>
-      </div>
-    </div>
+    	<div id="console">
+      	<div id="status" style="display:none"></div>
+      	<div id="log"></div>
+      	<div id="input">
+        	<input id="cmd" placeholder="Type a command (e.g., 'look', 'go 1', 'go east', 'help')" />
+        	<button id="send">Send</button>
+        	<button id="restart" class="btn" style="margin-left:8px">Restart</button>
+      	</div>
+    	</div>
     <div id="sidebar">
       <h2>Room</h2>
       <div id="roomTitle" class="mono"></div>
@@ -49,9 +52,13 @@
     const roomDesc = document.getElementById('roomDesc');
     const exitsEl = document.getElementById('exits');
     const inventoryEl = document.getElementById('inventory');
+    const statusEl = document.getElementById('status');
+    const restartEl = document.getElementById('restart');
 
     let sessionId = null;
     let lastState = null;
+    let pendingCommand = null;
+    let startController = null;
 
     function append(text, cls) {
       const div = document.createElement('div');
@@ -80,18 +87,24 @@
 
     async function startSession() {
       append('Starting new session...', 'dim');
+      cmdEl.disabled = true; sendEl.disabled = true;
+      statusEl.style.display = 'block'; statusEl.textContent = 'Starting session...';
       let res;
       try {
         append('POST /v3/api/console/start', 'dim');
         const t0 = performance.now();
+        startController = new AbortController();
+        const timeout = setTimeout(() => { try { startController.abort(); } catch {} }, 25000);
         res = await fetch('/v3/api/console/start', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({})
+          body: JSON.stringify({}), signal: startController.signal
         });
+        clearTimeout(timeout);
         const t1 = performance.now();
         append(`Response ${res.status} in ${Math.round(t1 - t0)}ms`, 'dim');
       } catch (e) {
         append('Network error starting session: ' + e.message, 'err');
+        statusEl.textContent = 'Start failed: ' + e.message + ' (click Restart)';
         return;
       }
       let data;
@@ -113,10 +126,13 @@
       lastState = data.state;
       renderState(lastState);
       append('Type help for available commands.', 'dim');
+      statusEl.textContent = 'Ready';
+      cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
+      if (pendingCommand) { const c = pendingCommand; pendingCommand = null; append('> ' + c); sendCommand(c); }
     }
 
     async function sendCommand(text) {
-      if (!sessionId) { append('No session yet; wait for start to complete.', 'err'); return; }
+      if (!sessionId) { pendingCommand = text; append('No session yet; wait for start to complete.', 'err'); return; }
       append(`POST /v3/api/console/command ${JSON.stringify({ session_id: sessionId, command: text })}`, 'dim');
       let res;
       try {
@@ -152,6 +168,12 @@
       append('> ' + text);
       cmdEl.value = '';
       sendCommand(text);
+    });
+
+    restartEl.addEventListener('click', () => {
+      sessionId = null; lastState = null; pendingCommand = null;
+      append('Restarting session...', 'warning');
+      startSession();
     });
 
     cmdEl.addEventListener('keydown', (e) => {
