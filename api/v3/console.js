@@ -4,7 +4,7 @@ const OpenAI = require('openai');
 const db = require('../../db/database');
 
 // In-memory sessions for v3 console-first prototype
-// Each session: { id, seed, state: { room, inventory: [] }, history: [], logs: [] }
+// Each session: { id, seed, state: { room, inventory: [] }, convo: [{role,content}], logs: [], stats: {} }
 const sessions = new Map();
 
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -70,6 +70,12 @@ async function callModelForRoom(payload, description) {
   return { text, usage: resp.usage, duration_ms: duration, response: resp };
 }
 
+// Helper to slice last N convo messages
+function convoSlice(session, n = 8) {
+  const c = session?.convo || [];
+  return c.slice(-n);
+}
+
 // POST /v3/api/console/start
 router.post('/start', async (req, res) => {
   const corr = correlation();
@@ -81,7 +87,7 @@ router.post('/start', async (req, res) => {
     // Reuse existing session created by start-stream if present
     let sess = sessions.get(id);
     if (!sess) {
-      sess = { id, seed: randomUUID(), state: { room: null, inventory: [] }, history: [], stats: {}, logs: [] };
+      sess = { id, seed: randomUUID(), state: { room: null, inventory: [] }, convo: [], stats: {}, logs: [] };
       sessions.set(id, sess);
     }
     const seed = sess.seed;
@@ -124,6 +130,7 @@ router.post('/start', async (req, res) => {
     sess.state.room = json;
     sess.stats.first_latency_ms = duration_ms;
     sess.stats.usage = usage;
+    // Start-of-game assistant narrative might already be in convo from start-stream
     await logEvent(id, corr, 'success', 'v3/start', 'session initialized', { session_id: id });
 
     return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state });
@@ -146,6 +153,7 @@ router.post('/command', async (req, res) => {
     const s = sessions.get(session_id);
     if (!s) return res.status(404).json({ success: false, correlation_id: corr, error: 'Session not found' });
 
+    // Minimal logic: let the model interpret commands. Only special-case simple utilities.
     const lower = String(command).trim().toLowerCase();
     if (['help', '?'].includes(lower)) {
       return res.json({ success: true, correlation_id: corr, message: 'Commands: look, examine X, inventory, go N|east|color|label|1..5, try again N|label, back (not yet), quit', state: s.state });
@@ -187,7 +195,7 @@ router.post('/command', async (req, res) => {
       return res.json({ success: true, correlation_id: corr, message: `The portal shimmers and now reads: ${s.state.room.exits[idx].label}`, state: s.state });
     }
 
-    if (lower.startsWith('go ')) {
+    if (false) { // no manual parsing; model decides movement
       console.log(`[v3/command] corr=${corr} action=go`);
       await logEvent(session_id, corr, 'info', 'v3/command', 'go', null);
       let arg = lower.replace(/^go\s+/, '').trim();
@@ -237,8 +245,34 @@ router.post('/command', async (req, res) => {
       return res.json({ success: true, correlation_id: corr, message: 'Session ended.' });
     }
 
-    // default: steer to entrances
-    return res.json({ success: true, correlation_id: corr, message: 'You can do many things, but the cave seems to insist: choose an entrance (e.g., "go 1" or "go east").', state: s.state });
+    // Let the model respond and update JSON based on conversation and current state
+    const payload = {
+      kind: 'update_from_conversation',
+      seed: s.seed,
+      current_room: s.state.room,
+      recent_messages: convoSlice(s, 8),
+      instruction: 'Using the recent conversation and current room, update the world: you may move rooms, add/remove items, or modify exits/NPCs. Return strictly valid JSON for the new current room. Include a short challenge if entering a new room.'
+    };
+    console.log(`[v3/command] corr=${corr} calling model (update_from_conversation)`);
+    await logEvent(session_id, corr, 'info', 'v3/command', 'calling model (update_from_conversation)', null);
+    const { text } = await callModelForRoom(payload, 'update_from_conversation');
+    let json; try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
+      console.error(`[v3/command] corr=${corr} update parse error: ${e.message}`);
+      await logEvent(session_id, corr, 'error', 'v3/command', 'update parse error', { error: e.message });
+      return res.status(502).json({ success: false, correlation_id: corr, message: 'Invalid JSON from model. Try again.' });
+    }
+    const err2 = validateRoomJson(json);
+    if (err2) {
+      console.error(`[v3/command] corr=${corr} update schema error: ${err2}`);
+      await logEvent(session_id, corr, 'error', 'v3/command', 'update schema error', { error: err2 });
+      return res.status(502).json({ success: false, correlation_id: corr, message: 'Schema validation failed: ' + err2 });
+    }
+
+    s.state.room = json;
+    // Persist game state
+    try { await db.saveGameState('v3', session_id, { currentRoom: json.room_id, inventory: s.state.inventory || [], health: 100, score: 0, state: s.state }); } catch {}
+    await logEvent(session_id, corr, 'success', 'v3/command', 'state updated', { room_id: json.room_id });
+    return res.json({ success: true, correlation_id: corr, message: json.description, state: s.state });
   } catch (e) {
     return res.status(500).json({ success: false, correlation_id: corr, error: e.message });
   }
@@ -264,6 +298,8 @@ router.post('/start-stream', async (req, res) => {
   // Create session ID immediately so client can attach it to the JSON call after streaming
   const id = randomUUID();
   const seed = randomUUID();
+  let sess = { id, seed, state: { room: null, inventory: [] }, convo: [], stats: {}, logs: [] };
+  sessions.set(id, sess);
 
   // Wire response headers for streaming
   res.setHeader('Content-Type', 'text/event-stream');
@@ -309,6 +345,8 @@ router.post('/start-stream', async (req, res) => {
     }
 
     const latency = Date.now() - start;
+    // Append streamed assistant narrative to convo
+    try { sess.convo.push({ role: 'assistant', content: text }); } catch {}
     await logEvent(id, corr, 'success', 'v3/start-stream', 'stream completed', { latency_ms: latency, length: text.length });
   } catch (e) {
     await logEvent(null, corr, 'error', 'v3/start-stream', 'stream error', { error: e.message });
@@ -330,6 +368,8 @@ router.post('/command-stream', async (req, res) => {
     res.status(400).json({ success: false, correlation_id: corr, error: 'session_id and command required' });
     return;
   }
+  const sess = sessions.get(session_id);
+  if (sess) { try { sess.convo.push({ role: 'user', content: String(command) }); } catch {} }
 
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
@@ -364,6 +404,8 @@ router.post('/command-stream', async (req, res) => {
       if (chunk) { text += chunk; sse({ type: 'message', content: chunk }); }
     }
     const latency = Date.now() - start;
+    // Append streamed assistant narrative
+    if (sess) { try { sess.convo.push({ role: 'assistant', content: text }); } catch {} }
     await logEvent(session_id, corr, 'success', 'v3/command-stream', 'stream completed', { latency_ms: latency, length: text.length });
   } catch (e) {
     await logEvent(session_id, corr, 'error', 'v3/command-stream', 'stream error', { error: e.message });
