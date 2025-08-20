@@ -129,8 +129,10 @@
               }
               if (msg.type === 'session') {
                 sessionFromStream = msg.session_id;
+                // In streaming-only mode, use the session from the stream immediately.
+                sessionId = sessionFromStream;
                 append(`[session ${msg.session_id}]`, 'dim', msg.ts);
-                // Fire JSON state fetch immediately in parallel
+                // Optionally fire deprecated JSON start in parallel for diagnostics; safe to skip
                 if (!startedJsonFetch) {
                   startedJsonFetch = true;
                   startJsonPromise = (async () => {

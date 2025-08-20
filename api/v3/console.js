@@ -483,7 +483,16 @@ let sess = { id, seed, state: { room: null, inventory: [] }, convo: [], stats: {
 
     let text = '';
     for await (const part of stream) {
-      const chunk = part?.choices?.[0]?.delta?.content || '';
+      // Be robust to different stream event shapes from SDKs/APIs
+      let chunk = '';
+      try {
+        chunk = (
+          (part && part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content) ||
+          (typeof part?.delta === 'string' ? part.delta : '') ||
+          (typeof part?.output_text_delta === 'string' ? part.output_text_delta : '') ||
+          ''
+        );
+      } catch {}
       if (chunk) {
         text += chunk;
         sse({ type: 'message', content: chunk });
@@ -561,7 +570,15 @@ router.post('/command-stream', async (req, res) => {
 
     let text = '';
     for await (const part of stream) {
-      const chunk = part?.choices?.[0]?.delta?.content || '';
+      let chunk = '';
+      try {
+        chunk = (
+          (part && part.choices && part.choices[0] && part.choices[0].delta && part.choices[0].delta.content) ||
+          (typeof part?.delta === 'string' ? part.delta : '') ||
+          (typeof part?.output_text_delta === 'string' ? part.output_text_delta : '') ||
+          ''
+        );
+      } catch {}
       if (chunk) { text += chunk; sse({ type: 'message', content: chunk }); }
     }
     const latency = Date.now() - start;
