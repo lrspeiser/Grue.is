@@ -99,7 +99,21 @@ async function runNoteTakerAsync(sess, { assistant_text }) {
     const prevNotes = sess.notes || '';
     const recent = (sess.convo || []).slice(-8) || [];
     const recentStr = recent.map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 3000);
-    const system = 'You are a meticulous note-taker for a text adventure. Maintain concise, structured NOTES that help future continuity: locations, items, keys/codes, NPCs, puzzles (with status), discovered clues, hazards, goals, and unresolved leads. Prefer bullet-like lines. Avoid narrative prose. Return only the full updated NOTES text. Do not echo the player-facing narrative; store details here.';
+    const system = [
+      'You are a meticulous note-taker for a text adventure. Maintain concise, structured NOTES to support continuity and planning.',
+      'Do NOT echo the player-facing narrative; store details here. Prefer compact bullet-like lines. Keep updates idempotent and consistent.',
+      '',
+      'Organize the NOTES exactly under these headers, even if some sections are temporarily empty:',
+      'Game-wide details (Quests, Character Items, Character Health, Character Appearance, Character Skills)',
+      'Map details (Rooms, Directions Out of Room, Adjacent Rooms)',
+      'Room Details (Room Name, Description, Items, Other Characters)',
+      '',
+      'Formatting requirements:',
+      '- Use the three headers verbatim as top-level section titles.',
+      '- Within each section, use short bullet-style lines; no markdown symbols, no JSON, no brackets.',
+      '- Update values based on the latest assistant turn and recent chat; remove obsolete/contradicted info.',
+      '- Return ONLY the full updated NOTES text.'
+    ].join('\n');
     const user = [
       'Previous NOTES:',
       prevNotes || '(none)',
