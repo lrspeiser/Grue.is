@@ -134,7 +134,7 @@ router.post('/start', async (req, res) => {
     }
 
     // Ensure numeric keywords 1..5 for five-entrance start rooms
-    if (Array.isArray(json.exits) && json.exits.length === 5) {
+    if (Array.isArray(json.exits) && json.exits.length === 5) {
       json.exits = json.exits.map((ex, idx) => {
         const k = new Set([...(ex.keywords || [])]);
         k.add(String(idx + 1));
@@ -149,6 +149,7 @@ router.post('/start', async (req, res) => {
     await logEvent(id, corr, 'success', 'v3/start', 'session initialized', { session_id: id });
 
     return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano' } });
+  } catch (e) {
     await logEvent(null, corr, 'error', 'v3/start', 'unhandled error', { error: e.message });
     return res.status(500).json({ success: false, correlation_id: corr, error: e.message });
   }
