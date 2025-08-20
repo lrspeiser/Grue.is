@@ -57,10 +57,10 @@ async function logEvent(sessionId, corr, level, route, message, details) {
 
 async function callModelForRoom(payload, description) {
   const system = `You are generating a text adventure room as strict JSON only. This is a game similar in style to Zork or Oregon Trail. The player begins in a cave with five glowing entrances. Always steer the player toward picking an entrance. Always return valid JSON matching the schema described by the developer message. No prose outside JSON.`;
-  const developer = `Schema (return exactly this shape):\n{\n  "room_id": "string",\n  "title": "string",\n  "description": "string",\n  "exits": [ { "exit_id": "string", "label": "string", "keywords": ["string"] } ],\n  "items": [ { "item_id":"string","name":"string","takeable":true,"description":"string" } ],\n  "flags": { },\n  "continuity": { }\n}\n\nBehavioral rules:\n- Start room: five entrances themed: space/sci-fi, historic, scary, travel mystery, fantasy.\n- For each entrance, label should hint its theme.\n- Provide exits only; avoid puzzles in start room.\n- Player may say "Try again" on a portal to re-roll that one exit label while preserving the five categories.\n- When generating a next room for a chosen exit, include a short challenge the user must overcome.\n- Also include exits for that room and pre-bake stubs for its immediately adjoining rooms in labels only (do not fully expand beyond one hop).`;
+  const developer = `Return compact JSON only with fields: room_id (string), title (string), description (max 2 sentences), exits (array of 5 objects: {exit_id,label,keywords[]} with short labels and keywords including 1..5 if start), items (empty or minimal). No extra text.`;
   const user = JSON.stringify(payload);
   const start = Date.now();
-  const resp = await openai.responses.create({ model: process.env.PROMPT_MODEL || 'gpt-5-nano', input: [
+  const resp = await openai.responses.create({ model: process.env.PROMPT_MODEL || 'gpt-5-nano', max_output_tokens: 250, temperature: 0.3, input: [
     { role: 'system', content: system },
     { role: 'developer', content: developer },
     { role: 'user', content: user }
@@ -404,6 +404,20 @@ sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text 
   } finally {
     sse({ type: 'done', correlation_id: corr });
     try { res.end(); } catch {}
+  }
+});
+
+// GET /v3/api/console/status – quick nano ping for latency measurement and warmup
+router.get('/status', async (req, res) => {
+  const t0 = Date.now();
+  try {
+    const model = process.env.PROMPT_MODEL || 'gpt-5-nano';
+    const resp = await openai.responses.create({ model, max_output_tokens: 5, temperature: 0.2, input: [{ role: 'user', content: 'ok' }] });
+    const dt = Date.now() - t0;
+    res.json({ ok: true, model, elapsed_ms: dt, at: new Date().toISOString() });
+  } catch (e) {
+    const dt = Date.now() - t0;
+    res.status(500).json({ ok: false, error: e.message, elapsed_ms: dt });
   }
 });
 

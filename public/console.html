@@ -286,7 +286,21 @@
       if (e.key === 'Enter') sendEl.click();
     });
 
-    startSession();
+    // Quick nano status ping on load
+    (async () = {
+      const t0 = performance.now();
+      append('STATUS: sending nano warm check...', 'dim');
+      try {
+        const res = await fetch('/v3/api/console/status');
+        const t1 = performance.now();
+        const data = await res.json();
+        append(`STATUS: send=${new Date().toISOString()} recv=${new Date().toISOString()} elapsed_UI=${Math.round(t1 - t0)}ms server=${data.elapsed_ms}ms model=${data.model}`, 'dim');
+      } catch (e) {
+        const t1 = performance.now();
+        append(`STATUS: failed after ${Math.round(t1 - t0)}ms: ${e.message}`, 'err');
+      }
+      startSession();
+    })();
   </script>
 </body>
 </html>
