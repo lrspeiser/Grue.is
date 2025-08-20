@@ -92,6 +92,20 @@ router.post('/start', async (req, res) => {
     }
     const seed = sess.seed;
 
+    // If background JSON generation already prepared state, return fast
+    if (sess.state.room) {
+      await logEvent(id, corr, 'info', 'v3/start', 'using precomputed state', null);
+      return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano' } });
+    }
+    // Else, if a background promise is running, await it briefly
+    if (sess.pendingStartPromise) {
+      try { await sess.pendingStartPromise; } catch {}
+      if (sess.state.room) {
+        await logEvent(id, corr, 'info', 'v3/start', 'awaited precomputed state', null);
+        return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano' } });
+      }
+    }
+
     const payload = {
       kind: 'start_room',
       seed,
@@ -307,6 +321,8 @@ router.post('/start-stream', async (req, res) => {
   res.setHeader('Content-Type', 'text/event-stream');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no');
+  if (typeof res.flushHeaders === 'function') try { res.flushHeaders(); } catch {}
 
   function sse(obj) {
     try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
@@ -324,6 +340,33 @@ router.post('/start-stream', async (req, res) => {
     // Emit debug of what we send to LLM (sanitized)
     sse({ type: 'debug', stage: 'start-stream', model, system, user });
     const start = Date.now();
+    // Kick off background JSON world computation immediately to avoid client waiting later
+    (async () => {
+      try {
+        const payload = {
+          kind: 'start_room',
+          seed,
+          instruction: 'Create the starting cave room with five glowing entrances (space/sci-fi, historic, scary, travel mystery, fantasy). Provide 3-5 suggested commands in a top-level field suggestions (array of strings).',
+        };
+        await logEvent(id, corr, 'info', 'v3/start-stream', 'bg llm request (start JSON)', { model: process.env.PROMPT_MODEL || 'gpt-5-nano' });
+        sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text }) => {
+          let json;
+          try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch {}
+          if (json && !sess.state.room) {
+            // Ensure numeric keywords 1..5 for five-entrance start rooms
+            if (Array.isArray(json.exits) && json.exits.length === 5) {
+              json.exits = json.exits.map((ex, idx) => ({
+                ...ex,
+                keywords: Array.from(new Set([...(ex.keywords || []), String(idx+1)]))
+              }));
+            }
+            sess.state.room = json;
+          }
+          sess.pendingStartPromise = null;
+        }).catch(() => { sess.pendingStartPromise = null; });
+      } catch {}
+    })();
+
     const stream = await (async () => {
       try {
         const resp = await openai.responses.create({
