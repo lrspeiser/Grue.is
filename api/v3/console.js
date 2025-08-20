@@ -56,16 +56,54 @@ async function logEvent(sessionId, corr, level, route, message, details) {
 }
 
 async function callModelForRoom(payload, description) {
-  const system = `You are generating a text adventure room as strict JSON only. This is a game similar in style to Zork or Oregon Trail. The player begins in a cave with five glowing entrances. Always steer the player toward picking an entrance. Always return valid JSON matching the schema described by the developer message. No prose outside JSON.`;
-  const developer = `Return compact JSON only with fields: room_id (string), title (string), description (max 2 sentences), exits (array of 5 objects: {exit_id,label,keywords[]} with short labels and keywords including 1..5 if start), items (empty or minimal). No extra text.`;
+  // Ask the model for STRICT JSON by providing a schema and enabling json_schema response format.
+  const system = `You are generating a text adventure room as strict JSON only. This is a game similar in style to Zork or Oregon Trail. The player begins in a cave with five glowing entrances. Always steer the player toward picking an entrance. Always return valid JSON matching the schema. No prose outside JSON.`;
+  const developer = `Return compact JSON ONLY with fields: room_id (string), title (string), description (max 2 sentences), exits (array of 5 objects: {exit_id,label,keywords[]} with short labels and keywords including 1..5 if start), items (array of objects or empty). No extra fields, no markdown, no narration.`;
   const user = JSON.stringify(payload);
+
+  // JSON schema for the room structure
+  const roomSchema = {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      room_id: { type: 'string' },
+      title: { type: 'string' },
+      description: { type: 'string' },
+      exits: {
+        type: 'array',
+        minItems: 1,
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            exit_id: { type: 'string' },
+            label: { type: 'string' },
+            keywords: { type: 'array', items: { type: 'string' } },
+          },
+          required: ['exit_id', 'label', 'keywords']
+        }
+      },
+      items: { type: 'array', items: { type: 'object' } }
+    },
+    required: ['room_id', 'title', 'description', 'exits']
+  };
+
   const start = Date.now();
   try {
-    const resp = await openai.responses.create({ model: process.env.PROMPT_MODEL || 'gpt-5-nano', max_output_tokens: 250, input: [
-      { role: 'system', content: system },
-      { role: 'developer', content: developer },
-      { role: 'user', content: user }
-    ]});
+    const resp = await openai.responses.create({
+      model: process.env.PROMPT_MODEL || 'gpt-5-nano',
+      // Give headroom to avoid truncation
+      max_output_tokens: 512,
+      input: [
+        { role: 'system', content: system },
+        { role: 'developer', content: developer },
+        { role: 'user', content: user }
+      ],
+      response_format: {
+        type: 'json_schema',
+        json_schema: { name: 'room', schema: roomSchema, strict: true }
+      }
+    });
     const duration = Date.now() - start;
     const text = resp.output_text || resp.choices?.[0]?.message?.content || '';
     return { text, usage: resp.usage, duration_ms: duration, response: resp };
