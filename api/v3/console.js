@@ -56,59 +56,25 @@ async function logEvent(sessionId, corr, level, route, message, details) {
 }
 
 async function callModelForRoom(payload, description) {
-  // Ask the model for STRICT JSON by providing a schema and enabling json_schema response format.
+  // Use Chat Completions JSON mode for robust structured output per OPENAI-DOCS.md.
   const system = `You are generating a text adventure room as strict JSON only. This is a game similar in style to Zork or Oregon Trail. The player begins in a cave with five glowing entrances. Always steer the player toward picking an entrance. Always return valid JSON matching the schema. No prose outside JSON.`;
   const developer = `Return compact JSON ONLY with fields: room_id (string), title (string), description (max 2 sentences), exits (array of 5 objects: {exit_id,label,keywords[]} with short labels and keywords including 1..5 if start), items (array of objects or empty). No extra fields, no markdown, no narration.`;
   const user = JSON.stringify(payload);
 
-  // JSON schema for the room structure
-  const roomSchema = {
-    type: 'object',
-    additionalProperties: false,
-    properties: {
-      room_id: { type: 'string' },
-      title: { type: 'string' },
-      description: { type: 'string' },
-      exits: {
-        type: 'array',
-        minItems: 1,
-        items: {
-          type: 'object',
-          additionalProperties: false,
-          properties: {
-            exit_id: { type: 'string' },
-            label: { type: 'string' },
-            keywords: { type: 'array', items: { type: 'string' } },
-          },
-          required: ['exit_id', 'label', 'keywords']
-        }
-      },
-      items: { type: 'array', items: { type: 'object' } }
-    },
-    required: ['room_id', 'title', 'description', 'exits']
-  };
-
   const start = Date.now();
   try {
-    const resp = await openai.responses.create({
+    const resp = await openai.chat.completions.create({
       model: process.env.PROMPT_MODEL || 'gpt-5-nano',
-      // Give headroom to avoid truncation
-      max_output_tokens: 512,
-      input: [
+      messages: [
         { role: 'system', content: system },
         { role: 'developer', content: developer },
         { role: 'user', content: user }
       ],
-      // Responses API: request JSON output via text.format; use json_schema for strict structure
-      text: {
-        format: {
-          type: 'json_schema',
-          json_schema: { name: 'room', schema: roomSchema, strict: true }
-        }
-      }
+      response_format: { type: 'json_object' }
+      // Intentionally omit temperature and token caps to match model defaults per docs.
     });
     const duration = Date.now() - start;
-    const text = resp.output_text || resp.choices?.[0]?.message?.content || '';
+    const text = resp.choices?.[0]?.message?.content || '';
     return { text, usage: resp.usage, duration_ms: duration, response: resp };
   } catch (e) {
     const duration = Date.now() - start;
