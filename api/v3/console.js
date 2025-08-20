@@ -412,7 +412,7 @@ router.get('/status', async (req, res) => {
   const t0 = Date.now();
   try {
     const model = process.env.PROMPT_MODEL || 'gpt-5-nano';
-    const resp = await openai.responses.create({ model, max_output_tokens: 16, temperature: 0.2, input: [{ role: 'user', content: 'ok' }] });
+    const resp = await openai.responses.create({ model, max_output_tokens: 16, input: [{ role: 'user', content: 'ok' }] });
     const dt = Date.now() - t0;
     res.json({ ok: true, model, elapsed_ms: dt, at: new Date().toISOString() });
   } catch (e) {
