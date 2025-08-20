@@ -60,7 +60,7 @@ async function callModelForRoom(payload, description) {
   const developer = `Schema (return exactly this shape):\n{\n  "room_id": "string",\n  "title": "string",\n  "description": "string",\n  "exits": [ { "exit_id": "string", "label": "string", "keywords": ["string"] } ],\n  "items": [ { "item_id":"string","name":"string","takeable":true,"description":"string" } ],\n  "flags": { },\n  "continuity": { }\n}\n\nBehavioral rules:\n- Start room: five entrances themed: space/sci-fi, historic, scary, travel mystery, fantasy.\n- For each entrance, label should hint its theme.\n- Provide exits only; avoid puzzles in start room.\n- Player may say "Try again" on a portal to re-roll that one exit label while preserving the five categories.\n- When generating a next room for a chosen exit, include a short challenge the user must overcome.\n- Also include exits for that room and pre-bake stubs for its immediately adjoining rooms in labels only (do not fully expand beyond one hop).`;
   const user = JSON.stringify(payload);
   const start = Date.now();
-  const resp = await openai.responses.create({ model: process.env.WORLD_MODEL || 'gpt-5', input: [
+  const resp = await openai.responses.create({ model: process.env.PROMPT_MODEL || 'gpt-5-nano', input: [
     { role: 'system', content: system },
     { role: 'developer', content: developer },
     { role: 'user', content: user }
@@ -100,7 +100,7 @@ router.post('/start', async (req, res) => {
 
     console.log(`[v3/start] corr=${corr} calling model (start room)`);
     await logEvent(null, corr, 'info', 'v3/start', 'calling model (start room)', { payloadKind: 'start_room' });
-    await logEvent(id, corr, 'info', 'v3/start', 'llm request', { model: process.env.WORLD_MODEL || 'gpt-5', payloadPreview: JSON.stringify(payload).slice(0, 500) });
+    await logEvent(id, corr, 'info', 'v3/start', 'llm request', { model: process.env.PROMPT_MODEL || 'gpt-5-nano', payloadPreview: JSON.stringify(payload).slice(0, 500) });
     const { text, usage, duration_ms } = await callModelForRoom(payload, 'start room');
     console.log(`[v3/start] corr=${corr} model returned in ${duration_ms}ms, usage=${JSON.stringify(usage||{})}`);
     await logEvent(null, corr, 'info', 'v3/start', 'model returned', { duration_ms, usage });
@@ -134,7 +134,7 @@ router.post('/start', async (req, res) => {
     // Start-of-game assistant narrative might already be in convo from start-stream
     await logEvent(id, corr, 'success', 'v3/start', 'session initialized', { session_id: id });
 
-    return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.WORLD_MODEL || 'gpt-5' } });
+    return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano' } });
   } catch (e) {
     await logEvent(null, corr, 'error', 'v3/start', 'unhandled error', { error: e.message });
     return res.status(500).json({ success: false, correlation_id: corr, error: e.message });
@@ -256,7 +256,7 @@ router.post('/command', async (req, res) => {
     };
     console.log(`[v3/command] corr=${corr} calling model (update_from_conversation)`);
     await logEvent(session_id, corr, 'info', 'v3/command', 'calling model (update_from_conversation)', null);
-    await logEvent(session_id, corr, 'info', 'v3/command', 'llm request', { model: process.env.WORLD_MODEL || 'gpt-5', payloadPreview: JSON.stringify(payload).slice(0, 500) });
+    await logEvent(session_id, corr, 'info', 'v3/command', 'llm request', { model: process.env.PROMPT_MODEL || 'gpt-5-nano', payloadPreview: JSON.stringify(payload).slice(0, 500) });
     const { text } = await callModelForRoom(payload, 'update_from_conversation');
     let json; try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
       console.error(`[v3/command] corr=${corr} update parse error: ${e.message}`);
