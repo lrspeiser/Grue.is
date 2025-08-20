@@ -99,8 +99,13 @@ async function callModelForRoom(payload, description) {
         { role: 'developer', content: developer },
         { role: 'user', content: user }
       ],
-      // Responses API: request JSON output via text.format
-      text: { format: 'json' }
+      // Responses API: request JSON output via text.format; use json_schema for strict structure
+      text: {
+        format: {
+          type: 'json_schema',
+          json_schema: { name: 'room', schema: roomSchema, strict: true }
+        }
+      }
     });
     const duration = Date.now() - start;
     const text = resp.output_text || resp.choices?.[0]?.message?.content || '';
