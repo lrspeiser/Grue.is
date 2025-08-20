@@ -350,7 +350,7 @@ router.post('/start-stream', async (req, res) => {
         };
         await logEvent(id, corr, 'info', 'v3/start-stream', 'bg llm request (start JSON)', { model: process.env.PROMPT_MODEL || 'gpt-5-nano' });
         sse({ type: 'debug', stage: 'bg-json', event: 'started' });
-        sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text }) =[0m 3e {
+sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text }) => {
           let json;
           try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch {}
           if (json && !sess.state.room) {
@@ -365,7 +365,7 @@ router.post('/start-stream', async (req, res) => {
           }
           try { sse({ type: 'debug', stage: 'bg-json', event: 'completed' }); } catch {}
           sess.pendingStartPromise = null;
-        }).catch(() =[0m 3e { try { sse({ type: 'debug', stage: 'bg-json', event: 'failed' }); } catch {}; sess.pendingStartPromise = null; });
+}).catch(() => { try { sse({ type: 'debug', stage: 'bg-json', event: 'failed' }); } catch {}; sess.pendingStartPromise = null; });
       } catch {}
     })();
 
