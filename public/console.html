@@ -59,6 +59,8 @@
     let lastState = null;
     let pendingCommand = null;
     let startController = null;
+    let startedJsonFetch = false;
+    let startJsonPromise = null;
 
     function append(text, cls) {
       const div = document.createElement('div');
@@ -90,8 +92,10 @@
       cmdEl.disabled = true; sendEl.disabled = true;
       statusEl.style.display = 'block'; statusEl.textContent = 'Starting session...';
 
-      // 1) Stream narrative first
+      // 1) Stream narrative first (and kick JSON fetch as soon as we get session_id)
       let sessionFromStream = null;
+      startedJsonFetch = false;
+      startJsonPromise = null;
       try {
         append('POST /v3/api/console/start-stream', 'dim');
         const resp = await fetch('/v3/api/console/start-stream', { method: 'POST' });
@@ -116,7 +120,38 @@
                   append(`LLM(bg-json): ${msg.event}`, 'dim');
                 }
               }
-              if (msg.type === 'session') { sessionFromStream = msg.session_id; append(`[session ${msg.session_id}]`, 'dim'); }
+              if (msg.type === 'session') {
+                sessionFromStream = msg.session_id;
+                append(`[session ${msg.session_id}]`, 'dim');
+                // Fire JSON state fetch immediately in parallel
+                if (!startedJsonFetch) {
+                  startedJsonFetch = true;
+                  startJsonPromise = (async () => {
+                    append('POST /v3/api/console/start (parallel)', 'dim');
+                    const t0 = performance.now();
+                    const res2 = await fetch('/v3/api/console/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionFromStream }) });
+                    const t1 = performance.now();
+                    append(`Start(JSON parallel) ${res2.status} in ${Math.round(t1 - t0)}ms`, 'dim');
+                    const data2 = await res2.json();
+                    append('Start payload: ' + JSON.stringify({ success: data2.success, correlation_id: data2.correlation_id, hasState: !!data2.state }), 'dim');
+                    if (data2.debug) {
+                      append('LLM(JSON) model: ' + data2.debug.model, 'dim');
+                      if (data2.debug.reason) append('LLM(JSON) reason: ' + data2.debug.reason, 'dim');
+                    }
+                    if (data2.success && data2.state) {
+                      sessionId = data2.session_id || sessionFromStream;
+                      append('Session: ' + sessionId, 'dim');
+                      if (data2.message) append(data2.message, '');
+                      lastState = data2.state;
+                      renderState(lastState);
+                      append('Type help for available commands.', 'dim');
+                      statusEl.textContent = 'Ready';
+                      cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
+                      if (pendingCommand) { const c = pendingCommand; pendingCommand = null; append('> ' + c); sendCommand(c); }
+                    }
+                  })().catch(e => append('Start(JSON parallel) error: ' + e.message, 'err'));
+                }
+              }
               if (msg.type === 'message') { append(msg.content); }
               if (msg.type === 'error') { append('Stream error: ' + msg.message, 'err'); }
             } catch {}
@@ -126,46 +161,51 @@
         append('Stream failed: ' + e.message, 'err');
       }
 
-      // 2) Fetch JSON state
-      let res;
-      try {
-        append('POST /v3/api/console/start', 'dim');
-        const t0 = performance.now();
-        const startBody = sessionFromStream ? { session_id: sessionFromStream } : {};
-        res = await fetch('/v3/api/console/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(startBody) });
-        const t1 = performance.now();
-        append(`Response ${res.status} in ${Math.round(t1 - t0)}ms`, 'dim');
-      } catch (e) {
-        append('Network error starting session: ' + e.message, 'err');
-        statusEl.textContent = 'Start failed: ' + e.message + ' (click Restart)';
-        return;
+      // 2) Fetch JSON state (fallback if we did not already start it)
+      if (!startedJsonFetch) {
+        let res;
+        try {
+          append('POST /v3/api/console/start', 'dim');
+          const t0 = performance.now();
+          const startBody = sessionFromStream ? { session_id: sessionFromStream } : {};
+          res = await fetch('/v3/api/console/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(startBody) });
+          const t1 = performance.now();
+          append(`Response ${res.status} in ${Math.round(t1 - t0)}ms`, 'dim');
+        } catch (e) {
+          append('Network error starting session: ' + e.message, 'err');
+          statusEl.textContent = 'Start failed: ' + e.message + ' (click Restart)';
+          return;
+        }
+        let data;
+        try {
+          data = await res.json();
+        } catch (e) {
+          append('Failed to parse JSON from start: ' + e.message, 'err');
+          return;
+        }
+        append('Start payload: ' + JSON.stringify({ success: data.success, correlation_id: data.correlation_id, hasState: !!data.state }), 'dim');
+        if (data.debug) {
+          append('LLM(JSON) model: ' + data.debug.model, 'dim');
+          if (data.debug.reason) append('LLM(JSON) reason: ' + data.debug.reason, 'dim');
+        }
+        if (!data.success) {
+          append('Failed to start: ' + (data.error || data.message || 'unknown'), 'err');
+          if (data.raw) append('Raw: ' + (typeof data.raw === 'string' ? data.raw.substring(0,200) : JSON.stringify(data.raw).substring(0,200)) + '...', 'err');
+          return;
+        }
+        sessionId = data.session_id || sessionFromStream;
+        append('Session: ' + sessionId, 'dim');
+        if (data.message) append(data.message, '');
+        lastState = data.state;
+        renderState(lastState);
+        append('Type help for available commands.', 'dim');
+        statusEl.textContent = 'Ready';
+        cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
+        if (pendingCommand) { const c = pendingCommand; pendingCommand = null; append('> ' + c); sendCommand(c); }
+      } else if (startJsonPromise) {
+        // If we already started it, make sure we wait for completion to update UI if needed
+        try { await startJsonPromise; } catch {}
       }
-      let data;
-      try {
-        data = await res.json();
-      } catch (e) {
-        append('Failed to parse JSON from start: ' + e.message, 'err');
-        return;
-      }
-      append('Start payload: ' + JSON.stringify({ success: data.success, correlation_id: data.correlation_id, hasState: !!data.state }), 'dim');
-      if (data.debug) {
-        append('LLM(JSON) model: ' + data.debug.model, 'dim');
-        if (data.debug.reason) append('LLM(JSON) reason: ' + data.debug.reason, 'dim');
-      }
-      if (!data.success) {
-        append('Failed to start: ' + (data.error || data.message || 'unknown'), 'err');
-        if (data.raw) append('Raw: ' + (typeof data.raw === 'string' ? data.raw.substring(0,200) : JSON.stringify(data.raw).substring(0,200)) + '...', 'err');
-        return;
-      }
-      sessionId = data.session_id || sessionFromStream;
-      append('Session: ' + sessionId, 'dim');
-      if (data.message) append(data.message, '');
-      lastState = data.state;
-      renderState(lastState);
-      append('Type help for available commands.', 'dim');
-      statusEl.textContent = 'Ready';
-      cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
-      if (pendingCommand) { const c = pendingCommand; pendingCommand = null; append('> ' + c); sendCommand(c); }
     }
 
     async function sendCommand(text) {
