@@ -10,6 +10,22 @@ const sessions = new Map();
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 const router = express.Router();
 
+function defaultStartRoom(seed) {
+  return {
+    room_id: `start-${seed.slice(0,8)}`,
+    title: 'Glowing Entrances Cavern',
+    description: 'You awaken in a cavern lit by five glowing portals, each humming with a distinct energy. Choose one to begin your journey.',
+    exits: [
+      { exit_id: 'space', label: 'Ion-blue portal (space/sci‑fi)', keywords: ['1','space','sci-fi','blue'] },
+      { exit_id: 'history', label: 'Amber archway (historic)', keywords: ['2','historic','amber','old'] },
+      { exit_id: 'scary', label: 'Violet fissure (scary)', keywords: ['3','scary','violet','dark'] },
+      { exit_id: 'mystery', label: 'Green gate (travel mystery)', keywords: ['4','mystery','travel','green'] },
+      { exit_id: 'fantasy', label: 'Gold door (fantasy)', keywords: ['5','fantasy','gold','magic'] },
+    ],
+    items: []
+  };
+}
+
 // Utility: safe JSON schema validation (minimal for now)
 function validateRoomJson(obj) {
   try {
@@ -115,22 +131,46 @@ router.post('/start', async (req, res) => {
     console.log(`[v3/start] corr=${corr} calling model (start room)`);
     await logEvent(null, corr, 'info', 'v3/start', 'calling model (start room)', { payloadKind: 'start_room' });
     await logEvent(id, corr, 'info', 'v3/start', 'llm request', { model: process.env.PROMPT_MODEL || 'gpt-5-nano', payloadPreview: JSON.stringify(payload).slice(0, 500) });
-    const { text, usage, duration_ms } = await callModelForRoom(payload, 'start room');
-    console.log(`[v3/start] corr=${corr} model returned in ${duration_ms}ms, usage=${JSON.stringify(usage||{})}`);
-    await logEvent(null, corr, 'info', 'v3/start', 'model returned', { duration_ms, usage });
-    // Debug: truncate long text
-    console.log(`[v3/start] corr=${corr} raw length=${(text||'').length}`);
+    let text, usage, duration_ms;
+    try {
+      const result = await callModelForRoom(payload, 'start room');
+      text = result.text; usage = result.usage; duration_ms = result.duration_ms;
+      console.log(`[v3/start] corr=${corr} model returned in ${duration_ms}ms, usage=${JSON.stringify(usage||{})}`);
+      await logEvent(null, corr, 'info', 'v3/start', 'model returned', { duration_ms, usage });
+      console.log(`[v3/start] corr=${corr} raw length=${(text||'').length}`);
+    } catch (e) {
+      console.error(`[v3/start] corr=${corr} model error: ${e.message}`);
+      await logEvent(null, corr, 'error', 'v3/start', 'model error', { error: e.message });
+      // Fallback to a minimal static room to avoid blocking UI
+      const fallback = defaultStartRoom(seed);
+      sess.state.room = fallback;
+      sess.stats.first_latency_ms = 0;
+      sess.stats.usage = null;
+      await logEvent(id, corr, 'warn', 'v3/start', 'using fallback room', null);
+      return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano', reason: 'fallback-model-error' } });
+    }
+
     let json;
     try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
       console.error(`[v3/start] corr=${corr} parse error: ${e.message}`);
       await logEvent(null, corr, 'error', 'v3/start', 'parse error', { error: e.message });
-      return res.status(502).json({ success: false, correlation_id: corr, error: 'Invalid JSON from model', raw: text });
+      const fallback = defaultStartRoom(seed);
+      sess.state.room = fallback;
+      sess.stats.first_latency_ms = duration_ms || 0;
+      sess.stats.usage = usage || null;
+      await logEvent(id, corr, 'warn', 'v3/start', 'using fallback room (parse error)', null);
+      return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano', reason: 'fallback-parse-error' } });
     }
     const err = validateRoomJson(json);
     if (err) {
       console.error(`[v3/start] corr=${corr} schema error: ${err}`);
       await logEvent(null, corr, 'error', 'v3/start', 'schema error', { error: err });
-      return res.status(502).json({ success: false, correlation_id: corr, error: 'Schema validation failed: ' + err, raw: json });
+      const fallback = defaultStartRoom(seed);
+      sess.state.room = fallback;
+      sess.stats.first_latency_ms = duration_ms || 0;
+      sess.stats.usage = usage || null;
+      await logEvent(id, corr, 'warn', 'v3/start', 'using fallback room (schema error)', { err });
+      return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano', reason: 'fallback-schema-error' } });
     }
 
     // Ensure numeric keywords 1..5 for five-entrance start rooms
@@ -145,7 +185,6 @@ router.post('/start', async (req, res) => {
     sess.state.room = json;
     sess.stats.first_latency_ms = duration_ms;
     sess.stats.usage = usage;
-    // Start-of-game assistant narrative might already be in convo from start-stream
     await logEvent(id, corr, 'success', 'v3/start', 'session initialized', { session_id: id });
 
     return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano' } });

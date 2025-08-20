@@ -333,7 +333,11 @@
         const res = await fetch('/v3/api/console/status');
         const t1 = performance.now();
         const data = await res.json();
-        append(`STATUS: send=${new Date().toISOString()} recv=${new Date().toISOString()} elapsed_UI=${Math.round(t1 - t0)}ms server=${data.elapsed_ms}ms model=${data.model}`, 'dim');
+        if (res.ok && data.ok) {
+          append(`STATUS: send=${new Date().toISOString()} recv=${new Date().toISOString()} elapsed_UI=${Math.round(t1 - t0)}ms server=${data.elapsed_ms}ms model=${data.model}`, 'dim');
+        } else {
+          append(`STATUS: failed server=${data.elapsed_ms}ms error=${data.error || res.status}`, 'err');
+        }
       } catch (e) {
         const t1 = performance.now();
         append(`STATUS: failed after ${Math.round(t1 - t0)}ms: ${e.message}`, 'err');
