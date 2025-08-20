@@ -95,14 +95,14 @@ router.post('/start', async (req, res) => {
     // If background JSON generation already prepared state, return fast
     if (sess.state.room) {
       await logEvent(id, corr, 'info', 'v3/start', 'using precomputed state', null);
-      return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano' } });
+      return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano', reason: 'precomputed' } });
     }
     // Else, if a background promise is running, await it briefly
     if (sess.pendingStartPromise) {
       try { await sess.pendingStartPromise; } catch {}
       if (sess.state.room) {
         await logEvent(id, corr, 'info', 'v3/start', 'awaited precomputed state', null);
-        return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano' } });
+        return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano', reason: 'awaited-precomputed' } });
       }
     }
 
@@ -349,7 +349,8 @@ router.post('/start-stream', async (req, res) => {
           instruction: 'Create the starting cave room with five glowing entrances (space/sci-fi, historic, scary, travel mystery, fantasy). Provide 3-5 suggested commands in a top-level field suggestions (array of strings).',
         };
         await logEvent(id, corr, 'info', 'v3/start-stream', 'bg llm request (start JSON)', { model: process.env.PROMPT_MODEL || 'gpt-5-nano' });
-        sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text }) => {
+        sse({ type: 'debug', stage: 'bg-json', event: 'started' });
+        sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text }) =[0m 3e {
           let json;
           try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch {}
           if (json && !sess.state.room) {
@@ -362,8 +363,9 @@ router.post('/start-stream', async (req, res) => {
             }
             sess.state.room = json;
           }
+          try { sse({ type: 'debug', stage: 'bg-json', event: 'completed' }); } catch {}
           sess.pendingStartPromise = null;
-        }).catch(() => { sess.pendingStartPromise = null; });
+        }).catch(() =[0m 3e { try { sse({ type: 'debug', stage: 'bg-json', event: 'failed' }); } catch {}; sess.pendingStartPromise = null; });
       } catch {}
     })();
 
