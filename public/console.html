@@ -62,13 +62,15 @@
     let startedJsonFetch = false;
     let startJsonPromise = null;
 
-    function append(text, cls) {
+    function append(text, cls, serverTs) {
       const div = document.createElement('div');
       if (cls) div.className = cls;
-      div.textContent = text;
+      const uiTs = new Date().toISOString();
+      const prefix = serverTs ? `[UI ${uiTs}] [SRV ${serverTs}] ` : `[UI ${uiTs}] `;
+      div.textContent = prefix + text;
       logEl.appendChild(div);
       logEl.scrollTop = logEl.scrollHeight;
-      try { console.log(`[UI] ${text}`); } catch {}
+      try { console.log(`[UI] ${uiTs} ${text}`); } catch {}
     }
 
     function renderState(state) {
@@ -115,14 +117,14 @@
               const msg = JSON.parse(json);
               if (msg.type === 'debug') {
                 if (msg.stage === 'start-stream' || msg.stage === 'command-stream') {
-                  append(`LLM(${msg.stage}) model=${msg.model}`, 'dim');
+                  append(`LLM(${msg.stage}) model=${msg.model}`, 'dim', msg.ts);
                 } else if (msg.stage === 'bg-json') {
-                  append(`LLM(bg-json): ${msg.event}`, 'dim');
+                  append(`LLM(bg-json): ${msg.event}` + (msg.duration_ms ? ` duration=${msg.duration_ms}ms` : '') + (msg.model_duration_ms ? ` model=${msg.model_duration_ms}ms` : '') + (msg.error ? ` error=${msg.error}` : ''), 'dim', msg.ts);
                 }
               }
               if (msg.type === 'session') {
                 sessionFromStream = msg.session_id;
-                append(`[session ${msg.session_id}]`, 'dim');
+                append(`[session ${msg.session_id}]`, 'dim', msg.ts);
                 // Fire JSON state fetch immediately in parallel
                 if (!startedJsonFetch) {
                   startedJsonFetch = true;
@@ -132,11 +134,28 @@
                     const res2 = await fetch('/v3/api/console/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionFromStream }) });
                     const t1 = performance.now();
                     append(`Start(JSON parallel) ${res2.status} in ${Math.round(t1 - t0)}ms`, 'dim');
-                    const data2 = await res2.json();
+                    let data2;
+                    try {
+                      data2 = await res2.json();
+                    } catch (e) {
+                      append('Start(JSON parallel) parse error: ' + e.message, 'err');
+                      statusEl.textContent = 'Start failed (parse)';
+                      return;
+                    }
                     append('Start payload: ' + JSON.stringify({ success: data2.success, correlation_id: data2.correlation_id, hasState: !!data2.state }), 'dim');
                     if (data2.debug) {
                       append('LLM(JSON) model: ' + data2.debug.model, 'dim');
                       if (data2.debug.reason) append('LLM(JSON) reason: ' + data2.debug.reason, 'dim');
+                    }
+                    if (!res2.ok || !data2.success) {
+                      const errMsg = data2.error || data2.message || `HTTP ${res2.status}`;
+                      append('Start failed: ' + errMsg, 'err');
+                      if (data2.raw) {
+                        const rawStr = typeof data2.raw === 'string' ? data2.raw : JSON.stringify(data2.raw);
+                        append('Raw: ' + rawStr.substring(0, 400) + (rawStr.length > 400 ? '...' : ''), 'err');
+                      }
+                      statusEl.textContent = 'Start failed';
+                      return;
                     }
                     if (data2.success && data2.state) {
                       sessionId = data2.session_id || sessionFromStream;
@@ -149,11 +168,11 @@
                       cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
                       if (pendingCommand) { const c = pendingCommand; pendingCommand = null; append('> ' + c); sendCommand(c); }
                     }
-                  })().catch(e => append('Start(JSON parallel) error: ' + e.message, 'err'));
+                  })().catch(e => { append('Start(JSON parallel) error: ' + e.message, 'err'); statusEl.textContent = 'Start failed'; });
                 }
               }
-              if (msg.type === 'message') { append(msg.content); }
-              if (msg.type === 'error') { append('Stream error: ' + msg.message, 'err'); }
+              if (msg.type === 'message') { append(msg.content, undefined, msg.ts); }
+              if (msg.type === 'error') { append('Stream error: ' + msg.message, 'err', msg.ts); }
             } catch {}
           }
         }
@@ -242,8 +261,8 @@
             const json = p.slice(5).trim();
             try {
               const msg = JSON.parse(json);
-              if (msg.type === 'message') append(msg.content);
-              if (msg.type === 'error') append('Stream error: ' + msg.message, 'err');
+              if (msg.type === 'message') append(msg.content, undefined, msg.ts);
+              if (msg.type === 'error') append('Stream error: ' + msg.message, 'err', msg.ts);
             } catch {}
           }
         }

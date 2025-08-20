@@ -112,6 +112,10 @@ router.post('/start', async (req, res) => {
         await logEvent(id, corr, 'info', 'v3/start', 'awaited precomputed state', null);
         return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano', reason: 'awaited-precomputed' } });
       }
+      // If background failed to produce JSON, include the reason in debug
+      if (sess.bgJsonError) {
+        await logEvent(id, corr, 'warn', 'v3/start', 'bg-json missing/failed', { error: sess.bgJsonError });
+      }
     }
 
     const payload = {
@@ -362,11 +366,14 @@ router.post('/start-stream', async (req, res) => {
   if (typeof res.flushHeaders === 'function') try { res.flushHeaders(); } catch {}
 
   function sse(obj) {
-    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
+    try {
+      const payload = { correlation_id: corr, ts: nowIso(), ...obj };
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {}
   }
 
   // Emit session event first
-  sse({ type: 'session', session_id: id, correlation_id: corr });
+  sse({ type: 'session', session_id: id });
 
   try {
     const system = `You are a vivid narrator for a text adventure. The user awakens in a cave with five glowing entrances. Keep it concise (2 short paragraphs max). Encourage the player to choose an entrance.`;
@@ -386,10 +393,18 @@ router.post('/start-stream', async (req, res) => {
           instruction: 'Create the starting cave room with five glowing entrances (space/sci-fi, historic, scary, travel mystery, fantasy). Provide 3-5 suggested commands in a top-level field suggestions (array of strings).',
         };
         await logEvent(id, corr, 'info', 'v3/start-stream', 'bg llm request (start JSON)', { model: process.env.PROMPT_MODEL || 'gpt-5-nano' });
+        const bgT0 = Date.now();
         sse({ type: 'debug', stage: 'bg-json', event: 'started' });
-sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text }) => {
+        sess.bgJsonError = null;
+        sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text, duration_ms }) => {
           let json;
-          try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch {}
+          let parseError = null;
+          try {
+            json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text);
+          } catch (e) {
+            parseError = e;
+          }
+          const bgElapsed = Date.now() - bgT0;
           if (json && !sess.state.room) {
             // Ensure numeric keywords 1..5 for five-entrance start rooms
             if (Array.isArray(json.exits) && json.exits.length === 5) {
@@ -399,10 +414,16 @@ sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text 
               }));
             }
             sess.state.room = json;
+            try { sse({ type: 'debug', stage: 'bg-json', event: 'completed', duration_ms: bgElapsed, model_duration_ms: duration_ms }); } catch {}
+            logEvent(id, corr, 'info', 'v3/start-stream', 'bg json completed', { duration_ms: bgElapsed });
+          } else {
+            const errMsg = parseError ? `parse error: ${parseError.message}` : 'no JSON returned';
+            sess.bgJsonError = errMsg;
+            try { sse({ type: 'debug', stage: 'bg-json', event: 'failed', error: errMsg, duration_ms: bgElapsed }); } catch {}
+            logEvent(id, corr, 'error', 'v3/start-stream', 'bg json failed', { error: errMsg, duration_ms: bgElapsed });
           }
-          try { sse({ type: 'debug', stage: 'bg-json', event: 'completed' }); } catch {}
           sess.pendingStartPromise = null;
-}).catch((e) => { try { sse({ type: 'debug', stage: 'bg-json', event: 'failed', error: e.message || String(e) }); } catch {}; sess.pendingStartPromise = null; });
+        }).catch((e) => { const bgElapsed = Date.now() - bgT0; try { sse({ type: 'debug', stage: 'bg-json', event: 'failed', error: e.message || String(e), duration_ms: bgElapsed }); } catch {}; sess.bgJsonError = e.message || String(e); sess.pendingStartPromise = null; logEvent(id, corr, 'error', 'v3/start-stream', 'bg json exception', { error: e.message || String(e), duration_ms: bgElapsed }); });
       } catch {}
     })();
 
@@ -478,10 +499,13 @@ router.post('/command-stream', async (req, res) => {
   res.setHeader('Connection', 'keep-alive');
 
   function sse(obj) {
-    try { res.write(`data: ${JSON.stringify(obj)}\n\n`); } catch {}
+    try {
+      const payload = { correlation_id: corr, ts: nowIso(), ...obj };
+      res.write(`data: ${JSON.stringify(payload)}\n\n`);
+    } catch {}
   }
 
-  sse({ type: 'session', session_id, correlation_id: corr });
+  sse({ type: 'session', session_id });
 
   try {
     const s = sessions.get(session_id);
