@@ -208,8 +208,21 @@
       }
     }
 
+    let isCommandInFlight = false;
+
     async function sendCommand(text) {
-      if (!sessionId) { pendingCommand = text; append('No session yet; wait for start to complete.', 'err'); return; }
+      if (!sessionId) {
+        pendingCommand = text;
+        append('Waiting for session to start before sending command...', 'dim');
+        return;
+      }
+      if (isCommandInFlight) {
+        pendingCommand = text;
+        append('Command in progress; queuing your input...', 'dim');
+        return;
+      }
+      isCommandInFlight = true;
+      cmdEl.disabled = true; sendEl.disabled = true; statusEl.textContent = 'Sending command...';
 
       // 1) Stream narrative for the command
       try {
@@ -251,26 +264,52 @@
         append(`Command response ${res.status} in ${Math.round(t1 - t0)}ms`, 'dim');
       } catch (e) {
         append('Network error sending command: ' + e.message, 'err');
+        isCommandInFlight = false;
+        statusEl.textContent = 'Ready';
+        cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
         return;
       }
       let data;
       try { data = await res.json(); } catch (e) {
         append('Failed to parse JSON from command: ' + e.message, 'err');
+        isCommandInFlight = false;
+        statusEl.textContent = 'Ready';
+        cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
         return;
       }
       append('Command payload: ' + JSON.stringify({ success: data.success, correlation_id: data.correlation_id, hasState: !!data.state }), 'dim');
       if (!data.success) {
         append((data.message || data.error || 'Error') + (data.correlation_id ? ' ['+data.correlation_id+']' : ''), 'err');
+        isCommandInFlight = false;
+        statusEl.textContent = 'Ready';
+        cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
         return;
       }
       if (data.message) append(data.message, '');
       lastState = data.state || lastState;
       renderState(lastState);
+
+      isCommandInFlight = false;
+      statusEl.textContent = 'Ready';
+      cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
+      if (pendingCommand) { const c = pendingCommand; pendingCommand = null; append('> ' + c); sendCommand(c); }
     }
 
     sendEl.addEventListener('click', () => {
       const text = cmdEl.value.trim();
       if (!text) return;
+      if (!sessionId) {
+        pendingCommand = text;
+        append('Waiting for session to start before sending command...', 'dim');
+        cmdEl.value = '';
+        return;
+      }
+      if (isCommandInFlight) {
+        pendingCommand = text;
+        append('Command in progress; queuing your input...', 'dim');
+        cmdEl.value = '';
+        return;
+      }
       append('> ' + text);
       cmdEl.value = '';
       sendCommand(text);
@@ -287,7 +326,7 @@
     });
 
     // Quick nano status ping on load
-    (async () = {
+    (async () => {
       const t0 = performance.now();
       append('STATUS: sending nano warm check...', 'dim');
       try {
