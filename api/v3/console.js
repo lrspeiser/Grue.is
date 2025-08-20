@@ -464,7 +464,7 @@ let sess = { id, seed, state: { room: null, inventory: [] }, convo: [], stats: {
       if (chunk) {
         text += chunk;
         // Normalize chunk: collapse excessive whitespace to avoid one-word-per-line rendering
-        const normalized = String(chunk).replace(/[\r\t]+/g, ' ');
+        const normalized = String(chunk).replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ');
         sse({ type: 'message', content: normalized });
       }
     }
@@ -496,6 +496,15 @@ let sess = { id, seed, state: { room: null, inventory: [] }, convo: [], stats: {
     sse({ type: 'done', correlation_id: corr });
     try { res.end(); } catch {}
   }
+});
+
+// GET /v3/api/console/notes – current session notes
+router.get('/notes', async (req, res) => {
+  const session_id = req.query.session_id;
+  if (!session_id) return res.status(400).json({ success: false, error: 'session_id required' });
+  const s = sessions.get(session_id);
+  if (!s) return res.status(404).json({ success: false, error: 'Session not found' });
+  return res.json({ success: true, session_id, notes: s.notes || '' });
 });
 
 // GET /v3/api/console/status – quick nano ping for latency measurement and warmup
@@ -563,7 +572,7 @@ router.post('/command-stream', async (req, res) => {
           ''
         );
       } catch {}
-      if (chunk) { const normalized = String(chunk).replace(/[\r\t]+/g, ' '); text += normalized; sse({ type: 'message', content: normalized }); }
+      if (chunk) { const normalized = String(chunk).replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' '); text += normalized; sse({ type: 'message', content: normalized }); }
     }
     // Fallback: if no streamed chunks, request non-streaming once
     let effectiveText = text;

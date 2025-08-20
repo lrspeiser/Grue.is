@@ -17,7 +17,7 @@
     .dim { color: #6f6; }
     .err { color: #f66; }
     .btn { background: #0f0; color: #020; border: none; padding: 8px 10px; cursor: pointer; font-weight: bold; margin-right: 8px; }
-    .user { text-align: right; }
+    .user { text-align: right; color: #fff; }
   </style>
 </head>
 <body>
@@ -29,6 +29,7 @@
         	<input id="cmd" placeholder="Type a command (e.g., 'look', 'go 1', 'go east', 'help')" />
         	<button id="send">Send</button>
         	<button id="restart" class="btn" style="margin-left:8px">Restart</button>
+        	<button id="notes" class="btn" style="margin-left:8px">Notes</button>
       	</div>
     	</div>
   </div>
@@ -38,6 +39,7 @@
     const sendEl = document.getElementById('send');
     const statusEl = document.getElementById('status');
     const restartEl = document.getElementById('restart');
+    const notesEl = document.getElementById('notes');
 
     let sessionId = null;
     let lastState = null;
@@ -62,13 +64,17 @@
       try { console.log(`[UI] ${new Date().toISOString()} ${text}`); } catch {}
     }
 
+    function normalizeInline(text) {
+      return String(text).replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ');
+    }
+
     function appendStreamChunk(chunk) {
       if (!currentStreamDiv) {
         currentStreamDiv = document.createElement('div');
         currentStreamDiv.textContent = '';
         logEl.appendChild(currentStreamDiv);
       }
-      currentStreamDiv.textContent += chunk;
+      currentStreamDiv.textContent += normalizeInline(chunk);
       logEl.scrollTop = logEl.scrollHeight;
     }
 
@@ -82,7 +88,7 @@
         cmdStreamDiv.textContent = '';
         logEl.appendChild(cmdStreamDiv);
       }
-      cmdStreamDiv.textContent += chunk;
+      cmdStreamDiv.textContent += normalizeInline(chunk);
       logEl.scrollTop = logEl.scrollHeight;
     }
 
@@ -217,6 +223,39 @@
       sessionId = null; lastState = null; pendingCommand = null;
       append('Restarting session...', 'warning');
       startSession();
+    });
+
+    notesEl.addEventListener('click', () => {
+      if (!sessionId) {
+        append('Notes: waiting for session to start...', 'dim');
+        return;
+      }
+      const w = window.open('', 'notes', 'width=520,height=640');
+      if (!w) return;
+      w.document.write(`<!doctype html><html><head><title>Notes</title><style>
+        body { background:#000; color:#0f0; font-family: ' + getComputedStyle(document.body).fontFamily + '; margin:0; }
+        #wrap { padding: 12px; }
+        pre { white-space: pre-wrap; }
+      </style></head><body><div id="wrap"><h3>Notes</h3><pre id="content">loading…</pre></div></body></html>`);
+      const content = () => w.document.getElementById('content');
+      let stopped = false;
+      const fetchNotes = async () => {
+        if (stopped || w.closed) return;
+        try {
+          const res = await fetch('/v3/api/console/notes?session_id=' + encodeURIComponent(sessionId));
+          const data = await res.json();
+          if (res.ok && data.success) {
+            const el = content(); if (el) el.textContent = data.notes || '(empty)';
+          } else {
+            const el = content(); if (el) el.textContent = 'Error: ' + (data.error || res.status);
+          }
+        } catch (e) {
+          const el = content(); if (el) el.textContent = 'Fetch error: ' + e.message;
+        }
+      };
+      const iv = setInterval(fetchNotes, 2000);
+      w.addEventListener('beforeunload', () => { stopped = true; clearInterval(iv); });
+      fetchNotes();
     });
 
     cmdEl.addEventListener('keydown', (e) => {
