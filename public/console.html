@@ -21,6 +21,7 @@
     .exit { margin: 4px 0; }
     .mono { font-family: 'Courier New', monospace; }
     .faint { color: #7f7; }
+    #devlog { margin-top: 16px; padding: 8px; background: #020; border: 1px solid #060; height: 200px; overflow-y: auto; white-space: pre-wrap; }
   </style>
 </head>
 <body>
@@ -42,6 +43,8 @@
       <div id="exits"></div>
       <h2 style="margin-top:16px">Inventory</h2>
       <div id="inventory" class="mono faint">empty</div>
+      <h2 style="margin-top:16px">Console Logs</h2>
+      <div id="devlog" class="mono"></div>
     </div>
   </div>
   <script>
@@ -54,6 +57,7 @@
     const inventoryEl = document.getElementById('inventory');
     const statusEl = document.getElementById('status');
     const restartEl = document.getElementById('restart');
+    const devlogEl = document.getElementById('devlog');
 
     let sessionId = null;
     let lastState = null;
@@ -68,8 +72,10 @@
       const uiTs = new Date().toISOString();
       const prefix = serverTs ? `[UI ${uiTs}] [SRV ${serverTs}] ` : `[UI ${uiTs}] `;
       div.textContent = prefix + text;
-      logEl.appendChild(div);
-      logEl.scrollTop = logEl.scrollHeight;
+      // Route debug/status/errors to devlog; keep narrative/user lines in main log
+      const target = cls ? devlogEl : logEl;
+      target.appendChild(div);
+      target.scrollTop = target.scrollHeight;
       try { console.log(`[UI] ${uiTs} ${text}`); } catch {}
     }
 
