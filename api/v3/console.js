@@ -100,6 +100,7 @@ router.post('/start', async (req, res) => {
 
     console.log(`[v3/start] corr=${corr} calling model (start room)`);
     await logEvent(null, corr, 'info', 'v3/start', 'calling model (start room)', { payloadKind: 'start_room' });
+    await logEvent(id, corr, 'info', 'v3/start', 'llm request', { model: process.env.WORLD_MODEL || 'gpt-5', payloadPreview: JSON.stringify(payload).slice(0, 500) });
     const { text, usage, duration_ms } = await callModelForRoom(payload, 'start room');
     console.log(`[v3/start] corr=${corr} model returned in ${duration_ms}ms, usage=${JSON.stringify(usage||{})}`);
     await logEvent(null, corr, 'info', 'v3/start', 'model returned', { duration_ms, usage });
@@ -133,7 +134,7 @@ router.post('/start', async (req, res) => {
     // Start-of-game assistant narrative might already be in convo from start-stream
     await logEvent(id, corr, 'success', 'v3/start', 'session initialized', { session_id: id });
 
-    return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state });
+    return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.WORLD_MODEL || 'gpt-5' } });
   } catch (e) {
     await logEvent(null, corr, 'error', 'v3/start', 'unhandled error', { error: e.message });
     return res.status(500).json({ success: false, correlation_id: corr, error: e.message });
@@ -255,6 +256,7 @@ router.post('/command', async (req, res) => {
     };
     console.log(`[v3/command] corr=${corr} calling model (update_from_conversation)`);
     await logEvent(session_id, corr, 'info', 'v3/command', 'calling model (update_from_conversation)', null);
+    await logEvent(session_id, corr, 'info', 'v3/command', 'llm request', { model: process.env.WORLD_MODEL || 'gpt-5', payloadPreview: JSON.stringify(payload).slice(0, 500) });
     const { text } = await callModelForRoom(payload, 'update_from_conversation');
     let json; try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
       console.error(`[v3/command] corr=${corr} update parse error: ${e.message}`);
@@ -318,6 +320,9 @@ router.post('/start-stream', async (req, res) => {
     const user = `Describe the starting cave and the five glowing entrances with these themes: space/sci-fi, historic, scary, travel mystery, fantasy. Each entrance should hint its theme. End with a short prompt (e.g., 'Choose an entrance (1-5) or say a theme').`;
 
     const model = process.env.PROMPT_MODEL || 'gpt-5-nano';
+    sse({ type: 'debug', stage: 'command-stream', model, system, user });
+    // Emit debug of what we send to LLM (sanitized)
+    sse({ type: 'debug', stage: 'start-stream', model, system, user });
     const start = Date.now();
     const stream = await (async () => {
       try {

@@ -108,6 +108,8 @@
             if (!p.startsWith('data:')) continue;
             const json = p.slice(5).trim();
             try {
+              if (msg.type === 'debug') { append(`LLM(${msg.stage}) model=${msg.model}`, 'dim'); }
+              if (msg.type === 'debug') { append(`LLM(${msg.stage}) model=${msg.model}`, 'dim'); }
               const msg = JSON.parse(json);
               if (msg.type === 'session') { sessionFromStream = msg.session_id; append(`[session ${msg.session_id}]`, 'dim'); }
               if (msg.type === 'message') { append(msg.content); }
@@ -141,6 +143,7 @@
         return;
       }
       append('Start payload: ' + JSON.stringify({ success: data.success, correlation_id: data.correlation_id, hasState: !!data.state }), 'dim');
+      if (data.debug) append('LLM(JSON) model: ' + data.debug.model, 'dim');
       if (!data.success) {
         append('Failed to start: ' + (data.error || data.message || 'unknown'), 'err');
         if (data.raw) append('Raw: ' + (typeof data.raw === 'string' ? data.raw.substring(0,200) : JSON.stringify(data.raw).substring(0,200)) + '...', 'err');
