@@ -499,12 +499,26 @@ let sess = { id, seed, state: { room: null, inventory: [] }, convo: [], stats: {
       }
     }
 
+    // If no chunks arrived (SDK stream shape mismatch), fall back to a single non-streaming request
+    let effectiveText = text;
+    if (!effectiveText) {
+      try {
+        const fallback = await openai.responses.create({ model, input: startMessages });
+        effectiveText = fallback.output_text || fallback.choices?.[0]?.message?.content || '';
+        if (effectiveText) {
+          sse({ type: 'message', content: effectiveText });
+        }
+      } catch (e) {
+        await logEvent(id, corr, 'error', 'v3/start-stream', 'fallback request failed', { error: e.message });
+      }
+    }
+
     const latency = Date.now() - start;
-    // Append streamed assistant narrative to convo
-    try { sess.convo.push({ role: 'assistant', content: text }); } catch {}
+    // Append assistant narrative to convo
+    try { sess.convo.push({ role: 'assistant', content: effectiveText }); } catch {}
     // Kick off background note-taker to update sess.notes (non-blocking)
-    runNoteTakerAsync(sess, { assistant_text: text });
-    await logEvent(id, corr, 'success', 'v3/start-stream', 'stream completed', { latency_ms: latency, length: text.length });
+    runNoteTakerAsync(sess, { assistant_text: effectiveText });
+    await logEvent(id, corr, 'success', 'v3/start-stream', 'stream completed', { latency_ms: latency, length: effectiveText.length });
   } catch (e) {
     await logEvent(null, corr, 'error', 'v3/start-stream', 'stream error', { error: e.message });
     sse({ type: 'error', message: e.message });
@@ -581,12 +595,24 @@ router.post('/command-stream', async (req, res) => {
       } catch {}
       if (chunk) { text += chunk; sse({ type: 'message', content: chunk }); }
     }
+    // Fallback: if no streamed chunks, request non-streaming once
+    let effectiveText = text;
+    if (!effectiveText) {
+      try {
+        const fallback = await openai.responses.create({ model, input: messages });
+        effectiveText = fallback.output_text || fallback.choices?.[0]?.message?.content || '';
+        if (effectiveText) { sse({ type: 'message', content: effectiveText }); }
+      } catch (e) {
+        await logEvent(session_id, corr, 'error', 'v3/command-stream', 'fallback request failed', { error: e.message });
+      }
+    }
+
     const latency = Date.now() - start;
-    // Append streamed assistant narrative
-    if (sess) { try { sess.convo.push({ role: 'assistant', content: text }); } catch {} }
+    // Append assistant narrative
+    if (sess) { try { sess.convo.push({ role: 'assistant', content: effectiveText }); } catch {} }
     // Fire background note taker (non-blocking)
-    if (s) runNoteTakerAsync(s, { assistant_text: text });
-    await logEvent(session_id, corr, 'success', 'v3/command-stream', 'stream completed', { latency_ms: latency, length: text.length });
+    if (s) runNoteTakerAsync(s, { assistant_text: effectiveText });
+    await logEvent(session_id, corr, 'success', 'v3/command-stream', 'stream completed', { latency_ms: latency, length: effectiveText.length });
   } catch (e) {
     await logEvent(session_id, corr, 'error', 'v3/command-stream', 'stream error', { error: e.message });
     sse({ type: 'error', message: e.message });
