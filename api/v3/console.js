@@ -47,59 +47,27 @@ function buildNarratorMessages(sess, opts) {
     '',
     'Tone: mysterious, cinematic, concise. Each turn should end with at least one clear action hook.',
     '',
+    'Hard output constraint: Your entire reply must be plain text with no JSON, code blocks, bullet lists, headings, or markup. Write at most 3 short lines, each a complete sentence. Do not include any structured data, keys, colons, or brackets. No “Recommended actions” lines. Keep it immersive and concise.',
+    '',
     'Core Loop',
     'On every turn:',
     '- Interpret the player’s input using recent chat history and the Notes section (both provided below).',
     '- Describe vivid consequences of the action (time passes, discoveries, risks, or new clues).',
     '- Introduce puzzles and challenges (locked doors, hidden switches, riddles, navigation).',
-    '- Support struggling players with tiered hints:',
-    '  First failure → subtle nudge',
-    '  Second → stronger clue',
-    '  Third → explicit pointer',
-    '',
-    'When the Player Seems Stuck',
-    'If the player repeats failed actions, types meta-questions, or explicitly asks for help, append a short “Recommended actions” line (3–6 context-relevant verbs, e.g. look around, open mailbox, enter house, examine doormat, call out).',
+    '- Support struggling players with subtle hints only when the player is stuck, but still keep within the 3-line limit and avoid explicit lists.',
     '',
     'Style',
-    '- Concise 3–6 sentence narrative blocks.',
+    '- Up to 3 short lines, immersive.',
     '- Keep pacing lively and mysterious.',
     '- Avoid repetition; escalate tension steadily.',
     '- Never break immersion with system terms.',
-    '',
-    'Puzzles',
-    '- Multi-solution, environment-grounded, always hinted.',
-    '- Foreshadow danger; give outs and alternatives.',
-    '- Clues may appear in {{NOTES}}, prior chat, or new discoveries.',
-    '',
-    'Output Format',
-    'Every turn, produce:',
-    'Human-readable block:',
-    '- Narrative: 3–6 sentences, immersive.',
-    '- Status changes: if relevant (e.g. Health: -1 | Found: Rusty Key).',
-    '- Recommended actions: only when stuck.',
-    'If you add to Notes: start with New note: and a one-liner.',
-    '',
-    'Machine-readable block (JSON in fenced code):',
-    '{',
-    '  "location": "…",',
-    '  "changes": {"itemFound": "Rusty Key"},',
-    '  "flags": {"stuck": false, "puzzleId": "mailbox-intro", "hintTier": 0},',
-    '  "notesAdditions": ["…"]',
-    '}',
-    '',
-    'Only include keys that changed.'
   ].join('\n');
 
   const opener = firstTurn
     ? [
-        'Opening Premise',
-        '',
-        'The player begins standing in front of a white house, near a small mailbox. The house looks ordinary but holds secrets.',
-        '',
-        'Exploration of the house will eventually reveal a tunnel leading underground into a stranger, hidden world.',
-        '',
-        'First Turn',
-        'When starting, describe the scene in front of the white house with mailbox, and present 3–5 clear affordances (e.g. open mailbox, look around, knock on door, check under mat).'
+        'Opening premise: a white house with a small mailbox stands before the player. The place looks ordinary but holds secrets.',
+        'They will eventually find a tunnel leading underground into a stranger, hidden world.',
+        'Begin with up to 3 short lines and do not list actions; imply affordances in the prose.'
       ].join('\n')
     : '';
 
@@ -131,7 +99,7 @@ async function runNoteTakerAsync(sess, { assistant_text }) {
     const prevNotes = sess.notes || '';
     const recent = (sess.convo || []).slice(-8) || [];
     const recentStr = recent.map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 3000);
-    const system = 'You are a meticulous note-taker for a text adventure. Maintain concise, structured NOTES that help future continuity: locations, items, keys/codes, NPCs, puzzles (with status), discovered clues, hazards, goals, and unresolved leads. Prefer bullet-like lines. Avoid narrative prose. Return only the full updated NOTES text.';
+    const system = 'You are a meticulous note-taker for a text adventure. Maintain concise, structured NOTES that help future continuity: locations, items, keys/codes, NPCs, puzzles (with status), discovered clues, hazards, goals, and unresolved leads. Prefer bullet-like lines. Avoid narrative prose. Return only the full updated NOTES text. Do not echo the player-facing narrative; store details here.';
     const user = [
       'Previous NOTES:',
       prevNotes || '(none)',
@@ -495,7 +463,9 @@ let sess = { id, seed, state: { room: null, inventory: [] }, convo: [], stats: {
       } catch {}
       if (chunk) {
         text += chunk;
-        sse({ type: 'message', content: chunk });
+        // Normalize chunk: collapse excessive whitespace to avoid one-word-per-line rendering
+        const normalized = String(chunk).replace(/[\r\t]+/g, ' ');
+        sse({ type: 'message', content: normalized });
       }
     }
 
@@ -593,7 +563,7 @@ router.post('/command-stream', async (req, res) => {
           ''
         );
       } catch {}
-      if (chunk) { text += chunk; sse({ type: 'message', content: chunk }); }
+      if (chunk) { const normalized = String(chunk).replace(/[\r\t]+/g, ' '); text += normalized; sse({ type: 'message', content: normalized }); }
     }
     // Fallback: if no streamed chunks, request non-streaming once
     let effectiveText = text;

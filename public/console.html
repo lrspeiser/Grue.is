@@ -43,6 +43,10 @@
     let lastState = null;
     let pendingCommand = null;
 
+    // Streaming aggregation state
+    let currentStreamDiv = null;
+    let cmdStreamDiv = null;
+
     function append(text, cls, serverTs) {
       // Only show narrative and user messages in the on-screen console.
       // Debug/status/errors (cls present and not 'user') go to dev tools only.
@@ -56,6 +60,34 @@
       logEl.appendChild(div);
       logEl.scrollTop = logEl.scrollHeight;
       try { console.log(`[UI] ${new Date().toISOString()} ${text}`); } catch {}
+    }
+
+    function appendStreamChunk(chunk) {
+      if (!currentStreamDiv) {
+        currentStreamDiv = document.createElement('div');
+        currentStreamDiv.textContent = '';
+        logEl.appendChild(currentStreamDiv);
+      }
+      currentStreamDiv.textContent += chunk;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function endStreamMessage() {
+      currentStreamDiv = null;
+    }
+
+    function appendCmdStreamChunk(chunk) {
+      if (!cmdStreamDiv) {
+        cmdStreamDiv = document.createElement('div');
+        cmdStreamDiv.textContent = '';
+        logEl.appendChild(cmdStreamDiv);
+      }
+      cmdStreamDiv.textContent += chunk;
+      logEl.scrollTop = logEl.scrollHeight;
+    }
+
+    function endCmdStreamMessage() {
+      cmdStreamDiv = null;
     }
 
     async function startSession() {
@@ -92,11 +124,13 @@
                 sessionId = msg.session_id;
                 append(`[session ${msg.session_id}]`, 'dim', msg.ts);
               }
-              if (msg.type === 'message') { append(msg.content); }
+              if (msg.type === 'message') { appendStreamChunk(msg.content); }
               if (msg.type === 'error') { append('Stream error: ' + msg.message, 'err'); }
             } catch {}
           }
         }
+        // stream finished
+        endStreamMessage();
       } catch (e) {
         append('Stream failed: ' + e.message, 'err');
       }
@@ -141,11 +175,13 @@
             const json = p.slice(5).trim();
             try {
               const msg = JSON.parse(json);
-              if (msg.type === 'message') append(msg.content, undefined, msg.ts);
+              if (msg.type === 'message') appendCmdStreamChunk(msg.content);
               if (msg.type === 'error') append('Stream error: ' + msg.message, 'err', msg.ts);
             } catch {}
           }
         }
+        // command stream finished
+        endCmdStreamMessage();
       } catch (e) {
         append('Stream failed: ' + e.message, 'err');
       }
