@@ -7,20 +7,16 @@
   <style>
     body { background: #000; color: #0f0; font-family: 'Courier New', monospace; margin: 0; }
     #wrap { display: flex; height: 100vh; }
-    #console { flex: 2; display: flex; flex-direction: column; }
-    #log { flex: 1; padding: 16px; white-space: pre-wrap; overflow-y: auto; border-right: 2px solid #060; }
+    #console { flex: 1; display: flex; flex-direction: column; }
+    #log { flex: 1; padding: 16px; white-space: pre-wrap; overflow-y: auto; }
     #input { display: flex; border-top: 2px solid #060; }
     #cmd { flex: 1; padding: 12px; background: #020; color: #0f0; border: none; outline: none; font-family: inherit; font-size: 16px; }
     #send { padding: 12px 16px; background: #0f0; color: #020; border: none; font-weight: bold; cursor: pointer; }
-    #sidebar { width: 360px; padding: 16px; background: #010; border-left: 2px solid #060; overflow-y: auto; }
     h2 { margin: 0 0 8px 0; color: #0f0; }
-    #status { position: absolute; top: 8px; right: 380px; background: #020; border: 1px solid #060; padding: 6px 10px; color: #7f7; font-size: 12px; }
+    #status { position: absolute; top: 8px; right: 16px; background: #020; border: 1px solid #060; padding: 6px 10px; color: #7f7; font-size: 12px; }
     .dim { color: #6f6; }
     .err { color: #f66; }
     .btn { background: #0f0; color: #020; border: none; padding: 8px 10px; cursor: pointer; font-weight: bold; margin-right: 8px; }
-    .exit { margin: 4px 0; }
-    .mono { font-family: 'Courier New', monospace; }
-    .faint { color: #7f7; }
     .user { text-align: right; }
   </style>
 </head>
@@ -35,33 +31,17 @@
         	<button id="restart" class="btn" style="margin-left:8px">Restart</button>
       	</div>
     	</div>
-    <div id="sidebar">
-      <h2>Room</h2>
-      <div id="roomTitle" class="mono"></div>
-      <div id="roomDesc" class="mono" style="margin-top:8px"></div>
-      <h2 style="margin-top:16px">Exits</h2>
-      <div id="exits"></div>
-      <h2 style="margin-top:16px">Inventory</h2>
-      <div id="inventory" class="mono faint">empty</div>
-    </div>
   </div>
   <script>
     const logEl = document.getElementById('log');
     const cmdEl = document.getElementById('cmd');
     const sendEl = document.getElementById('send');
-    const roomTitle = document.getElementById('roomTitle');
-    const roomDesc = document.getElementById('roomDesc');
-    const exitsEl = document.getElementById('exits');
-    const inventoryEl = document.getElementById('inventory');
     const statusEl = document.getElementById('status');
     const restartEl = document.getElementById('restart');
 
     let sessionId = null;
     let lastState = null;
     let pendingCommand = null;
-    let startController = null;
-    let startedJsonFetch = false;
-    let startJsonPromise = null;
 
     function append(text, cls, serverTs) {
       // Only show narrative and user messages in the on-screen console.
@@ -78,31 +58,12 @@
       try { console.log(`[UI] ${new Date().toISOString()} ${text}`); } catch {}
     }
 
-    function renderState(state) {
-      if (!state) return;
-      const room = state.room;
-      roomTitle.textContent = room?.title || '';
-      roomDesc.textContent = room?.description || '';
-      exitsEl.innerHTML = '';
-      (room?.exits || []).forEach((ex, idx) => {
-        const p = document.createElement('div');
-        p.className = 'exit mono';
-        p.textContent = `${idx+1}. ${ex.label}`;
-        exitsEl.appendChild(p);
-      });
-      const inv = (state.inventory || []);
-      inventoryEl.textContent = inv.length ? inv.map(i => i.name || i).join(', ') : 'empty';
-    }
-
     async function startSession() {
       append('Starting new session...', 'dim');
       cmdEl.disabled = true; sendEl.disabled = true;
       statusEl.style.display = 'block'; statusEl.textContent = 'Starting session...';
 
-      // 1) Stream narrative first (and kick JSON fetch as soon as we get session_id)
-      let sessionFromStream = null;
-      startedJsonFetch = false;
-      startJsonPromise = null;
+      // Streaming-only startup
       try {
         append('POST /v3/api/console/start-stream', 'dim');
         const resp = await fetch('/v3/api/console/start-stream', { method: 'POST' });
@@ -128,55 +89,8 @@
                 }
               }
               if (msg.type === 'session') {
-                sessionFromStream = msg.session_id;
-                // In streaming-only mode, use the session from the stream immediately.
-                sessionId = sessionFromStream;
+                sessionId = msg.session_id;
                 append(`[session ${msg.session_id}]`, 'dim', msg.ts);
-                // Optionally fire deprecated JSON start in parallel for diagnostics; safe to skip
-                if (!startedJsonFetch) {
-                  startedJsonFetch = true;
-                  startJsonPromise = (async () => {
-                    append('POST /v3/api/console/start (parallel)', 'dim');
-                    const t0 = performance.now();
-                    const res2 = await fetch('/v3/api/console/start', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionFromStream }) });
-                    const t1 = performance.now();
-                    append(`Start(JSON parallel) ${res2.status} in ${Math.round(t1 - t0)}ms`, 'dim');
-                    let data2;
-                    try {
-                      data2 = await res2.json();
-                    } catch (e) {
-                      append('Start(JSON parallel) parse error: ' + e.message, 'err');
-                      statusEl.textContent = 'Start failed (parse)';
-                      return;
-                    }
-                    append('Start payload: ' + JSON.stringify({ success: data2.success, correlation_id: data2.correlation_id, hasState: !!data2.state }), 'dim');
-                    if (data2.debug) {
-                      append('LLM(JSON) model: ' + data2.debug.model, 'dim');
-                      if (data2.debug.reason) append('LLM(JSON) reason: ' + data2.debug.reason, 'dim');
-                    }
-                    if (!res2.ok || !data2.success) {
-                      const errMsg = data2.error || data2.message || `HTTP ${res2.status}`;
-                      append('Start failed: ' + errMsg, 'err');
-                      if (data2.raw) {
-                        const rawStr = typeof data2.raw === 'string' ? data2.raw : JSON.stringify(data2.raw);
-                        append('Raw: ' + rawStr.substring(0, 400) + (rawStr.length > 400 ? '...' : ''), 'err');
-                      }
-                      statusEl.textContent = 'Start failed';
-                      return;
-                    }
-                    if (data2.success && data2.state) {
-                      sessionId = data2.session_id || sessionFromStream;
-                      append('Session: ' + sessionId, 'dim');
-                      if (data2.message) append(data2.message, '');
-                      lastState = data2.state;
-                      renderState(lastState);
-                      append('Type help for available commands.', 'dim');
-                      statusEl.textContent = 'Ready';
-                      cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
-                      if (pendingCommand) { const c = pendingCommand; pendingCommand = null; append(c, 'user'); sendCommand(c); }
-                    }
-                  })().catch(e => { append('Start(JSON parallel) error: ' + e.message, 'err'); statusEl.textContent = 'Start failed'; });
-                }
               }
               if (msg.type === 'message') { append(msg.content); }
               if (msg.type === 'error') { append('Stream error: ' + msg.message, 'err'); }
@@ -187,7 +101,7 @@
         append('Stream failed: ' + e.message, 'err');
       }
 
-      // Streaming-only: no JSON state fetch. Enable input after the narrative begins and session is known.
+      // Enable input after the narrative begins and session is known.
       statusEl.textContent = 'Ready';
       cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
       if (pendingCommand) { const c = pendingCommand; pendingCommand = null; append(c, 'user'); sendCommand(c); }
@@ -209,7 +123,7 @@
       isCommandInFlight = true;
       cmdEl.disabled = true; sendEl.disabled = true; statusEl.textContent = 'Sending command...';
 
-      // 1) Stream narrative for the command
+      // Stream narrative for the command
       try {
         append('POST /v3/api/console/command-stream', 'dim');
         const resp = await fetch('/v3/api/console/command-stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ session_id: sessionId, command: text }) });
@@ -236,7 +150,7 @@
         append('Stream failed: ' + e.message, 'err');
       }
 
-      // Streaming-only: no JSON update call. Just finalize UI state.
+      // Finalize UI state.
       isCommandInFlight = false;
       statusEl.textContent = 'Ready';
       cmdEl.disabled = false; sendEl.disabled = false; cmdEl.focus();
