@@ -60,7 +60,7 @@ async function callModelForRoom(payload, description) {
   const developer = `Return compact JSON only with fields: room_id (string), title (string), description (max 2 sentences), exits (array of 5 objects: {exit_id,label,keywords[]} with short labels and keywords including 1..5 if start), items (empty or minimal). No extra text.`;
   const user = JSON.stringify(payload);
   const start = Date.now();
-  const resp = await openai.responses.create({ model: process.env.PROMPT_MODEL || 'gpt-5-nano', max_output_tokens: 250, temperature: 0.3, input: [
+  const resp = await openai.responses.create({ model: process.env.PROMPT_MODEL || 'gpt-5-nano', max_output_tokens: 250, input: [
     { role: 'system', content: system },
     { role: 'developer', content: developer },
     { role: 'user', content: user }
