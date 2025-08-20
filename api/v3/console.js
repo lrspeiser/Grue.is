@@ -91,103 +91,22 @@ function convoSlice(session, n = 8) {
   return c.slice(-n);
 }
 
-// POST /v3/api/console/start
+// POST /v3/api/console/start (JSON) – deprecated in streaming-only mode
 router.post('/start', async (req, res) => {
   const corr = correlation();
-  console.log(`[v3/start] corr=${corr} incoming`);
-  await logEvent(null, corr, 'info', 'v3/start', 'incoming', null);
-  try {
-    const requestedId = req.body?.session_id;
-    let id = requestedId || randomUUID();
-    // Reuse existing session created by start-stream if present
-    let sess = sessions.get(id);
-    if (!sess) {
-      sess = { id, seed: randomUUID(), state: { room: null, inventory: [] }, convo: [], stats: {}, logs: [] };
-      sessions.set(id, sess);
-    }
-    const seed = sess.seed;
-
-    // If background JSON generation already prepared state, return fast
-    if (sess.state.room) {
-      await logEvent(id, corr, 'info', 'v3/start', 'using precomputed state', null);
-      return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano', reason: 'precomputed' } });
-    }
-    // Else, if a background promise is running, await it briefly
-    if (sess.pendingStartPromise) {
-      try { await sess.pendingStartPromise; } catch {}
-      if (sess.state.room) {
-        await logEvent(id, corr, 'info', 'v3/start', 'awaited precomputed state', null);
-        return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano', reason: 'awaited-precomputed' } });
-      }
-      // If background failed to produce JSON, include the reason in debug
-      if (sess.bgJsonError) {
-        await logEvent(id, corr, 'warn', 'v3/start', 'bg-json missing/failed', { error: sess.bgJsonError });
-      }
-    }
-
-    const payload = {
-      kind: 'start_room',
-      seed,
-      instruction: 'Create the starting cave room with five glowing entrances (space/sci-fi, historic, scary, travel mystery, fantasy). Provide 3-5 suggested commands in a top-level field suggestions (array of strings).',
-    };
-
-    console.log(`[v3/start] corr=${corr} calling model (start room)`);
-    await logEvent(null, corr, 'info', 'v3/start', 'calling model (start room)', { payloadKind: 'start_room' });
-    await logEvent(id, corr, 'info', 'v3/start', 'llm request', { model: process.env.PROMPT_MODEL || 'gpt-5-nano', payloadPreview: JSON.stringify(payload).slice(0, 500) });
-let text, usage, duration_ms;
-    try {
-      const resp = await callModelForRoom(payload, 'start room');
-      text = resp.text; usage = resp.usage; duration_ms = resp.duration_ms;
-      console.log(`[v3/start] corr=${corr} model returned in ${duration_ms}ms, usage=${JSON.stringify(usage||{})}`);
-      await logEvent(null, corr, 'info', 'v3/start', 'model returned', { duration_ms, usage });
-    } catch (e) {
-      console.error(`[v3/start] corr=${corr} model error: ${e.message}`);
-      await logEvent(null, corr, 'error', 'v3/start', 'model error', { error: e.message, duration_ms: e.duration_ms });
-      return res.status(502).json({ success: false, correlation_id: corr, error: 'Model error: ' + e.message });
-    }
-    // Debug: truncate long text
-    console.log(`[v3/start] corr=${corr} raw length=${(text||'').length}`);
-    let json;
-    try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
-      console.error(`[v3/start] corr=${corr} parse error: ${e.message}`);
-      await logEvent(null, corr, 'error', 'v3/start', 'parse error', { error: e.message });
-      return res.status(502).json({ success: false, correlation_id: corr, error: 'Invalid JSON from model', raw: text });
-    }
-    const err = validateRoomJson(json);
-    if (err) {
-      console.error(`[v3/start] corr=${corr} schema error: ${err}`);
-      await logEvent(null, corr, 'error', 'v3/start', 'schema error', { error: err });
-      return res.status(502).json({ success: false, correlation_id: corr, error: 'Schema validation failed: ' + err, raw: json });
-    }
-
-    // Ensure numeric keywords 1..5 for five-entrance start rooms
-    if (Array.isArray(json.exits) && json.exits.length === 5) {
-      json.exits = json.exits.map((ex, idx) => {
-        const k = new Set([...(ex.keywords || [])]);
-        k.add(String(idx + 1));
-        return { ...ex, keywords: Array.from(k) };
-      });
-    }
-
-    sess.state.room = json;
-    sess.stats.first_latency_ms = duration_ms;
-    sess.stats.usage = usage;
-    // Start-of-game assistant narrative might already be in convo from start-stream
-    await logEvent(id, corr, 'success', 'v3/start', 'session initialized', { session_id: id });
-
-    return res.json({ success: true, correlation_id: corr, session_id: id, message: 'You awaken in a cave of five glowing entrances...', state: sess.state, debug: { model: process.env.PROMPT_MODEL || 'gpt-5-nano' } });
-  } catch (e) {
-    await logEvent(null, corr, 'error', 'v3/start', 'unhandled error', { error: e.message });
-    return res.status(500).json({ success: false, correlation_id: corr, error: e.message });
-  }
+  await logEvent(null, corr, 'info', 'v3/start', 'deprecated endpoint called', null);
+  return res.status(410).json({ success: false, correlation_id: corr, error: 'Deprecated: streaming-only mode. Use /v3/api/console/start-stream.' });
 });
 
-// POST /v3/api/console/command
+// POST /v3/api/console/command (JSON) – deprecated in streaming-only mode
 router.post('/command', async (req, res) => {
   const corr = correlation();
   console.log(`[v3/command] corr=${corr} incoming`);
   await logEvent(null, corr, 'info', 'v3/command', 'incoming', null);
   try {
+    const corr = correlation();
+    await logEvent(null, corr, 'info', 'v3/command', 'deprecated endpoint called', null);
+    return res.status(410).json({ success: false, correlation_id: corr, error: 'Deprecated: streaming-only mode. Use /v3/api/console/command-stream.' });
     const { session_id, command } = req.body || {};
     console.log(`[v3/command] corr=${corr} payload session_id=${session_id} command=${JSON.stringify(command)}`);
     await logEvent(session_id, corr, 'info', 'v3/command', 'payload', { command });
@@ -383,17 +302,18 @@ router.post('/start-stream', async (req, res) => {
   sse({ type: 'session', session_id: id });
 
   try {
-    const system = `You are a vivid narrator for a text adventure. The user awakens in a cave with five glowing entrances. Keep it concise (2 short paragraphs max). Encourage the player to choose an entrance.`;
-    const user = `Describe the starting cave and the five glowing entrances with these themes: space/sci-fi, historic, scary, travel mystery, fantasy. Each entrance should hint its theme. End with a short prompt (e.g., 'Choose an entrance (1-5) or say a theme').`;
+    const system = `You are the Dungeon Master of a text adventure. Stream only narrative text (no JSON). For each response, include:
+- A concise scene description (2 short paragraphs max)
+- Clear available actions/exits and notable items/NPCs (inline)
+- An immediate, challenging prompt for the player to act next
+Keep momentum and make choices meaningful.`;
+    const user = `Start the adventure. The player awakens in a cave with five glowing entrances themed: space/sci-fi, historic, scary, travel mystery, fantasy. Hint at each theme. End with: "Choose an entrance (1-5) or describe what you do."`;
 
-    const model = process.env.PROMPT_MODEL || 'gpt-5-nano';
+    const model = process.env.PROMPT_MODEL || 'gpt-5';
     sse({ type: 'debug', stage: 'command-stream', model, system, user });
     // Emit debug of what we send to LLM (sanitized)
     sse({ type: 'debug', stage: 'start-stream', model, system, user });
     const start = Date.now();
-    // Kick off background JSON world computation immediately to avoid client waiting later
-    (async () => {
-      try {
         const payload = {
           kind: 'start_room',
           seed,
@@ -431,8 +351,6 @@ router.post('/start-stream', async (req, res) => {
           }
           sess.pendingStartPromise = null;
         }).catch((e) => { const bgElapsed = Date.now() - bgT0; try { sse({ type: 'debug', stage: 'bg-json', event: 'failed', error: e.message || String(e), duration_ms: bgElapsed }); } catch {}; sess.bgJsonError = e.message || String(e); sess.pendingStartPromise = null; logEvent(id, corr, 'error', 'v3/start-stream', 'bg json exception', { error: e.message || String(e), duration_ms: bgElapsed }); });
-      } catch {}
-    })();
 
     const stream = await (async () => {
       try {
@@ -516,10 +434,14 @@ router.post('/command-stream', async (req, res) => {
 
   try {
     const s = sessions.get(session_id);
-    const current = s?.state?.room;
-    const system = `You are the narrator for a text adventure. Stream only narrative text, no JSON. Keep 2 short paragraphs. Maintain continuity with the current room.`;
-    const user = `Player command: ${command}. Current room title: ${current?.title || 'Unknown'}. Brief: ${current?.description?.slice(0, 200) || ''}`;
-    const model = process.env.PROMPT_MODEL || 'gpt-5-nano';
+    const recent = (s?.convo || []).slice(-8) || [];
+    const system = `You are the Dungeon Master of a text adventure. Stream only narrative text (no JSON). For each turn:
+- Briefly acknowledge the player's action and advance the scene (2 short paragraphs)
+- Surface available actions/exits/items/NPCs inline, naturally
+- Introduce or progress a challenge/puzzle when appropriate
+- End with a clear prompt for the next action`;
+    const user = `Player command: ${command}. Recent context:\n${recent.map(m => `${m.role}: ${m.content}`).join('\n').slice(0, 1400)}`;
+    const model = process.env.PROMPT_MODEL || 'gpt-5';
 
     const start = Date.now();
     const stream = await openai.responses.create({
