@@ -60,14 +60,22 @@ async function callModelForRoom(payload, description) {
   const developer = `Return compact JSON only with fields: room_id (string), title (string), description (max 2 sentences), exits (array of 5 objects: {exit_id,label,keywords[]} with short labels and keywords including 1..5 if start), items (empty or minimal). No extra text.`;
   const user = JSON.stringify(payload);
   const start = Date.now();
-  const resp = await openai.responses.create({ model: process.env.PROMPT_MODEL || 'gpt-5-nano', max_output_tokens: 250, input: [
-    { role: 'system', content: system },
-    { role: 'developer', content: developer },
-    { role: 'user', content: user }
-  ]});
-  const duration = Date.now() - start;
-  const text = resp.output_text || resp.choices?.[0]?.message?.content || '';
-  return { text, usage: resp.usage, duration_ms: duration, response: resp };
+  try {
+    const resp = await openai.responses.create({ model: process.env.PROMPT_MODEL || 'gpt-5-nano', max_output_tokens: 250, input: [
+      { role: 'system', content: system },
+      { role: 'developer', content: developer },
+      { role: 'user', content: user }
+    ]});
+    const duration = Date.now() - start;
+    const text = resp.output_text || resp.choices?.[0]?.message?.content || '';
+    return { text, usage: resp.usage, duration_ms: duration, response: resp };
+  } catch (e) {
+    const duration = Date.now() - start;
+    const err = new Error(`LLM request failed (${description || 'room'}): ${e.message || e}`);
+    err.cause = e;
+    err.duration_ms = duration;
+    throw err;
+  }
 }
 
 // Helper to slice last N convo messages
@@ -115,9 +123,17 @@ router.post('/start', async (req, res) => {
     console.log(`[v3/start] corr=${corr} calling model (start room)`);
     await logEvent(null, corr, 'info', 'v3/start', 'calling model (start room)', { payloadKind: 'start_room' });
     await logEvent(id, corr, 'info', 'v3/start', 'llm request', { model: process.env.PROMPT_MODEL || 'gpt-5-nano', payloadPreview: JSON.stringify(payload).slice(0, 500) });
-    const { text, usage, duration_ms } = await callModelForRoom(payload, 'start room');
-    console.log(`[v3/start] corr=${corr} model returned in ${duration_ms}ms, usage=${JSON.stringify(usage||{})}`);
-    await logEvent(null, corr, 'info', 'v3/start', 'model returned', { duration_ms, usage });
+let text, usage, duration_ms;
+    try {
+      const resp = await callModelForRoom(payload, 'start room');
+      text = resp.text; usage = resp.usage; duration_ms = resp.duration_ms;
+      console.log(`[v3/start] corr=${corr} model returned in ${duration_ms}ms, usage=${JSON.stringify(usage||{})}`);
+      await logEvent(null, corr, 'info', 'v3/start', 'model returned', { duration_ms, usage });
+    } catch (e) {
+      console.error(`[v3/start] corr=${corr} model error: ${e.message}`);
+      await logEvent(null, corr, 'error', 'v3/start', 'model error', { error: e.message, duration_ms: e.duration_ms });
+      return res.status(502).json({ success: false, correlation_id: corr, error: 'Model error: ' + e.message });
+    }
     // Debug: truncate long text
     console.log(`[v3/start] corr=${corr} raw length=${(text||'').length}`);
     let json;
@@ -196,7 +212,14 @@ router.post('/command', async (req, res) => {
       const payload = { kind: 'reroll_exit_label', seed: s.seed, current_room: s.state.room, exit_index: idx };
       console.log(`[v3/command] corr=${corr} calling model (reroll exit) idx=${idx}`);
       await logEvent(session_id, corr, 'info', 'v3/command', 'calling model (reroll exit)', { idx });
-      const { text } = await callModelForRoom(payload, 'reroll exit');
+let text;
+      try {
+        const resp = await callModelForRoom(payload, 'reroll exit');
+        text = resp.text;
+      } catch (e) {
+        await logEvent(session_id, corr, 'error', 'v3/command', 'model error (reroll)', { error: e.message });
+        return res.status(502).json({ success: false, correlation_id: corr, message: 'Model error during reroll: ' + e.message });
+      }
       console.log(`[v3/command] corr=${corr} model returned (reroll), raw length=${(text||'').length}`);
       let json; try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch { json = null; }
       if (!json || !json.exits || !json.exits[idx]) {
@@ -235,7 +258,14 @@ router.post('/command', async (req, res) => {
       };
       console.log(`[v3/command] corr=${corr} calling model (next room)`);
       await logEvent(session_id, corr, 'info', 'v3/command', 'calling model (next room)', { exit: target.exit_id });
-      const { text } = await callModelForRoom(payload, 'next room');
+let text;
+      try {
+        const resp = await callModelForRoom(payload, 'next room');
+        text = resp.text;
+      } catch (e) {
+        await logEvent(session_id, corr, 'error', 'v3/command', 'model error (next room)', { error: e.message });
+        return res.status(502).json({ success: false, correlation_id: corr, message: 'Model error while generating next room: ' + e.message });
+      }
       console.log(`[v3/command] corr=${corr} model returned (next), raw length=${(text||'').length}`);
       let json; try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
         console.error(`[v3/command] corr=${corr} next-room parse error: ${e.message}`);
@@ -271,7 +301,14 @@ router.post('/command', async (req, res) => {
     console.log(`[v3/command] corr=${corr} calling model (update_from_conversation)`);
     await logEvent(session_id, corr, 'info', 'v3/command', 'calling model (update_from_conversation)', null);
     await logEvent(session_id, corr, 'info', 'v3/command', 'llm request', { model: process.env.PROMPT_MODEL || 'gpt-5-nano', payloadPreview: JSON.stringify(payload).slice(0, 500) });
-    const { text } = await callModelForRoom(payload, 'update_from_conversation');
+let text;
+    try {
+      const resp = await callModelForRoom(payload, 'update_from_conversation');
+      text = resp.text;
+    } catch (e) {
+      await logEvent(session_id, corr, 'error', 'v3/command', 'model error (update_from_conversation)', { error: e.message });
+      return res.status(502).json({ success: false, correlation_id: corr, message: 'Model error: ' + e.message });
+    }
     let json; try { json = JSON.parse(text.match(/\{[\s\S]*\}/)?.[0] || text); } catch (e) {
       console.error(`[v3/command] corr=${corr} update parse error: ${e.message}`);
       await logEvent(session_id, corr, 'error', 'v3/command', 'update parse error', { error: e.message });
@@ -365,7 +402,7 @@ sess.pendingStartPromise = callModelForRoom(payload, 'start room').then(({ text 
           }
           try { sse({ type: 'debug', stage: 'bg-json', event: 'completed' }); } catch {}
           sess.pendingStartPromise = null;
-}).catch(() => { try { sse({ type: 'debug', stage: 'bg-json', event: 'failed' }); } catch {}; sess.pendingStartPromise = null; });
+}).catch((e) => { try { sse({ type: 'debug', stage: 'bg-json', event: 'failed', error: e.message || String(e) }); } catch {}; sess.pendingStartPromise = null; });
       } catch {}
     })();
 
@@ -412,7 +449,8 @@ router.get('/status', async (req, res) => {
   const t0 = Date.now();
   try {
     const model = process.env.PROMPT_MODEL || 'gpt-5-nano';
-    const resp = await openai.responses.create({ model, max_output_tokens: 16, input: [{ role: 'user', content: 'ok' }] });
+    // Keep params minimal for compatibility
+    await openai.responses.create({ model, max_output_tokens: 16, input: [{ role: 'user', content: 'ok' }] });
     const dt = Date.now() - t0;
     res.json({ ok: true, model, elapsed_ms: dt, at: new Date().toISOString() });
   } catch (e) {
